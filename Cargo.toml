@@ -1,0 +1,9 @@
+[package]
+name = "nnshogi"
+version = "0.1.0"
+authors = [" <>"]
+
+[dependencies.usiagent]
+path = "F:\\source\\Rust\\USIAgent"
+[dependencies.simplenn]
+path = "F:\\source\\Rust\\simplenn"
