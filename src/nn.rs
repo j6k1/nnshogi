@@ -31,7 +31,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let mut nnb = NN::new(model,|s| Adam::new(s),Mse::new());
+		let mut nna = NN::new(model,|s| Adam::new(s),Mse::new());
 
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 		let mut units:Vec<(usize,Box<ActivateF>)> = Vec::new();
@@ -50,7 +50,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let mut nna = NN::new(model,|s| Adam::new(s),Mse::new());
+		let mut nnb = NN::new(model,|s| Adam::new(s),Mse::new());
 
 		Intelligence {
 			nna:nna,
