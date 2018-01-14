@@ -11,6 +11,7 @@ use simplenn::persistence::*;
 struct Intelligence {
 	nna:NN<Adam,Mse>,
 	nnb:NN<Adam,Mse>,
+	nnsavepath:String,
 }
 impl Intelligence {
 	pub fn new (savepath:String) -> Intelligence {
@@ -55,6 +56,7 @@ impl Intelligence {
 		Intelligence {
 			nna:nna,
 			nnb:nnb,
+			nnsavepath:savepath,
 		}
 	}
 }
