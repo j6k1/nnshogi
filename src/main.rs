@@ -1,8 +1,11 @@
+extern crate rand;
+
 extern crate usiagent;
 extern crate simplenn;
 
 pub mod player;
 pub mod error;
+pub mod nn;
 
 use std::error::Error;
 

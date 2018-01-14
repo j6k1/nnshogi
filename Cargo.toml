@@ -1,9 +1,10 @@
 [package]
 name = "nnshogi"
 version = "0.1.0"
-authors = [" <>"]
-
+authors = ["jinpu"]
 [dependencies.usiagent]
 path = "F:\\source\\Rust\\USIAgent"
 [dependencies.simplenn]
 path = "F:\\source\\Rust\\simplenn"
+[dependencies]
+rand = "0.4"
