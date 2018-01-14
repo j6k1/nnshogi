@@ -22,7 +22,7 @@ impl Intelligence {
 
 		let mut model:NNModel = NNModel::with_bias_and_unit_initializer(2152,
 										units,
-										TextFileInputReader::new("data/nn.a.txt").unwrap(),
+										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
 										0f64,move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
@@ -41,7 +41,7 @@ impl Intelligence {
 
 		let mut model:NNModel = NNModel::with_bias_and_unit_initializer(2152,
 										units,
-										TextFileInputReader::new("data/nn.a.txt").unwrap(),
+										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
 										0f64,move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
