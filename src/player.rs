@@ -60,9 +60,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.stop = true;
 		Ok(())
 	}
-	fn gameover(&mut self,s:&GameEndState) -> Result<(),CommonError> {
+	fn gameover(&mut self,s:&GameEndState,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>) -> Result<(),CommonError> {
 		Ok(())
 	}
+	fn on_quit(&mut self,e:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
+		Ok(())
+	}
+
 	fn quit(&mut self) -> Result<(),CommonError> {
 		Ok(())
 	}
