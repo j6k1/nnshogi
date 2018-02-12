@@ -10,19 +10,19 @@ use simplenn::NNUnits;
 use simplenn::persistence::*;
 
 struct Intelligence {
-	nna:NN<Adam,Mse>,
-	nnb:NN<Adam,Mse>,
+	nna:NN<SGD,CrossEntropy>,
+	nnb:NN<SGD,CrossEntropy>,
 	nnsavepath:String,
 }
 impl Intelligence {
 	pub fn new (savepath:String) -> Intelligence {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let mut model:NNModel = NNModel::with_bias_and_unit_initializer(
-										NNUnits::new(2120,
-											(4240,Box::new(FReLU::new())),
-											(4240,Box::new(FReLU::new())))
-											.add((1,Box::new(FTanh::new()))),
+		let model:NNModel = NNModel::with_bias_and_unit_initializer(
+										NNUnits::new(2282,
+											(4564,Box::new(FReLU::new())),
+											(4564,Box::new(FReLU::new())))
+											.add((1,Box::new(FSigmoid::new()))),
 										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
 										0f64,move || {
 											let i = rnd.next_u32();
@@ -32,15 +32,15 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let mut nna = NN::new(model,|s| Adam::new(s),Mse::new());
+		let nna = NN::new(model,|_| SGD::new(0.5),CrossEntropy::new());
 
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let mut model:NNModel = NNModel::with_bias_and_unit_initializer(
-										NNUnits::new(2120,
-											(4240,Box::new(FReLU::new())),
-											(4240,Box::new(FReLU::new())))
-											.add((1,Box::new(FTanh::new()))),
+		let model:NNModel = NNModel::with_bias_and_unit_initializer(
+										NNUnits::new(2282,
+											(4564,Box::new(FReLU::new())),
+											(4564,Box::new(FReLU::new())))
+											.add((1,Box::new(FSigmoid::new()))),
 										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
 										0f64,move || {
 											let i = rnd.next_u32();
@@ -50,7 +50,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let mut nnb = NN::new(model,|s| Adam::new(s),Mse::new());
+		let nnb = NN::new(model,|_| SGD::new(0.5),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
