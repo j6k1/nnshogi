@@ -15,15 +15,16 @@ use usiagent::OnErrorHandler;
 use usiagent::Logger;
 use usiagent::error::PlayerError;
 
-const KOMA_KIND_MAX:usize = 14;
-const MOCHIGOMA_KIND_MAX:usize = 7;
+const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
+const MOCHIGOMA_KIND_MAX:usize = MochigomaKind::Hisha as usize;
+const MOCHIGOMA_MAX:usize = 18;
 const SUJI_MAX:usize = 9;
 const DAN_MAX:usize = 9;
 
 pub struct NNShogiPlayer {
 	stop:bool,
 	kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX],
-	mochigoma_hash_seeds:[u64; MOCHIGOMA_KIND_MAX],
+	mochigoma_hash_seeds:[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX],
 }
 impl fmt::Debug for NNShogiPlayer {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -35,7 +36,7 @@ impl NNShogiPlayer {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
 		let mut kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX] = [[0; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX];
-		let mut mochigoma_hash_seeds:[u64; MOCHIGOMA_KIND_MAX] = [0; MOCHIGOMA_KIND_MAX];
+		let mut mochigoma_hash_seeds:[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX] = [[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX];
 
 		for i in 0..(KOMA_KIND_MAX + 1) {
 			for j in 0..(SUJI_MAX * DAN_MAX) {
@@ -43,8 +44,10 @@ impl NNShogiPlayer {
 			}
 		}
 
-		for i in 0..MOCHIGOMA_KIND_MAX {
-			mochigoma_hash_seeds[i] = rnd.next_u64();
+		for i in 0..MOCHIGOMA_MAX {
+			for j in 0..(MOCHIGOMA_KIND_MAX + 1) {
+				mochigoma_hash_seeds[i][j] = rnd.next_u64();
+			}
 		}
 
 		NNShogiPlayer {
@@ -54,7 +57,7 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_hash<AF,PF>(&self,h:u64,b:&Banmen,m:&Move,add:AF,pull:PF)
+	fn calc_hash<AF,PF>(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,add:AF,pull:PF)
 		-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
 		match b {
 			&Banmen(ref kinds) => {
@@ -66,43 +69,28 @@ impl NNShogiPlayer {
 						let dy = dy as usize;
 
 						let mut hash = h;
-
-						let k = if kinds[sy][sx] == KomaKind::Blank {
-							0usize
-						} else if kinds[sy][sx] >= KomaKind::GFu {
-							kinds[sy][sx] as usize - KomaKind::GFu as usize + 1usize
-						} else {
-							kinds[sy][sx] as usize + 1usize
-						};
+						let k = kinds[sy][sx] as usize;
 
 						hash =  pull(hash,self.kyokumen_hash_seeds[k][sx * 9 + sy]);
+						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sx * 9 + sy]);
 
-						let dk = if kinds[dy][dx] == KomaKind::Blank {
-							0usize
-						} else if kinds[dy][dx] >= KomaKind::GFu {
-							kinds[dy][dx] as usize - KomaKind::GFu as usize + 1usize
-						} else {
-							kinds[dy][dx] as usize + 1usize
-						};
+						let dk = kinds[dy][dx] as usize;
 
 						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dx * 9 + dy]);
-
-						match mn {
-							true if k - 1usize < KomaKind::SFuN as usize => {
-								hash = add(hash,self.kyokumen_hash_seeds[k + KomaKind::GFu as usize][dx * 9 + dy]);
-							},
-							_ => {
-								hash = add(hash,self.kyokumen_hash_seeds[k][dx * 9 + dy]);
-							}
-						}
-
+						hash = add(hash,self.kyokumen_hash_seeds[k][dx * 9 + dy]);
 						hash
 					},
 					&Move::Put(ref mk, ref md) => {
 						let mut hash = h;
+						let c = match mc.get(&mk) {
+							Some(c) => (*c - 1) as usize,
+							None => {
+								return hash;
+							}
+						};
 						let k = *mk as usize;
 
-						hash = pull(hash,self.mochigoma_hash_seeds[k]);
+						hash = pull(hash,self.mochigoma_hash_seeds[c][k]);
 
 						let dx = md.0 as usize;
 						let dy = md.1 as usize;
@@ -116,12 +104,12 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_main_hash(&self,h:u64,b:&Banmen,m:&Move) -> u64 {
-		self.calc_hash(h,b,m,|h,v| h ^ v, |h,v| h ^ v)
+	fn calc_main_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move) -> u64 {
+		self.calc_hash(h,b,mc,m,|h,v| h ^ v, |h,v| h ^ v)
 	}
 
-	fn calc_sub_hash(&self,h:u64,b:&Banmen,m:&Move) -> u64 {
-		self.calc_hash(h,b,m,|h,v| {
+	fn calc_sub_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move) -> u64 {
+		self.calc_hash(h,b,mc,m,|h,v| {
 			let h = Wrapping(h);
 			let v = Wrapping(v);
 			(h + v).0
@@ -151,7 +139,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,ban:[[KomaKind; 9]; 9],
-					ms:Vec<MochigomaKind>,mg:Vec<MochigomaKind>,n:u32,m:Vec<Move>)
+					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,n:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
 		Ok(())
 	}
