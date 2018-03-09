@@ -138,7 +138,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	fn newgame(&mut self) -> Result<(),CommonError> {
 		Ok(())
 	}
-	fn set_position(&mut self,teban:Teban,ban:[[KomaKind; 9]; 9],
+	fn set_position(&mut self,teban:Teban,ban:Banmen,
 					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,n:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
 		Ok(())
