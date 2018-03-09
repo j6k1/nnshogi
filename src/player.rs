@@ -57,7 +57,8 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_hash<AF,PF>(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,add:AF,pull:PF)
+	fn calc_hash<AF,PF>(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,
+												m:&Move,obtained:&Option<MochigomaKind>,add:AF,pull:PF)
 		-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
 		match b {
 			&Banmen(ref kinds) => {
@@ -78,6 +79,22 @@ impl NNShogiPlayer {
 
 						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dx * 9 + dy]);
 						hash = add(hash,self.kyokumen_hash_seeds[k][dx * 9 + dy]);
+
+						hash = match obtained  {
+							&None => hash,
+							&Some(ref obtained) => {
+								let c = match mc.get(obtained) {
+									Some(c) => *c as usize,
+									None => 0,
+								};
+
+								let k = *obtained as usize;
+
+								hash = add(hash,self.mochigoma_hash_seeds[c][k]);
+								hash
+							}
+						};
+
 						hash
 					},
 					&Move::Put(ref mk, ref md) => {
@@ -96,7 +113,6 @@ impl NNShogiPlayer {
 						let dy = md.1 as usize;
 
 						hash = add(hash,self.kyokumen_hash_seeds[k + 1usize][dx * 9 + dy]);
-
 						hash
 					}
 				}
@@ -104,12 +120,12 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_main_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move) -> u64 {
-		self.calc_hash(h,b,mc,m,|h,v| h ^ v, |h,v| h ^ v)
+	fn calc_main_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
 	}
 
-	fn calc_sub_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move) -> u64 {
-		self.calc_hash(h,b,mc,m,|h,v| {
+	fn calc_sub_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,b,mc,m,obtained,|h,v| {
 			let h = Wrapping(h);
 			let v = Wrapping(v);
 			(h + v).0
