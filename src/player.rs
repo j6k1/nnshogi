@@ -134,7 +134,7 @@ impl NNShogiPlayer {
 								m:Option<Move>,mc:&MochigomaCollections,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,depth:u32,current_depth:u32) -> Evaluation where L: Logger {
 		match obtained {
@@ -307,11 +307,12 @@ impl NNShogiPlayer {
 
 					match already_oute_hash_map.get(&mhash,&shash) {
 						None => {
-							already_oute_hash_map.insert(mhash,shash,());
+							already_oute_hash_map.insert(mhash,shash,current_depth);
 						},
-						Some(_) => {
+						Some(depth) if depth - current_depth == 2 => {
 							continue;
 						}
+						Some(_) => (),
 					}
 
 					let next = match m {
@@ -452,7 +453,7 @@ impl NNShogiPlayer {
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,is_put_fu:bool,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
@@ -519,7 +520,7 @@ impl NNShogiPlayer {
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
-						already_oute_hash_map.insert(mhash,shash,());
+						already_oute_hash_map.insert(mhash,shash,current_depth);
 					},
 					Some(_) => {
 						return OuteEvaluation::Result(-1);
@@ -571,7 +572,7 @@ impl NNShogiPlayer {
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,is_put_fu:bool,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
@@ -646,7 +647,7 @@ impl NNShogiPlayer {
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
-						already_oute_hash_map.insert(mhash,shash,());
+						already_oute_hash_map.insert(mhash,shash,current_depth);
 					},
 					Some(_) => {
 						return OuteEvaluation::Result(-1);
