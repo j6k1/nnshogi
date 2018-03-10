@@ -310,7 +310,12 @@ impl NNShogiPlayer {
 							already_oute_hash_map.insert(mhash,shash,current_depth);
 						},
 						Some(depth) if depth - current_depth == 2 => {
-							continue;
+							match m {
+								LegalMove::Put(MochigomaKind::Fu,_) => {
+									continue;
+								},
+								_ => (),
+							}
 						}
 						Some(_) => (),
 					}
