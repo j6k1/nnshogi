@@ -59,7 +59,7 @@ impl Neg for Score {
 pub struct NNShogiPlayer {
 	stop:bool,
 	kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX],
-	mochigoma_hash_seeds:[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX],
+	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
 	evalutor:Intelligence,
 }
 impl fmt::Debug for NNShogiPlayer {
@@ -72,7 +72,7 @@ impl NNShogiPlayer {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
 		let mut kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX] = [[0; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX];
-		let mut mochigoma_hash_seeds:[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX] = [[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX];
+		let mut mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2] = [[[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2];
 
 		for i in 0..(KOMA_KIND_MAX + 1) {
 			for j in 0..(SUJI_MAX * DAN_MAX) {
@@ -82,7 +82,8 @@ impl NNShogiPlayer {
 
 		for i in 0..MOCHIGOMA_MAX {
 			for j in 0..(MOCHIGOMA_KIND_MAX + 1) {
-				mochigoma_hash_seeds[i][j] = rnd.next_u64();
+				mochigoma_hash_seeds[0][i][j] = rnd.next_u64();
+				mochigoma_hash_seeds[1][i][j] = rnd.next_u64();
 			}
 		}
 
@@ -188,18 +189,6 @@ impl NNShogiPlayer {
 			if limit - Instant::now() <= Duration::from_millis(10) {
 				return Evaluation::Timeout;
 			}
-			let empmc = HashMap::new();
-
-			let mp = match mc {
-				&MochigomaCollections::Pair(ref s,ref g) => {
-					match teban {
-						Teban::Sente => s,
-						Teban::Gote => g
-					}
-				},
-				&MochigomaCollections::Empty => &empmc,
-			};
-
 			match *m {
 				(true,m) => {
 					let (mhash,shash) = match m {
@@ -217,16 +206,16 @@ impl NNShogiPlayer {
 							let m = Move::To(*s,*d);
 
 							(
-								self.calc_main_hash(mhash,banmen,mp,&m,&o),
-								self.calc_sub_hash(shash,banmen,mp,&m,&o)
+								self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
+								self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
 							)
 						},
 						LegalMove::Put(ref k, ref d) => {
 							let m = Move::Put(*k,*d);
 
 							(
-								self.calc_main_hash(mhash,banmen,mp,&m,&None),
-								self.calc_sub_hash(shash,banmen,mp,&m,&None)
+								self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
+								self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
 							)
 						}
 					};
@@ -357,17 +346,6 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			return OuteEvaluation::Result(current_depth as i32)
 		} else {
-			let empmc = HashMap::new();
-			let mp = match mc {
-				&MochigomaCollections::Pair(ref s,ref g) => {
-					match teban {
-						Teban::Sente => s,
-						Teban::Gote => g
-					}
-				},
-				&MochigomaCollections::Empty => &empmc,
-			};
-
 			let mut longest_depth = -1;
 
 			for m in mvs {
@@ -390,16 +368,16 @@ impl NNShogiPlayer {
 						let m = Move::To(*s,*d);
 
 						(
-							self.calc_main_hash(mhash,banmen,mp,&m,&o),
-							self.calc_sub_hash(shash,banmen,mp,&m,&o)
+							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
+							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
 						)
 					},
 					LegalMove::Put(ref k, ref d) => {
 						let m = Move::Put(*k,*d);
 
 						(
-							self.calc_main_hash(mhash,banmen,mp,&m,&None),
-							self.calc_sub_hash(shash,banmen,mp,&m,&None)
+							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
+							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
 						)
 					}
 				};
@@ -459,17 +437,6 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			OuteEvaluation::Result(-1)
 		} else {
-			let empmc = HashMap::new();
-			let mp = match mc {
-				&MochigomaCollections::Pair(ref s,ref g) => {
-					match teban {
-						Teban::Sente => s,
-						Teban::Gote => g
-					}
-				},
-				&MochigomaCollections::Empty => &empmc,
-			};
-
 			let mut shortest_depth = -1;
 
 			for m in mvs {
@@ -500,16 +467,16 @@ impl NNShogiPlayer {
 						let m = Move::To(*s,*d);
 
 						(
-							self.calc_main_hash(mhash,banmen,mp,&m,&o),
-							self.calc_sub_hash(shash,banmen,mp,&m,&o)
+							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
+							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
 						)
 					},
 					LegalMove::Put(ref k, ref d) => {
 						let m = Move::Put(*k,*d);
 
 						(
-							self.calc_main_hash(mhash,banmen,mp,&m,&None),
-							self.calc_sub_hash(shash,banmen,mp,&m,&None)
+							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
+							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
 						)
 					}
 				};
@@ -551,7 +518,7 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_hash<AF,PF>(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,
+	fn calc_hash<AF,PF>(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,
 												m:&Move,obtained:&Option<MochigomaKind>,add:AF,pull:PF)
 		-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
 		match b {
@@ -575,33 +542,90 @@ impl NNShogiPlayer {
 						hash = add(hash,self.kyokumen_hash_seeds[k][dx * 9 + dy]);
 
 						hash = match obtained  {
-							&None => hash,
-							&Some(ref obtained) => {
-								let c = match mc.get(obtained) {
-									Some(c) => *c as usize,
-									None => 0,
-								};
+								&None => hash,
+								&Some(ref obtained) => {
+									let c =  match t {
+										&Teban::Sente => {
+											match mc {
+												&MochigomaCollections::Pair(ref mc,_) => {
+													match mc.get(obtained) {
+														Some(c) => *c as usize,
+														None => 0,
+													}
+												},
+												&MochigomaCollections::Empty => 0,
+											}
+										},
+										&Teban::Gote => {
+											match mc {
+												&MochigomaCollections::Pair(_,ref mc) => {
+													match mc.get(obtained) {
+														Some(c) => *c as usize,
+														None => 0,
+													}
+												},
+												&MochigomaCollections::Empty => 0,
+											}
+										}
+									};
 
-								let k = *obtained as usize;
-
-								hash = add(hash,self.mochigoma_hash_seeds[c][k]);
-								hash
-							}
+									let k = *obtained as usize;
+									match t {
+										&Teban::Sente => {
+											hash = add(hash,self.mochigoma_hash_seeds[0][c][k]);
+										},
+										&Teban::Gote => {
+											hash = add(hash,self.mochigoma_hash_seeds[1][c][k]);
+										}
+									}
+									hash
+								}
 						};
 
 						hash
 					},
 					&Move::Put(ref mk, ref md) => {
 						let mut hash = h;
-						let c = match mc.get(&mk) {
-							Some(c) => (*c - 1) as usize,
-							None => {
-								return hash;
+
+						let c = match t {
+							&Teban::Sente => {
+								match mc {
+									&MochigomaCollections::Pair(ref mc,_) => {
+										match mc.get(&mk) {
+											Some(c) => (*c - 1) as usize,
+											None => {
+												return hash;
+											}
+										}
+									},
+									&MochigomaCollections::Empty => 0,
+								}
+							},
+							&Teban::Gote => {
+								match mc {
+									&MochigomaCollections::Pair(_,ref mc) => {
+										match mc.get(&mk) {
+											Some(c) => (*c - 1) as usize,
+											None => {
+												return hash;
+											}
+										}
+									},
+									&MochigomaCollections::Empty => 0,
+								}
 							}
 						};
+
 						let k = *mk as usize;
 
-						hash = pull(hash,self.mochigoma_hash_seeds[c][k]);
+						match t {
+							&Teban::Sente => {
+								hash = pull(hash,self.mochigoma_hash_seeds[0][c][k]);
+							},
+							&Teban::Gote => {
+								hash = pull(hash,self.mochigoma_hash_seeds[1][c][k]);
+							}
+						}
 
 						let dx = md.0 as usize;
 						let dy = md.1 as usize;
@@ -614,12 +638,12 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn calc_main_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
+	fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,t,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
 	}
 
-	fn calc_sub_hash(&self,h:u64,b:&Banmen,mc:&HashMap<MochigomaKind,u32>,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,b,mc,m,obtained,|h,v| {
+	fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,t,b,mc,m,obtained,|h,v| {
 			let h = Wrapping(h);
 			let v = Wrapping(v);
 			(h + v).0
