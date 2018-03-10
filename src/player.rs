@@ -130,7 +130,7 @@ impl NNShogiPlayer {
 								info_sender:&USIInfoSender,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,banmen:&Banmen,
-								mut alpha:Score,mut beta:Score,
+								mut alpha:Score,beta:Score,
 								m:Option<Move>,mc:&MochigomaCollections,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
@@ -144,7 +144,12 @@ impl NNShogiPlayer {
 			_ => (),
 		}
 
-		self.handle_events(event_queue, on_error_handler);
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
 
 		if depth == 0 {
 			if (limit.is_some() &&
@@ -156,9 +161,14 @@ impl NNShogiPlayer {
 			}
 		}
 
-		let mut mvs:Vec<LegalMove> = banmen.oute_only_moves_all(&teban, mc);
+		let mvs:Vec<LegalMove> = banmen.oute_only_moves_all(&teban, mc);
 
-		self.handle_events(event_queue, on_error_handler);
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
 
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
@@ -187,7 +197,12 @@ impl NNShogiPlayer {
 			}
 		}).collect::<Vec<(bool,LegalMove)>>();
 
-		self.handle_events(event_queue, on_error_handler);
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
 
 		if (limit.is_some() &&
 			limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
@@ -235,7 +250,12 @@ impl NNShogiPlayer {
 		}
 
 		for m in &mvs {
-			self.handle_events(event_queue, on_error_handler);
+			match self.handle_events(event_queue, on_error_handler) {
+				Ok(_) => (),
+				Err(ref e) => {
+					on_error_handler.lock().map(|h| h.call(e)).is_err();
+				}
+			}
 
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
@@ -310,7 +330,12 @@ impl NNShogiPlayer {
 								_ => false,
 							};
 
-							self.handle_events(event_queue, on_error_handler);
+							match self.handle_events(event_queue, on_error_handler) {
+								Ok(_) => (),
+								Err(ref e) => {
+									on_error_handler.lock().map(|h| h.call(e)).is_err();
+								}
+							}
 
 							if (limit.is_some() &&
 								limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
@@ -351,7 +376,12 @@ impl NNShogiPlayer {
 		let mut best_move:Option<Move> = None;
 
 		for m in &mvs {
-			self.handle_events(event_queue, on_error_handler);
+			match self.handle_events(event_queue, on_error_handler) {
+				Ok(_) => (),
+				Err(ref e) => {
+					on_error_handler.lock().map(|h| h.call(e)).is_err();
+				}
+			}
 
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
@@ -404,12 +434,6 @@ impl NNShogiPlayer {
 											return Evaluation::Result(scoreval,best_move);
 										}
 									}
-								},
-								Evaluation::Timeout(_) => {
-									return match best_move {
-										Some(best_move) => Evaluation::Timeout(Some(best_move)),
-										None => Evaluation::Timeout(Some(m.to_move())),
-									};
 								}
 							}
 						}
@@ -433,7 +457,12 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
 
-		self.handle_events(event_queue, on_error_handler);
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
 
 		if (limit.is_some() &&
 			limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
@@ -447,7 +476,12 @@ impl NNShogiPlayer {
 			let mut longest_depth = -1;
 
 			for m in mvs {
-				self.handle_events(event_queue, on_error_handler);
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
 				if (limit.is_some() &&
 					limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
@@ -515,7 +549,7 @@ impl NNShogiPlayer {
 							OuteEvaluation::Result(d) if d >= 0 => {
 								longest_depth = longest_depth.max(d);
 							},
-							OuteEvaluation::Result(d) => {
+							OuteEvaluation::Result(_) => {
 								return OuteEvaluation::Result(-1);
 							},
 							OuteEvaluation::Timeout => {
@@ -542,7 +576,12 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
 
-		self.handle_events(event_queue, on_error_handler);
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
 		if (limit.is_some() &&
 			limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
@@ -555,7 +594,12 @@ impl NNShogiPlayer {
 			let mut shortest_depth = -1;
 
 			for m in mvs {
-				self.handle_events(event_queue, on_error_handler);
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
 				if (limit.is_some() &&
 					limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
@@ -646,7 +690,7 @@ impl NNShogiPlayer {
 		match b {
 			&Banmen(ref kinds) => {
 				match m {
-					&Move::To(ref ms, KomaDstToPosition(dx, dy, mn)) => {
+					&Move::To(ref ms, KomaDstToPosition(dx, dy, _)) => {
 						let sx = 9 - ms.0 as usize;
 						let sy = ms.1 as usize;
 						let dx = 9 - dx as usize;
@@ -788,10 +832,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	fn take_ready(&mut self) -> Result<(),CommonError> {
 		Ok(())
 	}
-	fn set_option(&mut self,name:String,value:SysEventOption) -> Result<(),CommonError> {
+	fn set_option(&mut self,_:String,_:SysEventOption) -> Result<(),CommonError> {
 		Ok(())
 	}
 	fn newgame(&mut self) -> Result<(),CommonError> {
+		self.teban = None;
+		self.banmen = None;
+		self.mc = None;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,ban:Banmen,
@@ -867,7 +914,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						match mc {
 							Some(ref mc) => {
 								let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
-								let mut kyokumen_hash_map = self.kyokumen_hash_map.clone();
+								let kyokumen_hash_map = self.kyokumen_hash_map.clone();
 
 								return Ok(match self.alphabeta(&*event_queue,
 											info_sender, &on_error_handler,
@@ -904,7 +951,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		Err(CommonError::Fail(String::from("Initialization of position info has not been completed.")))
 	}
-	fn think_mate<L>(&mut self,limit:&UsiGoMateTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+	fn think_mate<L>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			info_sender:&USIInfoSender,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<CheckMate,CommonError> where L: Logger {
 		Ok(CheckMate::NotiImplemented)
