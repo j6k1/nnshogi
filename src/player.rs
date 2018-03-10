@@ -1,11 +1,14 @@
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::fmt;
 use rand;
 use rand::Rng;
+use std::sync::Arc;
+use std::sync::Mutex;
 use error::*;
 use std::num::Wrapping;
+use std::time::{Instant,Duration};
+use std::cmp::Ordering;
+use std::ops::Neg;
 
 use usiagent::player::*;
 use usiagent::command::*;
@@ -14,6 +17,11 @@ use usiagent::shogi::*;
 use usiagent::OnErrorHandler;
 use usiagent::Logger;
 use usiagent::error::PlayerError;
+use usiagent::TryFrom;
+
+use nn::Intelligence;
+
+use hash::TwoKeyHashMap;
 
 const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
 const MOCHIGOMA_KIND_MAX:usize = MochigomaKind::Hisha as usize;
@@ -21,10 +29,38 @@ const MOCHIGOMA_MAX:usize = 18;
 const SUJI_MAX:usize = 9;
 const DAN_MAX:usize = 9;
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+enum Evaluation {
+	Result(Score,Option<Move>),
+	Timeout,
+}
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+enum OuteEvaluation {
+	Result(i32),
+	Timeout,
+}
+#[derive(Clone, Copy, Eq, PartialOrd, PartialEq, Debug)]
+enum Score {
+	INFINITE,
+	Value(i32),
+	NEGINFINITE,
+}
+impl Neg for Score {
+	type Output = Score;
+
+	fn neg(self) -> Score {
+		match self {
+			Score::INFINITE => Score::NEGINFINITE,
+			Score::NEGINFINITE => Score::INFINITE,
+			Score::Value(v) => Score::Value(-v),
+		}
+	}
+}
 pub struct NNShogiPlayer {
 	stop:bool,
 	kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX],
 	mochigoma_hash_seeds:[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX],
+	evalutor:Intelligence,
 }
 impl fmt::Debug for NNShogiPlayer {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -54,6 +90,462 @@ impl NNShogiPlayer {
 			stop:false,
 			kyokumen_hash_seeds:kyokumen_hash_seeds,
 			mochigoma_hash_seeds:mochigoma_hash_seeds,
+			evalutor:Intelligence::new(String::from("data")),
+		}
+	}
+
+	fn alphabeta(&mut self, teban:Teban,banmen:&Banmen,
+								mut alpha:Score,mut beta:Score,
+								m:Move,mc:&MochigomaCollections,
+								obtained:Option<ObtainKind>,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								mhash:u64,shash:u64,
+								limit:Instant,depth:u32,current_depth:u32) -> Evaluation {
+		match obtained {
+			Some(ObtainKind::Ou) => {
+				return Evaluation::Result(Score::NEGINFINITE,None);
+			},
+			_ => (),
+		}
+
+		if depth == 0 {
+			if limit - Instant::now() <= Duration::from_millis(10) {
+				return Evaluation::Timeout;
+			} else {
+				return Evaluation::Result(Score::Value(self.evalutor.evalute(teban,banmen,mc)),Some(m));
+			}
+		}
+
+		let mut mvs:Vec<LegalMove> = banmen.oute_only_moves_all(&teban, mc);
+
+		if mvs.len() == 0 {
+			return Evaluation::Result(Score::NEGINFINITE,None);
+		}
+
+		let mut mvs:Vec<(bool,LegalMove)> = mvs.into_iter().map(|m| {
+			match m {
+				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
+					(true,m)
+				},
+				LegalMove::To(ref s,ref d,_) => {
+					match banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d)) {
+						(ref b,_,_) => (b.win_only_moves(&teban).len() > 0,m)
+					}
+				},
+				LegalMove::Put(ref k,ref d) => {
+					match banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d)) {
+						(ref b,_,_) => (b.win_only_moves(&teban).len() > 0,m)
+					}
+				}
+			}
+		}).collect::<Vec<(bool,LegalMove)>>();
+
+		if limit - Instant::now() <= Duration::from_millis(10) {
+			return Evaluation::Timeout;
+		}
+
+		mvs.sort_by(|a,b| {
+			match a {
+				&(_,LegalMove::To(_,_,Some(ObtainKind::Ou))) => {
+					return Ordering::Less;
+				},
+				_ => {
+					match b {
+						&(_,LegalMove::To(_,_,Some(ObtainKind::Ou))) => {
+							return Ordering::Greater;
+						},
+						_ => (),
+					}
+				}
+			}
+
+			let a_is_oute = match a {
+				&(f,_) => f
+			};
+
+			let b_is_oute = match b {
+				&(f,_) => f
+			};
+
+			if a_is_oute == b_is_oute {
+				Ordering::Equal
+			} else if a_is_oute {
+				Ordering::Less
+			} else {
+				Ordering::Greater
+			}
+		});
+
+		match mvs[0] {
+			(_,LegalMove::To(ref s,ref d,Some(ObtainKind::Ou))) => {
+				return Evaluation::Result(Score::INFINITE,Some(Move::To(*s,*d)));
+			},
+			_ => (),
+		}
+
+		for m in &mvs {
+			if limit - Instant::now() <= Duration::from_millis(10) {
+				return Evaluation::Timeout;
+			}
+			let empmc = HashMap::new();
+
+			let mp = match mc {
+				&MochigomaCollections::Pair(ref s,ref g) => {
+					match teban {
+						Teban::Sente => s,
+						Teban::Gote => g
+					}
+				},
+				&MochigomaCollections::Empty => &empmc,
+			};
+
+			match *m {
+				(true,m) => {
+					let (mhash,shash) = match m {
+						LegalMove::To(ref s, ref d,ref o) => {
+							let o = match o {
+								&Some(o) => {
+									match MochigomaKind::try_from(o) {
+										Ok(o) => Some(o),
+										Err(_) => None,
+									}
+								},
+								&None => None,
+							};
+
+							let m = Move::To(*s,*d);
+
+							(
+								self.calc_main_hash(mhash,banmen,mp,&m,&o),
+								self.calc_sub_hash(shash,banmen,mp,&m,&o)
+							)
+						},
+						LegalMove::Put(ref k, ref d) => {
+							let m = Move::Put(*k,*d);
+
+							(
+								self.calc_main_hash(mhash,banmen,mp,&m,&None),
+								self.calc_sub_hash(shash,banmen,mp,&m,&None)
+							)
+						}
+					};
+
+					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+					match current_kyokumen_hash_map.get(&mhash,&shash) {
+						Some(c) if c >= 3 => {
+							continue;
+						},
+						Some(c) => {
+							current_kyokumen_hash_map.insert(mhash,shash,c+1);
+						},
+						None => (),
+					}
+
+					match already_oute_hash_map.get(&mhash,&shash) {
+						None => {
+							already_oute_hash_map.insert(mhash,shash,());
+						},
+						Some(_) => {
+							continue;
+						}
+					}
+
+					let next = match m {
+						LegalMove::To(ref s, ref d,_) => {
+							banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
+						},
+						LegalMove::Put(ref k, ref d) => {
+							banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
+						}
+					};
+
+					match next {
+						(ref next,ref mc,_) => {
+							let is_put_fu = match m {
+								LegalMove::Put(MochigomaKind::Fu,_) => true,
+								_ => false,
+							};
+
+							match self.respond_oute_only(teban.opposite(),next,mc,
+																is_put_fu,&current_kyokumen_hash_map,
+																already_oute_hash_map,
+																mhash,shash,limit,current_depth+1) {
+								OuteEvaluation::Result(d) if d >= 0 &&
+																is_put_fu &&
+																	d - current_depth as i32 != 2 => {
+									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
+								},
+								OuteEvaluation::Result(d) if d >= 0 => {
+									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
+								},
+								_ => (),
+							}
+						}
+					}
+				},
+				(false,_) => {
+					break;
+				}
+			}
+		}
+
+		let mut scoreval = Score::NEGINFINITE;
+
+		for m in &mvs {
+			if limit - Instant::now() <= Duration::from_millis(10) {
+				return Evaluation::Timeout;
+			}
+			match *m {
+				(_,m) => {
+					let (next,obtained) = match m {
+						LegalMove::To(ref s, ref d,ref o) => {
+							(banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d)),*o)
+						},
+						LegalMove::Put(ref k, ref d) => {
+							(banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d)),None)
+						}
+					};
+
+					let current_depth = match obtained {
+						Some(_) => current_depth + 1,
+						None => current_depth,
+					};
+
+					match next {
+						(banmen,mc,_) => {
+							match self.alphabeta(teban.opposite(),&banmen,
+								-beta,-alpha,m.to_move(),&mc,
+								obtained,&current_kyokumen_hash_map,
+								already_oute_hash_map,mhash,shash,limit,depth-1,current_depth) {
+
+								Evaluation::Timeout => {
+									return Evaluation::Timeout;
+								},
+								Evaluation::Result(s,_) => {
+									if -s > scoreval {
+										scoreval = -s;
+										if alpha < scoreval {
+											alpha = scoreval;
+										}
+										if scoreval >= beta {
+											return Evaluation::Result(scoreval,Some(m.to_move()));
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		panic!("logic error!");
+	}
+
+	fn respond_oute_only(&mut self, teban:Teban,banmen:&Banmen,
+								mc:&MochigomaCollections,is_put_fu:bool,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								mhash:u64,shash:u64,
+								limit:Instant,current_depth:u32) -> OuteEvaluation {
+		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
+
+		if mvs.len() == 0 {
+			return OuteEvaluation::Result(current_depth as i32)
+		} else {
+			let empmc = HashMap::new();
+			let mp = match mc {
+				&MochigomaCollections::Pair(ref s,ref g) => {
+					match teban {
+						Teban::Sente => s,
+						Teban::Gote => g
+					}
+				},
+				&MochigomaCollections::Empty => &empmc,
+			};
+
+			let mut longest_depth = -1;
+
+			for m in mvs {
+				if limit - Instant::now() <= Duration::from_millis(10) {
+					return OuteEvaluation::Timeout;
+				}
+
+				let (mhash,shash) = match m {
+					LegalMove::To(ref s, ref d,ref o) => {
+						let o = match o {
+							&Some(o) => {
+								match MochigomaKind::try_from(o) {
+									Ok(o) => Some(o),
+									Err(_) => None,
+								}
+							},
+							&None => None,
+						};
+
+						let m = Move::To(*s,*d);
+
+						(
+							self.calc_main_hash(mhash,banmen,mp,&m,&o),
+							self.calc_sub_hash(shash,banmen,mp,&m,&o)
+						)
+					},
+					LegalMove::Put(ref k, ref d) => {
+						let m = Move::Put(*k,*d);
+
+						(
+							self.calc_main_hash(mhash,banmen,mp,&m,&None),
+							self.calc_sub_hash(shash,banmen,mp,&m,&None)
+						)
+					}
+				};
+
+				match already_oute_hash_map.get(&mhash,&shash) {
+					None => {
+						already_oute_hash_map.insert(mhash,shash,());
+					},
+					Some(_) => {
+						return OuteEvaluation::Result(-1);
+					}
+				}
+
+				let next = match m {
+					LegalMove::To(ref s, ref d,_) => {
+						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
+					},
+					LegalMove::Put(ref k, ref d) => {
+						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
+					}
+				};
+
+				match next {
+					(ref next,ref mc,_) => {
+						match self.oute_only(teban.opposite(),next,mc,
+												is_put_fu,current_kyokumen_hash_map,
+												already_oute_hash_map,mhash,shash,limit,current_depth+1) {
+							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
+								return OuteEvaluation::Result(d);
+							},
+							OuteEvaluation::Result(d) if d >= 0 => {
+								longest_depth = longest_depth.max(d);
+							},
+							OuteEvaluation::Result(d) => {
+								return OuteEvaluation::Result(-1);
+							},
+							OuteEvaluation::Timeout => {
+								return OuteEvaluation::Timeout;
+							},
+						}
+					}
+				}
+			}
+
+			OuteEvaluation::Result(longest_depth)
+		}
+	}
+
+	fn oute_only(&mut self, teban:Teban,banmen:&Banmen,
+								mc:&MochigomaCollections,is_put_fu:bool,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								mhash:u64,shash:u64,
+								limit:Instant,current_depth:u32) -> OuteEvaluation {
+		let mvs = banmen.oute_only_moves_all(&teban, mc);
+
+		if mvs.len() == 0 {
+			OuteEvaluation::Result(-1)
+		} else {
+			let empmc = HashMap::new();
+			let mp = match mc {
+				&MochigomaCollections::Pair(ref s,ref g) => {
+					match teban {
+						Teban::Sente => s,
+						Teban::Gote => g
+					}
+				},
+				&MochigomaCollections::Empty => &empmc,
+			};
+
+			let mut shortest_depth = -1;
+
+			for m in mvs {
+				if limit - Instant::now() <= Duration::from_millis(10) {
+					return OuteEvaluation::Timeout;
+				}
+				let next = match m {
+					LegalMove::To(ref s, ref d,_) => {
+						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
+					},
+					LegalMove::Put(ref k, ref d) => {
+						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
+					}
+				};
+
+				let (mhash,shash) = match m {
+					LegalMove::To(ref s, ref d,ref o) => {
+						let o = match o {
+							&Some(o) => {
+								match MochigomaKind::try_from(o) {
+									Ok(o) => Some(o),
+									Err(_) => None,
+								}
+							},
+							&None => None,
+						};
+
+						let m = Move::To(*s,*d);
+
+						(
+							self.calc_main_hash(mhash,banmen,mp,&m,&o),
+							self.calc_sub_hash(shash,banmen,mp,&m,&o)
+						)
+					},
+					LegalMove::Put(ref k, ref d) => {
+						let m = Move::Put(*k,*d);
+
+						(
+							self.calc_main_hash(mhash,banmen,mp,&m,&None),
+							self.calc_sub_hash(shash,banmen,mp,&m,&None)
+						)
+					}
+				};
+
+				match already_oute_hash_map.get(&mhash,&shash) {
+					None => {
+						already_oute_hash_map.insert(mhash,shash,());
+					},
+					Some(_) => {
+						return OuteEvaluation::Result(-1);
+					}
+				}
+
+				match next {
+					(ref next,ref mc,_) => {
+						match self.respond_oute_only(teban.opposite(),next,mc,
+														is_put_fu,current_kyokumen_hash_map,
+														already_oute_hash_map,
+														mhash,shash,limit,current_depth+1) {
+							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
+								return OuteEvaluation::Result(d);
+							},
+							OuteEvaluation::Result(d) if d >= 0 => {
+								if shortest_depth == -1 {
+									shortest_depth = d;
+								} else {
+									shortest_depth = shortest_depth.min(d);
+								}
+							},
+							OuteEvaluation::Timeout => {
+								return OuteEvaluation::Timeout;
+							},
+							_ => (),
+						}
+					}
+				}
+			}
+			OuteEvaluation::Result(shortest_depth)
 		}
 	}
 

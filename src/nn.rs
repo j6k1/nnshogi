@@ -9,7 +9,9 @@ use simplenn::NNModel;
 use simplenn::NNUnits;
 use simplenn::persistence::*;
 
-struct Intelligence {
+use usiagent::shogi::*;
+
+pub struct Intelligence {
 	nna:NN<SGD,CrossEntropy>,
 	nnb:NN<SGD,CrossEntropy>,
 	nnsavepath:String,
@@ -57,5 +59,9 @@ impl Intelligence {
 			nnb:nnb,
 			nnsavepath:savepath,
 		}
+	}
+
+	pub fn evalute(&mut self,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> i32 {
+		0
 	}
 }
