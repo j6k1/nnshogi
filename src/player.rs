@@ -292,6 +292,7 @@ impl NNShogiPlayer {
 		}
 
 		let mut scoreval = Score::NEGINFINITE;
+		let mut best_move:Option<Move> = None;
 
 		for m in &mvs {
 			if limit - Instant::now() <= Duration::from_millis(10) {
@@ -326,11 +327,12 @@ impl NNShogiPlayer {
 								Evaluation::Result(s,_) => {
 									if -s > scoreval {
 										scoreval = -s;
+										best_move = Some(m.to_move());
 										if alpha < scoreval {
 											alpha = scoreval;
 										}
 										if scoreval >= beta {
-											return Evaluation::Result(scoreval,Some(m.to_move()));
+											return Evaluation::Result(scoreval,best_move);
 										}
 									}
 								}
@@ -341,7 +343,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		panic!("logic error!");
+		Evaluation::Result(scoreval,best_move)
 	}
 
 	fn respond_oute_only(&mut self, teban:Teban,banmen:&Banmen,
