@@ -917,6 +917,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn on_quit(&mut self,e:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
+		self.quited = true;
 		Ok(())
 	}
 
