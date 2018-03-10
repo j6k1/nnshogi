@@ -318,7 +318,7 @@ impl NNShogiPlayer {
 							match self.alphabeta(teban.opposite(),&banmen,
 								-beta,-alpha,m.to_move(),&mc,
 								obtained,&current_kyokumen_hash_map,
-								already_oute_hash_map,mhash,shash,limit,depth-1,current_depth) {
+								already_oute_hash_map,mhash,shash,limit,depth-1,current_depth-1) {
 
 								Evaluation::Timeout => {
 									return Evaluation::Timeout;
