@@ -35,7 +35,7 @@ impl<T> TwoKeyHashMap<T> where T: Clone {
 			Some(ref mut v) if v.len() == 1 => {
 				let old = v[0].1.clone();
 				v[0] = (sk,nv);
-				Some(old)
+				return Some(old);
 			},
 			Some(ref mut v) if v.len() > 1 => {
 				for i in 0..v.len() {
@@ -45,10 +45,15 @@ impl<T> TwoKeyHashMap<T> where T: Clone {
 						return Some(old);
 					}
 				}
-				None
+				v.push((sk,nv));
+				return None;
 			},
-			_ => None,
+			_ => (),
 		}
+		let mut v:Vec<(u64,T)> = Vec::new();
+		v.push((sk,nv));
+		self.map.insert(k,v);
+		None
 	}
 
 	pub fn clear(&mut self) {

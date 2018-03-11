@@ -42,9 +42,9 @@ enum OuteEvaluation {
 }
 #[derive(Clone, Copy, Eq, PartialOrd, PartialEq, Debug)]
 enum Score {
-	INFINITE,
-	Value(i32),
 	NEGINFINITE,
+	Value(i32),
+	INFINITE,
 }
 impl Neg for Score {
 	type Output = Score;
@@ -60,7 +60,7 @@ impl Neg for Score {
 pub struct NNShogiPlayer {
 	stop:bool,
 	pub quited:bool,
-	kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX],
+	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
 	pub teban:Option<Teban>,
 	banmen:Option<Banmen>,
@@ -81,7 +81,7 @@ impl NNShogiPlayer {
 	pub fn new() -> NNShogiPlayer {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let mut kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX] = [[0; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX];
+		let mut kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1] = [[0; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1];
 		let mut mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2] = [[[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2];
 
 		for i in 0..(KOMA_KIND_MAX + 1) {
@@ -137,7 +137,8 @@ impl NNShogiPlayer {
 								m:Option<Move>,mc:&MochigomaCollections,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,depth:u32,current_depth:u32) -> Evaluation where L: Logger {
 		match obtained {
@@ -171,7 +172,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		let mvs:Vec<LegalMove> = banmen.oute_only_moves_all(&teban, mc);
+		let mvs:Vec<LegalMove> = banmen.legal_moves_all(&teban, mc);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -317,19 +318,17 @@ impl NNShogiPlayer {
 
 					match already_oute_hash_map.get(&mhash,&shash) {
 						None => {
-							already_oute_hash_map.insert(mhash,shash,current_depth);
+							already_oute_hash_map.insert(mhash,shash,());
 						},
-						Some(depth) if depth - current_depth == 2 => {
-							match m {
-								LegalMove::Put(MochigomaKind::Fu,_) => {
-									continue;
-								},
-								_ => (),
-							}
-						}
 						Some(_) => (),
 					}
 
+					match ignore_oute_hash_map.get(&mhash,&shash) {
+						Some(_) => {
+							continue;
+						},
+						_ => (),
+					}
 					let next = match m {
 						LegalMove::To(ref s, ref d,_) => {
 							banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
@@ -365,10 +364,12 @@ impl NNShogiPlayer {
 																teban.opposite(),next,mc,
 																is_put_fu,&current_kyokumen_hash_map,
 																already_oute_hash_map,
+																ignore_oute_hash_map,
 																mhash,shash,limit,current_depth+1) {
 								OuteEvaluation::Result(d) if d >= 0 &&
 																is_put_fu &&
-																	d - current_depth as i32 != 2 => {
+																	d - current_depth as i32 == 2 => {
+									ignore_oute_hash_map.insert(mhash,shash,());
 									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 								},
 								OuteEvaluation::Result(d) if d >= 0 => {
@@ -418,9 +419,9 @@ impl NNShogiPlayer {
 						}
 					};
 
-					let current_depth = match obtained {
-						Some(_) => current_depth + 1,
-						None => current_depth,
+					let depth = match obtained {
+						Some(_) => depth + 1,
+						None => depth,
 					};
 
 					match next {
@@ -431,7 +432,9 @@ impl NNShogiPlayer {
 								teban.opposite(),&banmen,
 								-beta,-alpha,Some(m.to_move()),&mc,
 								obtained,&current_kyokumen_hash_map,
-								already_oute_hash_map,mhash,shash,limit,depth-1,current_depth-1) {
+								already_oute_hash_map,
+								ignore_oute_hash_map,
+								mhash,shash,limit,depth-1,current_depth-1) {
 
 								Evaluation::Timeout(_) => {
 									return match best_move {
@@ -471,7 +474,8 @@ impl NNShogiPlayer {
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,is_put_fu:bool,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
@@ -494,7 +498,7 @@ impl NNShogiPlayer {
 		} else {
 			let mut longest_depth = -1;
 
-			for m in mvs {
+			for m in &mvs {
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
 					Err(ref e) => {
@@ -508,7 +512,7 @@ impl NNShogiPlayer {
 				}
 
 				let (mhash,shash) = match m {
-					LegalMove::To(ref s, ref d,ref o) => {
+					&LegalMove::To(ref s, ref d,ref o) => {
 						let o = match o {
 							&Some(o) => {
 								match MochigomaKind::try_from(o) {
@@ -526,7 +530,7 @@ impl NNShogiPlayer {
 							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
 						)
 					},
-					LegalMove::Put(ref k, ref d) => {
+					&LegalMove::Put(ref k, ref d) => {
 						let m = Move::Put(*k,*d);
 
 						(
@@ -538,7 +542,7 @@ impl NNShogiPlayer {
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
-						already_oute_hash_map.insert(mhash,shash,current_depth);
+						already_oute_hash_map.insert(mhash,shash,());
 					},
 					Some(_) => {
 						return OuteEvaluation::Result(-1);
@@ -546,10 +550,10 @@ impl NNShogiPlayer {
 				}
 
 				let next = match m {
-					LegalMove::To(ref s, ref d,_) => {
+					&LegalMove::To(ref s, ref d,_) => {
 						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
 					},
-					LegalMove::Put(ref k, ref d) => {
+					&LegalMove::Put(ref k, ref d) => {
 						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
 					}
 				};
@@ -561,7 +565,9 @@ impl NNShogiPlayer {
 												on_error_handler,
 												teban.opposite(),next,mc,
 												is_put_fu,current_kyokumen_hash_map,
-												already_oute_hash_map,mhash,shash,limit,current_depth+1) {
+												already_oute_hash_map,
+												ignore_oute_hash_map,
+												mhash,shash,limit,current_depth+1) {
 							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
 								return OuteEvaluation::Result(d);
 							},
@@ -590,7 +596,8 @@ impl NNShogiPlayer {
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,is_put_fu:bool,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
@@ -612,7 +619,7 @@ impl NNShogiPlayer {
 		} else {
 			let mut shortest_depth = -1;
 
-			for m in mvs {
+			for m in &mvs {
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
 					Err(ref e) => {
@@ -626,16 +633,16 @@ impl NNShogiPlayer {
 				}
 
 				let next = match m {
-					LegalMove::To(ref s, ref d,_) => {
+					&LegalMove::To(ref s, ref d,_) => {
 						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
 					},
-					LegalMove::Put(ref k, ref d) => {
+					&LegalMove::Put(ref k, ref d) => {
 						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
 					}
 				};
 
 				let (mhash,shash) = match m {
-					LegalMove::To(ref s, ref d,ref o) => {
+					&LegalMove::To(ref s, ref d,ref o) => {
 						let o = match o {
 							&Some(o) => {
 								match MochigomaKind::try_from(o) {
@@ -653,7 +660,7 @@ impl NNShogiPlayer {
 							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
 						)
 					},
-					LegalMove::Put(ref k, ref d) => {
+					&LegalMove::Put(ref k, ref d) => {
 						let m = Move::Put(*k,*d);
 
 						(
@@ -665,7 +672,7 @@ impl NNShogiPlayer {
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
-						already_oute_hash_map.insert(mhash,shash,current_depth);
+						already_oute_hash_map.insert(mhash,shash,());
 					},
 					Some(_) => {
 						return OuteEvaluation::Result(-1);
@@ -680,6 +687,7 @@ impl NNShogiPlayer {
 														teban.opposite(),next,mc,
 														is_put_fu,current_kyokumen_hash_map,
 														already_oute_hash_map,
+														ignore_oute_hash_map,
 														mhash,shash,limit,current_depth+1) {
 							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
 								return OuteEvaluation::Result(d);
@@ -709,22 +717,22 @@ impl NNShogiPlayer {
 		match b {
 			&Banmen(ref kinds) => {
 				match m {
-					&Move::To(ref ms, KomaDstToPosition(dx, dy, _)) => {
-						let sx = 9 - ms.0 as usize;
-						let sy = ms.1 as usize;
-						let dx = 9 - dx as usize;
-						let dy = dy as usize;
+					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, _)) => {
+						let sx = (9 - sx) as usize;
+						let sy = (sy - 1) as usize;
+						let dx = (9 - dx) as usize;
+						let dy = dy as usize - 1;
 
 						let mut hash = h;
 						let k = kinds[sy][sx] as usize;
 
-						hash =  pull(hash,self.kyokumen_hash_seeds[k][sx * 9 + sy]);
-						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sx * 9 + sy]);
+						hash =  pull(hash,self.kyokumen_hash_seeds[k][sy * 8 + sx]);
+						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sy * 8 + sx]);
 
 						let dk = kinds[dy][dx] as usize;
 
-						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dx * 9 + dy]);
-						hash = add(hash,self.kyokumen_hash_seeds[k][dx * 9 + dy]);
+						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
+						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
 
 						hash = match obtained  {
 								&None => hash,
@@ -783,7 +791,9 @@ impl NNShogiPlayer {
 											}
 										}
 									},
-									&MochigomaCollections::Empty => 0,
+									&MochigomaCollections::Empty => {
+										return hash;
+									}
 								}
 							},
 							&Teban::Gote => {
@@ -796,7 +806,9 @@ impl NNShogiPlayer {
 											}
 										}
 									},
-									&MochigomaCollections::Empty => 0,
+									&MochigomaCollections::Empty => {
+										return hash;
+									}
 								}
 							}
 						};
@@ -813,9 +825,9 @@ impl NNShogiPlayer {
 						}
 
 						let dx = md.0 as usize;
-						let dy = md.1 as usize;
+						let dy = md.1 as usize - 1;
 
-						hash = add(hash,self.kyokumen_hash_seeds[k + 1usize][dx * 9 + dy]);
+						hash = add(hash,self.kyokumen_hash_seeds[k as usize][dy * 8 + dx]);
 						hash
 					}
 				}
@@ -849,8 +861,8 @@ impl NNShogiPlayer {
 				for y in 0..9 {
 					for x in 0..9 {
 						let k = kinds[y][x] as usize;
-						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 9 + x];
-						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 9 + x]);
+						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 8 + x];
+						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 8 + x]);
 					}
 				}
 			}
@@ -883,7 +895,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
 	fn get_option_kinds(&mut self) -> Result<HashMap<String,SysEventOptionKind>,CommonError> {
-		Ok(HashMap::new())
+		let mut kinds:HashMap<String,SysEventOptionKind> = HashMap::new();
+		kinds.insert(String::from("USI_Hash"),SysEventOptionKind::Num);
+		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
+
+		Ok(kinds)
 	}
 	fn get_options(&mut self) -> Result<HashMap<String,UsiOptType>,CommonError> {
 		Ok(HashMap::new())
@@ -1029,6 +1045,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 											teban, &banmen, Score::NEGINFINITE,
 											Score::INFINITE, None, &mc,
 											None, &kyokumen_hash_map,
+											&mut TwoKeyHashMap::new(),
 											&mut TwoKeyHashMap::new(),mhash,shash,
 											limit, 1, 0) {
 									Evaluation::Result(_,Some(m)) => {
@@ -1050,7 +1067,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 										BestMove::Resign
 									}
 								};
-
 								match limit {
 									Some(limit) => {
 										self.tinc += (limit - Instant::now()).subsec_nanos() * 1000000;
