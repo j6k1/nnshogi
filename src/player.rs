@@ -825,6 +825,46 @@ impl NNShogiPlayer {
 			(h - v).0
 		})
 	}
+
+	fn calc_initial_hash(&self,b:&Banmen,
+		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>,mvs:&Vec<Move>) -> (u64,u64) {
+		let mut mhash:u64 = 0;
+		let mut shash:Wrapping<u64> = Wrapping(0u64);
+
+		match b {
+			&Banmen(ref kinds) => {
+				for y in 0..9 {
+					for x in 0..9 {
+						let k = kinds[y][x] as usize;
+						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 9 + x];
+						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 9 + x]);
+					}
+				}
+			}
+		}
+		for k in &MOCHIGOMA_KINDS {
+			match ms.get(&k) {
+				Some(c) => {
+					for i in 0..(*c as usize) {
+						mhash = mhash ^ self.mochigoma_hash_seeds[0][i][*k as usize];
+						shash = shash + Wrapping(self.mochigoma_hash_seeds[0][i][*k as usize]);
+					}
+				},
+				None => (),
+			}
+			match mg.get(&k) {
+				Some(c) => {
+					for i in 0..(*c as usize) {
+						mhash = mhash ^ self.mochigoma_hash_seeds[1][i][*k as usize];
+						shash = shash + Wrapping(self.mochigoma_hash_seeds[1][i][*k as usize]);
+					}
+				},
+				None => (),
+			}
+		}
+
+		(mhash,shash.0)
+	}
 }
 impl USIPlayer<CommonError> for NNShogiPlayer {
 	const ID: &'static str = "nnshogi";
@@ -850,6 +890,45 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	fn set_position(&mut self,teban:Teban,ban:Banmen,
 					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,n:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
+
+		let (mut mhash,mut shash) = self.calc_initial_hash(&ban,&ms,&mg,&m);
+
+		self.kyokumen_hash_map.insert(mhash,shash,1);
+
+		let mut banmen = ban.clone();
+		let mut t = teban.clone();
+
+		let mut mc = if ms.len() == 0 && mg.len() == 0 {
+			MochigomaCollections::Empty
+		} else {
+			MochigomaCollections::Pair(ms,mg)
+		};
+
+		for m in &m {
+			 match banmen.apply_move_none_check(&t,&mc,&m) {
+				(next,nmc,o) => {
+					mhash = self.calc_main_hash(mhash,&t,&next,&nmc,m,&o);
+					shash = self.calc_sub_hash(shash,&t,&next,&nmc,m,&o);
+
+					match self.kyokumen_hash_map.get(&mhash,&shash) {
+						Some(c) => {
+							self.kyokumen_hash_map.insert(mhash,shash,c+1);
+						},
+						None => {
+							self.kyokumen_hash_map.insert(mhash,shash,1);
+						}
+					}
+					banmen = next;
+					mc = nmc;
+					t = t.opposite();
+				}
+			}
+		}
+		self.teban = Some(teban);
+		self.banmen = Some(banmen);
+		self.mc = Some(mc);
+		self.mhash = mhash;
+		self.shash = shash;
 		Ok(())
 	}
 	fn think<L>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -971,6 +1050,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	}
 	fn on_quit(&mut self,e:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		self.quited = true;
+		self.stop = true;
 		Ok(())
 	}
 
