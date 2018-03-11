@@ -50,6 +50,10 @@ impl<T> TwoKeyHashMap<T> where T: Clone {
 			_ => None,
 		}
 	}
+
+	pub fn clear(&mut self) {
+		self.map.clear();
+	}
 }
 impl<T> Clone for TwoKeyHashMap<T> where T: Clone {
 	fn clone(&self) -> TwoKeyHashMap<T> {

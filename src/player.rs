@@ -33,6 +33,7 @@ const DAN_MAX:usize = 9;
 enum Evaluation {
 	Result(Score,Option<Move>),
 	Timeout(Option<Move>),
+	Error,
 }
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum OuteEvaluation {
@@ -58,10 +59,10 @@ impl Neg for Score {
 }
 pub struct NNShogiPlayer {
 	stop:bool,
-	quited:bool,
+	pub quited:bool,
 	kyokumen_hash_seeds:[[u64; KOMA_KIND_MAX + 1]; SUJI_MAX * DAN_MAX],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-	teban:Option<Teban>,
+	pub teban:Option<Teban>,
 	banmen:Option<Banmen>,
 	mc:Option<MochigomaCollections>,
 	mhash:u64,
@@ -69,6 +70,7 @@ pub struct NNShogiPlayer {
 	kyokumen_hash_map:TwoKeyHashMap<u32>,
 	tinc:u32,
 	evalutor:Intelligence,
+	pub history:Vec<(Banmen,MochigomaCollections)>,
 }
 impl fmt::Debug for NNShogiPlayer {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -108,6 +110,7 @@ impl NNShogiPlayer {
 			kyokumen_hash_map:TwoKeyHashMap::new(),
 			tinc:0,
 			evalutor:Intelligence::new(String::from("data")),
+			history:Vec::new(),
 		}
 	}
 
@@ -157,7 +160,14 @@ impl NNShogiPlayer {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None);
 			} else {
-				return Evaluation::Result(Score::Value(self.evalutor.evalute(teban,banmen,mc)),m);
+				let s = match self.evalutor.evalute(teban,banmen,mc) {
+					Ok(s) => s,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				};
+				return Evaluation::Result(Score::Value(s),m);
 			}
 		}
 
@@ -440,6 +450,9 @@ impl NNShogiPlayer {
 											return Evaluation::Result(scoreval,best_move);
 										}
 									}
+								},
+								Evaluation::Error => {
+									return Evaluation::Error
 								}
 							}
 						}
@@ -827,7 +840,7 @@ impl NNShogiPlayer {
 	}
 
 	fn calc_initial_hash(&self,b:&Banmen,
-		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>,mvs:&Vec<Move>) -> (u64,u64) {
+		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
 		let mut mhash:u64 = 0;
 		let mut shash:Wrapping<u64> = Wrapping(0u64);
 
@@ -885,13 +898,16 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.teban = None;
 		self.banmen = None;
 		self.mc = None;
+		self.history.clear();
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,ban:Banmen,
-					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,n:u32,m:Vec<Move>)
+					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,_:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
+		self.history.clear();
+		self.kyokumen_hash_map.clear();
 
-		let (mut mhash,mut shash) = self.calc_initial_hash(&ban,&ms,&mg,&m);
+		let (mut mhash,mut shash) = self.calc_initial_hash(&ban,&ms,&mg);
 
 		self.kyokumen_hash_map.insert(mhash,shash,1);
 
@@ -903,6 +919,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		} else {
 			MochigomaCollections::Pair(ms,mg)
 		};
+		self.history.push((banmen.clone(),mc.clone()));
 
 		for m in &m {
 			 match banmen.apply_move_none_check(&t,&mc,&m) {
@@ -918,6 +935,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							self.kyokumen_hash_map.insert(mhash,shash,1);
 						}
 					}
+					self.history.push((banmen,mc));
 					banmen = next;
 					mc = nmc;
 					t = t.opposite();
@@ -936,54 +954,59 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			-> Result<BestMove,CommonError> where L: Logger {
 		match self.teban {
 			Some(teban) => {
+				let now = Instant::now();
 				let limit = match limit {
 					&UsiGoTimeLimit::None => None,
 					&UsiGoTimeLimit::Infinite => None,
 					&UsiGoTimeLimit::Limit(Some((ms,mg)),None) => {
 						Some(match teban {
 							Teban::Sente => {
-								Instant::now() + Duration::from_millis(ms as u64)
+								now + Duration::from_millis(ms as u64)
 							},
 							Teban::Gote => {
-								Instant::now() + Duration::from_millis(mg as u64)
+								now + Duration::from_millis(mg as u64)
 							}
 						})
 					},
 					&UsiGoTimeLimit::Limit(Some((ms,mg)),Some(UsiGoByoyomiOrInc::Byoyomi(b))) => {
 						Some(match teban {
 							Teban::Sente => {
-								Instant::now() + Duration::from_millis(ms as u64 + b as u64)
+								now + Duration::from_millis(ms as u64 + b as u64)
 							},
 							Teban::Gote => {
-								Instant::now() + Duration::from_millis(mg as u64 + b as u64)
+								now + Duration::from_millis(mg as u64 + b as u64)
 							}
 						})
 					}
 					&UsiGoTimeLimit::Limit(Some((ms,mg)),Some(UsiGoByoyomiOrInc::Inc(bs,bg))) => {
 						Some(match teban {
 							Teban::Sente => {
-								Instant::now() + Duration::from_millis(ms as u64 + bs as u64)
+								let tinc = self.tinc + bs as u32;
+								self.tinc = tinc;
+								now + Duration::from_millis(ms as u64 + tinc as u64)
 							},
 							Teban::Gote => {
-								Instant::now() + Duration::from_millis(mg as u64 + bg as u64)
+								let tinc = self.tinc + bg as u32;
+								self.tinc = tinc;
+								now + Duration::from_millis(mg as u64 + tinc as u64)
 							}
 						})
 					},
 					&UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(b))) => {
-						Some(Instant::now() + Duration::from_millis(b as u64))
+						Some(now + Duration::from_millis(b as u64))
 					}
 					&UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Inc(bs,bg))) => {
 						Some(match teban {
 							Teban::Sente => {
-								Instant::now() + Duration::from_millis(bs as u64)
+								now + Duration::from_millis(bs as u64)
 							},
 							Teban::Gote => {
-								Instant::now() + Duration::from_millis(bg as u64)
+								now + Duration::from_millis(bg as u64)
 							}
 						})
 					},
 					&UsiGoTimeLimit::Limit(None,None) => {
-						Some(Instant::now())
+						Some(now)
 					}
 				};
 				let banmen = match self.banmen {
@@ -1001,7 +1024,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 								let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 								let kyokumen_hash_map = self.kyokumen_hash_map.clone();
 
-								return Ok(match self.alphabeta(&*event_queue,
+								let result = match self.alphabeta(&*event_queue,
 											info_sender, &on_error_handler,
 											teban, &banmen, Score::NEGINFINITE,
 											Score::INFINITE, None, &mc,
@@ -1022,8 +1045,19 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 									},
 									Evaluation::Timeout(None) => {
 										BestMove::Resign
+									},
+									Evaluation::Error => {
+										BestMove::Resign
 									}
-								});
+								};
+
+								match limit {
+									Some(limit) => {
+										self.tinc += (limit - Instant::now()).subsec_nanos() * 1000000;
+									},
+									None => (),
+								}
+								return Ok(result);
 							},
 							None => (),
 						}
@@ -1037,18 +1071,31 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Err(CommonError::Fail(String::from("Initialization of position info has not been completed.")))
 	}
 	fn think_mate<L>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-			info_sender:&USIInfoSender,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
+			_:&USIInfoSender,_:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<CheckMate,CommonError> where L: Logger {
 		Ok(CheckMate::NotiImplemented)
 	}
-	fn on_stop(&mut self,e:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
+	fn on_stop(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		self.stop = true;
 		Ok(())
 	}
-	fn gameover(&mut self,s:&GameEndState,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>) -> Result<(),CommonError> {
+	fn gameover<L>(&mut self,s:&GameEndState,
+		event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+		_:&Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
+
+		let teban = match self.teban {
+			Some(teban) =>  teban,
+			None => {
+				return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+			}
+		};
+
+		self.evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
+		self.history = Vec::new();
+
 		Ok(())
 	}
-	fn on_quit(&mut self,e:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
+	fn on_quit(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		self.quited = true;
 		self.stop = true;
 		Ok(())
