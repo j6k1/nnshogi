@@ -132,11 +132,17 @@ impl Intelligence {
 			let mut answer:Vec<f64> = Vec::new();
 
 			match s {
-				&GameEndState::Win => {
+				&GameEndState::Win if t == taban => {
 					answer.push(nnaanswer * a + nnbanswer * b);
 				},
-				_ =>  {
+				&GameEndState::Win => {
 					answer.push(0f64);
+				},
+				_ => if t != teban {
+					answer.push(0f64);
+				},
+				_ => {
+					answer.push(nnaanswer * a + nnbanswer * b);
 				}
 			}
 

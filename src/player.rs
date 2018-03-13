@@ -961,7 +961,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				}
 			}
 		}
-		self.teban = Some(teban);
+		self.teban = Some(t);
 		self.banmen = Some(banmen);
 		self.mc = Some(mc);
 		self.mhash = mhash;
