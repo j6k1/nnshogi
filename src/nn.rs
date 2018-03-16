@@ -205,91 +205,175 @@ impl Intelligence {
 						};
 
 						match kind {
-							KomaKind::SFu => {
+							KomaKind::SFu if t == Teban::Sente => {
 								inputs[y * 9 + x] = 1f64;
 							},
-							KomaKind::SKyou => {
+							KomaKind::GFu if t == Teban::Gote => {
+								inputs[y * 9 + x] = 1f64;
+							},
+							KomaKind::SKyou if t == Teban::Sente => {
 								inputs[y * 9 + x + 81] = 1f64;
 							},
-							KomaKind::SKei => {
+							KomaKind::GKyou if t == Teban::Gote => {
+								inputs[y * 9 + x + 81] = 1f64;
+							},
+							KomaKind::SKei if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 2] = 1f64;
 							},
-							KomaKind::SGin => {
+							KomaKind::GKei if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 2] = 1f64;
+							},
+							KomaKind::SGin if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 3] = 1f64;
 							},
-							KomaKind::SKin => {
+							KomaKind::GGin if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 3] = 1f64;
+							},
+							KomaKind::SKin if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 4] = 1f64;
 							},
-							KomaKind::SKaku => {
+							KomaKind::GKin if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 4] = 1f64;
+							},
+							KomaKind::SKaku if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 5] = 1f64;
 							},
-							KomaKind::SHisha => {
+							KomaKind::GKaku if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 5] = 1f64;
+							},
+							KomaKind::SHisha if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 6] = 1f64;
 							},
-							KomaKind::SOu => {
+							KomaKind::GHisha if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 6] = 1f64;
+							},
+							KomaKind::SOu if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 7] = 1f64;
 							},
-							KomaKind::SFuN => {
+							KomaKind::GOu if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 7] = 1f64;
+							},
+							KomaKind::SFuN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 8] = 1f64;
 							},
-							KomaKind::SKyouN => {
+							KomaKind::GFuN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 8] = 1f64;
+							},
+							KomaKind::SKyouN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 9] = 1f64;
 							},
-							KomaKind::SKeiN => {
+							KomaKind::GKyouN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 9] = 1f64;
+							},
+							KomaKind::SKeiN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 10] = 1f64;
 							},
-							KomaKind::SGinN => {
+							KomaKind::GKeiN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 10] = 1f64;
+							},
+							KomaKind::SGinN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 11] = 1f64;
 							},
-							KomaKind::SKakuN => {
+							KomaKind::GGinN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 11] = 1f64;
+							},
+							KomaKind::SKakuN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 12] = 1f64;
 							},
-							KomaKind::SHishaN => {
+							KomaKind::GKakuN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 12] = 1f64;
+							},
+							KomaKind::SHishaN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 13] = 1f64;
 							},
-							KomaKind::GFu => {
+							KomaKind::GHishaN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 13] = 1f64;
+							},
+							KomaKind::GFu if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 14] = 1f64;
 							},
-							KomaKind::GKyou => {
+							KomaKind::SFu if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 14] = 1f64;
+							},
+							KomaKind::GKyou if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 15] = 1f64;
 							},
-							KomaKind::GKei => {
+							KomaKind::SKyou if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 15] = 1f64;
+							},
+							KomaKind::GKei if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 16] = 1f64;
 							},
-							KomaKind::GGin => {
+							KomaKind::SKei if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 16] = 1f64;
+							},
+							KomaKind::GGin if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 17] = 1f64;
 							},
-							KomaKind::GKin => {
+							KomaKind::SGin if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 17] = 1f64;
+							},
+							KomaKind::GKin if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 18] = 1f64;
 							},
-							KomaKind::GKaku => {
+							KomaKind::SKin if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 18] = 1f64;
+							},
+							KomaKind::GKaku if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 19] = 1f64;
 							},
-							KomaKind::GHisha => {
+							KomaKind::SKaku if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 19] = 1f64;
+							},
+							KomaKind::GHisha if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 20] = 1f64;
 							},
-							KomaKind::GOu => {
+							KomaKind::SHisha if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 20] = 1f64;
+							},
+							KomaKind::GOu if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 21] = 1f64;
 							},
-							KomaKind::GFuN => {
+							KomaKind::SOu if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 21] = 1f64;
+							},
+							KomaKind::GFuN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 22] = 1f64;
 							},
-							KomaKind::GKyouN => {
+							KomaKind::SFuN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 22] = 1f64;
+							},
+							KomaKind::GKyouN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 23] = 1f64;
 							},
-							KomaKind::GKeiN => {
+							KomaKind::SKyouN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 23] = 1f64;
+							},
+							KomaKind::GKeiN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 24] = 1f64;
 							},
-							KomaKind::GGinN => {
+							KomaKind::SKeiN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 24] = 1f64;
+							},
+							KomaKind::GGinN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 25] = 1f64;
 							},
-							KomaKind::GKakuN => {
+							KomaKind::SGinN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 25] = 1f64;
+							},
+							KomaKind::GKakuN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 26] = 1f64;
 							},
-							KomaKind::GHishaN => {
+							KomaKind::SKakuN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 26] = 1f64;
+							},
+							KomaKind::GHishaN if t == Teban::Sente => {
 								inputs[y * 9 + x + 81 * 27] = 1f64;
 							},
-							KomaKind::Blank => (),
+							KomaKind::SHishaN if t == Teban::Gote => {
+								inputs[y * 9 + x + 81 * 27] = 1f64;
+							},
+							_ => (),
 						}
 					}
 				}
