@@ -460,7 +460,7 @@ impl NNShogiPlayer {
 					};
 
 					match next {
-						(ref banmen,ref mc,_) if banmen.win_only_moves(&teban.opposite()).len() > 0 => {
+						(ref banmen,ref mc,_) if banmen.win_only_moves(&teban.opposite()).len() == 0 => {
 							match self.alphabeta(event_queue,
 								info_sender,
 								on_error_handler,
