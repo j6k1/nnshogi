@@ -611,9 +611,6 @@ impl NNShogiPlayer {
 							OuteEvaluation::Result(d) => {
 								return OuteEvaluation::Result(d);
 							},
-							OuteEvaluation::Result(_) => {
-								return OuteEvaluation::Result(-1);
-							},
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
 							},
@@ -734,8 +731,7 @@ impl NNShogiPlayer {
 							},
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
-							},
-							_ => (),
+							}
 						}
 					}
 				}
@@ -818,10 +814,10 @@ impl NNShogiPlayer {
 								match mc {
 									&MochigomaCollections::Pair(ref mc,_) => {
 										match mc.get(&mk) {
-											Some(c) => (*c - 1) as usize,
-											None => {
+											None | Some(&0) => {
 												return hash;
 											}
+											Some(c) => *c as usize,
 										}
 									},
 									&MochigomaCollections::Empty => {
@@ -833,10 +829,10 @@ impl NNShogiPlayer {
 								match mc {
 									&MochigomaCollections::Pair(_,ref mc) => {
 										match mc.get(&mk) {
-											Some(c) => (*c - 1) as usize,
-											None => {
+											None | Some(&0) => {
 												return hash;
 											}
+											Some(c) => *c as usize,
 										}
 									},
 									&MochigomaCollections::Empty => {
