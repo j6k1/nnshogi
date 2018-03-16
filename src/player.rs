@@ -57,6 +57,9 @@ impl Neg for Score {
 		}
 	}
 }
+const BASE_DEPTH:u32 = 1;
+const MAX_DEPTH:u32 = 7;
+
 pub struct NNShogiPlayer {
 	stop:bool,
 	pub quited:bool,
@@ -186,7 +189,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if depth == 0 {
+		if depth == 0 || current_depth == MAX_DEPTH {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
@@ -199,6 +202,7 @@ impl NNShogiPlayer {
 						return Evaluation::Error;
 					}
 				};
+				self.send_message(info_sender, on_error_handler, &format!("evalute sore = {}",s));
 				return Evaluation::Result(Score::Value(s),m);
 			}
 		}
@@ -1085,7 +1089,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 											None, &kyokumen_hash_map,
 											&mut TwoKeyHashMap::new(),
 											&mut TwoKeyHashMap::new(),mhash,shash,
-											limit, 1, 0) {
+											limit, BASE_DEPTH, 0) {
 									Evaluation::Result(_,Some(m)) => {
 										BestMove::Move(m,None)
 									},
