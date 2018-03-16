@@ -931,8 +931,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mut kinds:HashMap<String,SysEventOptionKind> = HashMap::new();
 		kinds.insert(String::from("USI_Hash"),SysEventOptionKind::Num);
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
-		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Bool);
-		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Bool);
+		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
+		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
 
 		Ok(kinds)
 	}
