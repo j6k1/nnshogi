@@ -173,7 +173,7 @@ impl NNShogiPlayer {
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,depth:u32,current_depth:u32) -> Evaluation where L: Logger {
-		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
 
 		match obtained {
 			Some(ObtainKind::Ou) => {
@@ -460,7 +460,7 @@ impl NNShogiPlayer {
 					};
 
 					match next {
-						(banmen,mc,_) => {
+						(ref banmen,ref mc,_) if banmen.win_only_moves(&teban.opposite()).len() > 0 => {
 							match self.alphabeta(event_queue,
 								info_sender,
 								on_error_handler,
@@ -493,7 +493,8 @@ impl NNShogiPlayer {
 									return Evaluation::Error
 								}
 							}
-						}
+						},
+						_ => (),
 					}
 				}
 			}
@@ -515,7 +516,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -533,8 +534,6 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			return OuteEvaluation::Result(current_depth as i32)
 		} else {
-			let mut longest_depth = -1;
-
 			for m in &mvs {
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
@@ -608,8 +607,8 @@ impl NNShogiPlayer {
 							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
 								return OuteEvaluation::Result(d);
 							},
-							OuteEvaluation::Result(d) if d >= 0 => {
-								longest_depth = longest_depth.max(d);
+							OuteEvaluation::Result(d) => {
+								return OuteEvaluation::Result(d);
 							},
 							OuteEvaluation::Result(_) => {
 								return OuteEvaluation::Result(-1);
@@ -622,7 +621,7 @@ impl NNShogiPlayer {
 				}
 			}
 
-			OuteEvaluation::Result(longest_depth)
+			OuteEvaluation::Result(-1)
 		}
 	}
 
@@ -639,7 +638,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -656,8 +655,6 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			OuteEvaluation::Result(-1)
 		} else {
-			let mut shortest_depth = -1;
-
 			for m in &mvs {
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
@@ -731,12 +728,8 @@ impl NNShogiPlayer {
 							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
 								return OuteEvaluation::Result(d);
 							},
-							OuteEvaluation::Result(d) if d >= 0 => {
-								if shortest_depth == -1 {
-									shortest_depth = d;
-								} else {
-									shortest_depth = shortest_depth.min(d);
-								}
+							OuteEvaluation::Result(d) => {
+								return OuteEvaluation::Result(d);
 							},
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
@@ -746,7 +739,7 @@ impl NNShogiPlayer {
 					}
 				}
 			}
-			OuteEvaluation::Result(shortest_depth)
+			OuteEvaluation::Result(-1)
 		}
 	}
 
