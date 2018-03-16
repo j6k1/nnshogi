@@ -57,8 +57,8 @@ impl Neg for Score {
 		}
 	}
 }
-const BASE_DEPTH:u32 = 1;
-const MAX_DEPTH:u32 = 7;
+const BASE_DEPTH:u32 = 2;
+const MAX_DEPTH:u32 = 6;
 
 pub struct NNShogiPlayer {
 	stop:bool,
@@ -74,6 +74,8 @@ pub struct NNShogiPlayer {
 	tinc:u32,
 	evalutor:Intelligence,
 	pub history:Vec<(Banmen,MochigomaCollections)>,
+	base_depth:u32,
+	max_depth:u32,
 }
 impl fmt::Debug for NNShogiPlayer {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -114,6 +116,8 @@ impl NNShogiPlayer {
 			tinc:0,
 			evalutor:Intelligence::new(String::from("data")),
 			history:Vec::new(),
+			base_depth:BASE_DEPTH,
+			max_depth:MAX_DEPTH,
 		}
 	}
 
@@ -189,7 +193,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if depth == 0 || current_depth == MAX_DEPTH {
+		if depth == 0 || current_depth == self.max_depth {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(10)) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
@@ -927,16 +931,40 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mut kinds:HashMap<String,SysEventOptionKind> = HashMap::new();
 		kinds.insert(String::from("USI_Hash"),SysEventOptionKind::Num);
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
+		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Bool);
+		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Bool);
 
 		Ok(kinds)
 	}
 	fn get_options(&mut self) -> Result<HashMap<String,UsiOptType>,CommonError> {
-		Ok(HashMap::new())
+		let mut options:HashMap<String,UsiOptType> = HashMap::new();
+		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH)));
+		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH)));
+		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
 		Ok(())
 	}
-	fn set_option(&mut self,_:String,_:SysEventOption) -> Result<(),CommonError> {
+	fn set_option(&mut self,name:String,value:SysEventOption) -> Result<(),CommonError> {
+		match &*name {
+			"MaxDepth" => {
+				self.max_depth = match value {
+					SysEventOption::Num(depth) => {
+						depth
+					},
+					_ => MAX_DEPTH,
+				};
+			},
+			"BaseDepth" => {
+				self.base_depth = match value {
+					SysEventOption::Num(depth) => {
+						depth
+					},
+					_ => BASE_DEPTH,
+				};
+			},
+			_ => (),
+		}
 		Ok(())
 	}
 	fn newgame(&mut self) -> Result<(),CommonError> {
