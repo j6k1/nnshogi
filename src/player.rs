@@ -128,6 +128,21 @@ impl NNShogiPlayer {
 		}
 	}
 
+	fn send_seldepth<L>(&mut self, info_sender:&USIInfoSender,
+			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32, seldepth:u32)
+		where L: Logger {
+		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
+		commands.push(UsiInfoSubCommand::Depth(depth));
+		commands.push(UsiInfoSubCommand::SelDepth(seldepth));
+
+		match info_sender.send(commands) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
+	}
+
 	fn send_depth<L>(&mut self, info_sender:&USIInfoSender,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32)
 		where L: Logger {
@@ -155,7 +170,7 @@ impl NNShogiPlayer {
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,depth:u32,current_depth:u32) -> Evaluation where L: Logger {
-		self.send_depth(info_sender, on_error_handler, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
 
 		match obtained {
 			Some(ObtainKind::Ou) => {
@@ -496,7 +511,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
 
-		self.send_depth(info_sender, on_error_handler, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -620,7 +635,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
 
-		self.send_depth(info_sender, on_error_handler, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, 1, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
