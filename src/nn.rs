@@ -46,7 +46,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let nna = NN::new(model,|_| SGD::new(0.5),CrossEntropy::new());
+		let nna = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
@@ -64,7 +64,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let nnb = NN::new(model,|_| SGD::new(0.5),CrossEntropy::new());
+		let nnb = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
@@ -92,7 +92,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a + nnbanswerb * b;
 
-		Ok(((answer - 0.5) * i32::MAX as f64) as i32)
+		Ok((answer * i32::MAX as f64) as i32)
 	}
 
 	pub fn learning<'a>(&mut self,teban:Teban,
