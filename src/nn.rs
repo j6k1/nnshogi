@@ -147,7 +147,7 @@ impl Intelligence {
 
 			self.nna.latter_part_of_learning(&answer,promise_a)?;
 			self.nnb.latter_part_of_learning(&answer,promise_b)?;
-			*/
+
 			let mut rnd = rand::XorShiftRng::new_unseeded();
 
 			let a = rnd.next_f64();
@@ -194,6 +194,34 @@ impl Intelligence {
 					self.nnb.latter_part_of_learning(&(0..1)
 														.map(|_| answer_b)
 														.collect::<Vec<f64>>(),promise_b)?;
+				}
+			}
+			*/
+
+			match s {
+				&GameEndState::Win if t == teban => {
+					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+													.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
+													.collect::<Vec<f64>>())?;
+				},
+				&GameEndState::Win => {
+					self.nna.learn(&input,&(0..1).map(|_| 0f64)
+													.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 0f64)
+													.collect::<Vec<f64>>())?;
+				},
+				_ if t == teban => {
+					self.nna.learn(&input,&(0..1).map(|_| 0f64)
+													.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 0f64)
+													.collect::<Vec<f64>>())?;
+				},
+				_ => {
+					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+													.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
+													.collect::<Vec<f64>>())?;
 				}
 			}
 
