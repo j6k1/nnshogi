@@ -138,7 +138,7 @@ impl Intelligence {
 				&GameEndState::Win => {
 					answer.push(0f64);
 				},
-				_ if t != teban => {
+				_ if t == teban => {
 					answer.push(0f64);
 				},
 				_ => {
