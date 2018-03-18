@@ -150,7 +150,7 @@ impl NNShogiPlayer {
 			}
 		}
 	}
-
+	/*
 	fn send_depth<L>(&mut self, info_sender:&USIInfoSender,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32)
 		where L: Logger {
@@ -164,7 +164,7 @@ impl NNShogiPlayer {
 			}
 		}
 	}
-
+	*/
 	fn alphabeta<'a,L>(&mut self,
 			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&USIInfoSender,
