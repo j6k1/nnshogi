@@ -1079,7 +1079,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				BestMove::Resign
 			}
 		};
-		self.tinc = self.update_inc(&self.tinc,&limit).unwrap_or(0);
+		self.tinc = self.get_update_inc(&self.tinc,&limit).unwrap_or(0);
 		Ok(result)
 	}
 	fn think_mate<L>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
