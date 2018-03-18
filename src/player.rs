@@ -215,7 +215,7 @@ impl NNShogiPlayer {
 
 				match s {
 					Some(s) => {
-						self.send_message(info_sender, on_error_handler, &format!("evalute sore = {}",s));
+						self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
 						return Evaluation::Result(Score::Value(s),m);
 					},
 					None => {
