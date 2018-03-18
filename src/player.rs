@@ -958,7 +958,12 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
-		self.evalutor = Some(Intelligence::new(String::from("data")));
+		match self.evalutor {
+			Some(_) => (),
+			None => {
+				self.evalutor = Some(Intelligence::new(String::from("data")));
+			}
+		}
 		Ok(())
 	}
 	fn set_option(&mut self,name:String,value:SysEventOption) -> Result<(),CommonError> {
