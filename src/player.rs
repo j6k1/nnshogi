@@ -73,7 +73,7 @@ pub struct NNShogiPlayer {
 	shash:u64,
 	kyokumen_hash_map:TwoKeyHashMap<u32>,
 	tinc:u32,
-	evalutor:Intelligence,
+	evalutor:Option<Intelligence>,
 	pub history:Vec<(Banmen,MochigomaCollections)>,
 	base_depth:u32,
 	max_depth:u32,
@@ -115,7 +115,7 @@ impl NNShogiPlayer {
 			shash:0,
 			kyokumen_hash_map:TwoKeyHashMap::new(),
 			tinc:0,
-			evalutor:Intelligence::new(String::from("data")),
+			evalutor:None,
 			history:Vec::new(),
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
@@ -200,15 +200,29 @@ impl NNShogiPlayer {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None);
 			} else {
-				let s = match self.evalutor.evalute(teban,banmen,mc) {
-					Ok(s) => s,
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
+				let s = match self.evalutor {
+					Some(ref mut evalutor) => {
+						match evalutor.evalute(teban,banmen,mc) {
+							Ok(s) => Some(s),
+							Err(ref mut e) => {
+								on_error_handler.lock().map(|h| h.call(e)).is_err();
+								return Evaluation::Error;
+							}
+						}
+					},
+					None => None,
+				};
+
+				match s {
+					Some(s) => {
+						self.send_message(info_sender, on_error_handler, &format!("evalute sore = {}",s));
+						return Evaluation::Result(Score::Value(s),m);
+					},
+					None => {
+						self.send_message(info_sender, on_error_handler, &format!("evalutor is not initialized!"));
 						return Evaluation::Error;
 					}
-				};
-				self.send_message(info_sender, on_error_handler, &format!("evalute sore = {}",s));
-				return Evaluation::Result(Score::Value(s),m);
+				}
 			}
 		}
 
@@ -944,6 +958,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
+		self.evalutor = Some(Intelligence::new(String::from("data")));
 		Ok(())
 	}
 	fn set_option(&mut self,name:String,value:SysEventOption) -> Result<(),CommonError> {
@@ -1092,7 +1107,12 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 		};
 
-		self.evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
+		match self.evalutor {
+			Some(ref mut evalutor) => {
+				evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
+			},
+			None => (),
+		}
 		self.history = Vec::new();
 
 		Ok(())
