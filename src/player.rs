@@ -984,168 +984,93 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.history.clear();
 		self.kyokumen_hash_map.clear();
 
-		let (mut mhash,mut shash) = self.calc_initial_hash(&ban,&ms,&mg);
+		let (mhash,shash) = self.calc_initial_hash(&ban,&ms,&mg);
 
 		self.kyokumen_hash_map.insert(mhash,shash,1);
 
-		let mut banmen = ban.clone();
-		let mut t = teban.clone();
+		let teban = teban;
+		let banmen = ban;
+		let mc = MochigomaCollections::new(ms,mg);
 
-		let mut mc = if ms.len() == 0 && mg.len() == 0 {
-			MochigomaCollections::Empty
-		} else {
-			MochigomaCollections::Pair(ms,mg)
-		};
+		let kyokumen_hash_map:TwoKeyHashMap<u32> = TwoKeyHashMap::new();
+		let history:Vec<(Banmen,MochigomaCollections)> = Vec::new();
+
 		self.history.push((banmen.clone(),mc.clone()));
 
-		for m in &m {
-			 match banmen.apply_move_none_check(&t,&mc,&m) {
-				(next,nmc,o) => {
-					mhash = self.calc_main_hash(mhash,&t,&next,&nmc,m,&o);
-					shash = self.calc_sub_hash(shash,&t,&next,&nmc,m,&o);
+		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
+												mc,m,(0,0,kyokumen_hash_map,history),
+												|s,t,next,nmc,m,o,r| {
+			let (mut mhash,mut shash,mut kyokumen_hash_map,mut history) = r;
 
-					match self.kyokumen_hash_map.get(&mhash,&shash) {
-						Some(c) => {
-							self.kyokumen_hash_map.insert(mhash,shash,c+1);
-						},
-						None => {
-							self.kyokumen_hash_map.insert(mhash,shash,1);
-						}
-					}
-					self.history.push((banmen,mc));
-					banmen = next;
-					mc = nmc;
-					t = t.opposite();
+			mhash = s.calc_main_hash(mhash,&t,&next,&nmc,m,&o);
+			shash = s.calc_sub_hash(shash,&t,&next,&nmc,m,&o);
+
+			match kyokumen_hash_map.get(&mhash,&shash) {
+				Some(c) => {
+					kyokumen_hash_map.insert(mhash,shash,c+1);
+				},
+				None => {
+					kyokumen_hash_map.insert(mhash,shash,1);
 				}
 			}
-		}
+			history.push((next.clone(),nmc.clone()));
+			(mhash,shash,kyokumen_hash_map,history)
+		});
+
+		let (mhash,shash,kyokumen_hash_map,history) = r;
+
 		self.teban = Some(t);
 		self.banmen = Some(banmen);
 		self.mc = Some(mc);
 		self.mhash = mhash;
 		self.shash = shash;
+		self.kyokumen_hash_map = kyokumen_hash_map;
+		self.history = history;
 		Ok(())
 	}
 	fn think<L>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			info_sender:&USIInfoSender,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<BestMove,CommonError> where L: Logger {
-		match self.teban {
-			Some(teban) => {
-				let now = Instant::now();
-				let limit = match limit {
-					&UsiGoTimeLimit::None => None,
-					&UsiGoTimeLimit::Infinite => None,
-					&UsiGoTimeLimit::Limit(Some((ms,mg)),None) => {
-						Some(match teban {
-							Teban::Sente => {
-								now + Duration::from_millis(ms as u64)
-							},
-							Teban::Gote => {
-								now + Duration::from_millis(mg as u64)
-							}
-						})
-					},
-					&UsiGoTimeLimit::Limit(Some((ms,mg)),Some(UsiGoByoyomiOrInc::Byoyomi(b))) => {
-						Some(match teban {
-							Teban::Sente => {
-								now + Duration::from_millis(ms as u64 + b as u64)
-							},
-							Teban::Gote => {
-								now + Duration::from_millis(mg as u64 + b as u64)
-							}
-						})
-					}
-					&UsiGoTimeLimit::Limit(Some((ms,mg)),Some(UsiGoByoyomiOrInc::Inc(bs,bg))) => {
-						Some(match teban {
-							Teban::Sente => {
-								let tinc = self.tinc + bs as u32;
-								self.tinc = tinc;
-								now + Duration::from_millis(ms as u64 + tinc as u64)
-							},
-							Teban::Gote => {
-								let tinc = self.tinc + bg as u32;
-								self.tinc = tinc;
-								now + Duration::from_millis(mg as u64 + tinc as u64)
-							}
-						})
-					},
-					&UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(b))) => {
-						Some(now + Duration::from_millis(b as u64))
-					}
-					&UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Inc(bs,bg))) => {
-						Some(match teban {
-							Teban::Sente => {
-								now + Duration::from_millis(bs as u64)
-							},
-							Teban::Gote => {
-								now + Duration::from_millis(bg as u64)
-							}
-						})
-					},
-					&UsiGoTimeLimit::Limit(None,None) => {
-						Some(now)
-					}
-				};
-				let banmen = match self.banmen {
-					Some(Banmen(kinds)) => Some(Banmen(kinds.clone())),
-					None => None,
-				};
-				match banmen {
-					Some(ref banmen) => {
-						let mc = match self.mc {
-							Some(ref mc) => Some(mc.clone()),
-							None => None,
-						};
-						match mc {
-							Some(ref mc) => {
-								let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
-								let kyokumen_hash_map = self.kyokumen_hash_map.clone();
+		let (teban,banmen,mc) = self.extract_kyokumen(&self.teban,&self.banmen,&self.mc)?;
+		let (limit,tinc) = limit.to_instant(teban, self.tinc);
+		self.tinc = tinc;
+		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
+		let kyokumen_hash_map = self.kyokumen_hash_map.clone();
 
-								let result = match self.alphabeta(&*event_queue,
-											info_sender, &on_error_handler,
-											teban, &banmen, Score::NEGINFINITE,
-											Score::INFINITE, None, &mc,
-											None, &kyokumen_hash_map,
-											&mut TwoKeyHashMap::new(),
-											&mut TwoKeyHashMap::new(),mhash,shash,
-											limit, BASE_DEPTH, 0) {
-									Evaluation::Result(_,Some(m)) => {
-										BestMove::Move(m,None)
-									},
-									Evaluation::Result(_,None) => {
-										BestMove::Resign
-									},
-									Evaluation::Timeout(Some(m)) => {
-										BestMove::Move(m,None)
-									}
-									Evaluation::Timeout(None) if self.quited => {
-										BestMove::Abort
-									},
-									Evaluation::Timeout(None) => {
-										BestMove::Resign
-									},
-									Evaluation::Error => {
-										BestMove::Resign
-									}
-								};
-								match limit {
-									Some(limit) => {
-										self.tinc += (limit - Instant::now()).subsec_nanos() * 1000000;
-									},
-									None => (),
-								}
-								return Ok(result);
-							},
-							None => (),
-						}
-					},
-					None => (),
-				};
+		let result = match self.alphabeta(&*event_queue,
+					info_sender, &on_error_handler,
+					teban, &banmen, Score::NEGINFINITE,
+					Score::INFINITE, None, &mc,
+					None, &kyokumen_hash_map,
+					&mut TwoKeyHashMap::new(),
+					&mut TwoKeyHashMap::new(),mhash,shash,
+					limit, BASE_DEPTH, 0) {
+			Evaluation::Result(_,Some(m)) => {
+				BestMove::Move(m,None)
+			},
+			Evaluation::Result(_,None) => {
+				BestMove::Resign
+			},
+			Evaluation::Timeout(Some(m)) => {
+				BestMove::Move(m,None)
+			}
+			Evaluation::Timeout(None) if self.quited => {
+				BestMove::Abort
+			},
+			Evaluation::Timeout(None) => {
+				BestMove::Resign
+			},
+			Evaluation::Error => {
+				BestMove::Resign
+			}
+		};
+		match limit {
+			Some(limit) => {
+				self.tinc += (limit - Instant::now()).subsec_nanos() * 1000000;
 			},
 			None => (),
 		}
-
-		Err(CommonError::Fail(String::from("Initialization of position info has not been completed.")))
+		Ok(result)
 	}
 	fn think_mate<L>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			_:&USIInfoSender,_:Arc<Mutex<OnErrorHandler<L>>>)

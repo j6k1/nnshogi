@@ -7,6 +7,7 @@ use usiagent::event::UserEventKind;
 use usiagent::error::USIAgentStartupError;
 use usiagent::error::EventHandlerError;
 use usiagent::error::PlayerError;
+use usiagent::error::UsiProtocolError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
 
@@ -77,3 +78,10 @@ impl<E> From<PersistenceError<E>> for CommonError {
 	}
 }
 
+impl From<UsiProtocolError> for CommonError {
+	fn from(err: UsiProtocolError) -> CommonError {
+		match err {
+			UsiProtocolError::InvalidState(s) => CommonError::Fail(s)
+		}
+	}
+}
