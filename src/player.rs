@@ -421,12 +421,7 @@ impl NNShogiPlayer {
 																ignore_oute_hash_map,
 																mhash,shash,limit,current_depth+1) {
 								OuteEvaluation::Result(d) if d >= 0 &&
-																is_put_fu &&
-																	d - current_depth as i32 == 2 => {
-									ignore_oute_hash_map.insert(mhash,shash,());
-									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
-								},
-								OuteEvaluation::Result(d) if d >= 0 => {
+									!(is_put_fu && d - current_depth as i32 == 2) => {
 									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 								},
 								OuteEvaluation::Timeout => {
