@@ -645,8 +645,8 @@ impl NNShogiPlayer {
 					_ => None,
 				};
 
-				self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-				self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+				let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
