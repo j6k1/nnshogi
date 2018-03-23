@@ -921,6 +921,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		if !self.quited {
 			self.stop = false;
 		}
+		self.tinc = 0;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,ban:Banmen,
