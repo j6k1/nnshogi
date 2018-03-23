@@ -249,13 +249,8 @@ impl NNShogiPlayer {
 				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
 					(true,m)
 				},
-				LegalMove::To(ref s,ref d,_) => {
-					match banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d)) {
-						(ref b,_,_) => (b.win_only_moves(&teban).len() > 0,m)
-					}
-				},
-				LegalMove::Put(ref k,ref d) => {
-					match banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d)) {
+				m => {
+					match banmen.apply_move_none_check(&teban,mc,&m.to_move()) {
 						(ref b,_,_) => (b.win_only_moves(&teban).len() > 0,m)
 					}
 				}
@@ -290,17 +285,9 @@ impl NNShogiPlayer {
 				}
 			}
 
-			let a_is_oute = match a {
-				&(f,_) => f
-			};
-
-			let b_is_oute = match b {
-				&(f,_) => f
-			};
-
-			if a_is_oute == b_is_oute {
+			if a.0 == b.0 {
 				Ordering::Equal
-			} else if a_is_oute {
+			} else if a.0 {
 				Ordering::Less
 			} else {
 				Ordering::Greater
@@ -329,9 +316,9 @@ impl NNShogiPlayer {
 			}
 			match *m {
 				(true,m) => {
-					let (mhash,shash) = match m {
-						LegalMove::To(ref s, ref d,ref o) => {
-							let o = match o {
+					let o = match m {
+						LegalMove::To(_,_,ref o) => {
+							match o {
 								&Some(o) => {
 									match MochigomaKind::try_from(o) {
 										Ok(o) => Some(o),
@@ -339,24 +326,13 @@ impl NNShogiPlayer {
 									}
 								},
 								&None => None,
-							};
-
-							let m = Move::To(*s,*d);
-
-							(
-								self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
-								self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
-							)
+							}
 						},
-						LegalMove::Put(ref k, ref d) => {
-							let m = Move::Put(*k,*d);
-
-							(
-								self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
-								self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
-							)
-						}
+						_ => None,
 					};
+
+					let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+					let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
 					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
@@ -383,14 +359,8 @@ impl NNShogiPlayer {
 						},
 						_ => (),
 					}
-					let next = match m {
-						LegalMove::To(ref s, ref d,_) => {
-							banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
-						},
-						LegalMove::Put(ref k, ref d) => {
-							banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
-						}
-					};
+
+					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 					match next {
 						(ref next,ref mc,_) if next.win_only_moves(&teban.opposite()).len() == 0 => {
@@ -460,14 +430,11 @@ impl NNShogiPlayer {
 			}
 			match *m {
 				(_,m) => {
-					let (next,obtained) = match m {
-						LegalMove::To(ref s, ref d,ref o) => {
-							(banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d)),*o)
-						},
-						LegalMove::Put(ref k, ref d) => {
-							(banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d)),None)
-						}
+					let obtained = match m {
+						LegalMove::To(_,_,ref o) => *o,
+						_ => None,
 					};
+					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 					let depth = match obtained {
 						Some(_) => depth + 1,
@@ -562,9 +529,9 @@ impl NNShogiPlayer {
 					return OuteEvaluation::Timeout;
 				}
 
-				let (mhash,shash) = match m {
-					&LegalMove::To(ref s, ref d,ref o) => {
-						let o = match o {
+				let o = match m {
+					&LegalMove::To(_,_,ref o) => {
+						match o {
 							&Some(o) => {
 								match MochigomaKind::try_from(o) {
 									Ok(o) => Some(o),
@@ -572,24 +539,12 @@ impl NNShogiPlayer {
 								}
 							},
 							&None => None,
-						};
-
-						let m = Move::To(*s,*d);
-
-						(
-							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
-							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
-						)
+						}
 					},
-					&LegalMove::Put(ref k, ref d) => {
-						let m = Move::Put(*k,*d);
-
-						(
-							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
-							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
-						)
-					}
+					_ => None,
 				};
+				let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
@@ -600,14 +555,7 @@ impl NNShogiPlayer {
 					}
 				}
 
-				let next = match m {
-					&LegalMove::To(ref s, ref d,_) => {
-						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
-					},
-					&LegalMove::Put(ref k, ref d) => {
-						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
-					}
-				};
+				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 				match next {
 					(ref next,ref mc,_) => {
@@ -680,18 +628,11 @@ impl NNShogiPlayer {
 					return OuteEvaluation::Timeout;
 				}
 
-				let next = match m {
-					&LegalMove::To(ref s, ref d,_) => {
-						banmen.apply_move_none_check(&teban,mc,&Move::To(*s,*d))
-					},
-					&LegalMove::Put(ref k, ref d) => {
-						banmen.apply_move_none_check(&teban,mc,&Move::Put(*k,*d))
-					}
-				};
+				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
-				let (mhash,shash) = match m {
-					&LegalMove::To(ref s, ref d,ref o) => {
-						let o = match o {
+				let o = match m {
+					&LegalMove::To(_,_,ref o) => {
+						match o {
 							&Some(o) => {
 								match MochigomaKind::try_from(o) {
 									Ok(o) => Some(o),
@@ -699,24 +640,13 @@ impl NNShogiPlayer {
 								}
 							},
 							&None => None,
-						};
-
-						let m = Move::To(*s,*d);
-
-						(
-							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o),
-							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o)
-						)
+						}
 					},
-					&LegalMove::Put(ref k, ref d) => {
-						let m = Move::Put(*k,*d);
-
-						(
-							self.calc_main_hash(mhash,&teban,banmen,mc,&m,&None),
-							self.calc_sub_hash(shash,&teban,banmen,mc,&m,&None)
-						)
-					}
+					_ => None,
 				};
+
+				self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+				self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
