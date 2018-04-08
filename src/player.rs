@@ -244,18 +244,29 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		}
 
-		let mut mvs:Vec<(bool,LegalMove)> = mvs.into_iter().map(|m| {
+		let mut mvs:Vec<(u32,LegalMove)> = mvs.into_iter().map(|m| {
 			match m {
 				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
-					(true,m)
+					(100,m)
 				},
 				m => {
 					match banmen.apply_move_none_check(&teban,mc,&m.to_move()) {
-						(ref b,_,_) => (b.win_only_moves(&teban).len() > 0,m)
+						(ref b,_,_) => {
+							if b.win_only_moves(&teban).len() > 0 {
+								(10,m)
+							} else {
+								match m {
+									LegalMove::To(_,_,Some(_)) => {
+										(3,m)
+									},
+									_ => (0,m)
+								}
+							}
+						}
 					}
 				}
 			}
-		}).collect::<Vec<(bool,LegalMove)>>();
+		}).collect::<Vec<(u32,LegalMove)>>();
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -271,23 +282,9 @@ impl NNShogiPlayer {
 		}
 
 		mvs.sort_by(|a,b| {
-			match a {
-				&(_,LegalMove::To(_,_,Some(ObtainKind::Ou))) => {
-					return Ordering::Less;
-				},
-				_ => {
-					match b {
-						&(_,LegalMove::To(_,_,Some(ObtainKind::Ou))) => {
-							return Ordering::Greater;
-						},
-						_ => (),
-					}
-				}
-			}
-
 			if a.0 == b.0 {
 				Ordering::Equal
-			} else if a.0 {
+			} else if a.0 > b.0 {
 				Ordering::Less
 			} else {
 				Ordering::Greater
@@ -315,7 +312,7 @@ impl NNShogiPlayer {
 				return Evaluation::Timeout(Some(m.1.to_move()));
 			}
 			match *m {
-				(true,m) => {
+				(10,m) => {
 					let o = match m {
 						LegalMove::To(_,_,ref o) => {
 							match o {
@@ -403,7 +400,7 @@ impl NNShogiPlayer {
 						_ => (),
 					}
 				},
-				(false,_) => {
+				_ => {
 					break;
 				}
 			}
