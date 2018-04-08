@@ -38,6 +38,7 @@ enum Evaluation {
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum OuteEvaluation {
 	Result(i32),
+	Foul,
 	Timeout,
 }
 #[derive(Clone, Copy, Eq, PartialOrd, PartialEq, Debug)]
@@ -383,12 +384,15 @@ impl NNShogiPlayer {
 																info_sender,
 																on_error_handler,
 																teban.opposite(),next,mc,
-																is_put_fu,&current_kyokumen_hash_map,
+																&current_kyokumen_hash_map,
 																already_oute_hash_map,
 																ignore_oute_hash_map,
 																mhash,shash,limit,current_depth+1) {
 								OuteEvaluation::Result(d) if d >= 0 &&
 									!(is_put_fu && d - current_depth as i32 == 2) => {
+									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
+								},
+								OuteEvaluation::Foul => {
 									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 								},
 								OuteEvaluation::Timeout => {
@@ -487,7 +491,7 @@ impl NNShogiPlayer {
 								info_sender:&USIInfoSender,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,banmen:&Banmen,
-								mc:&MochigomaCollections,is_put_fu:bool,
+								mc:&MochigomaCollections,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
 								already_oute_hash_map:&mut TwoKeyHashMap<()>,
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
@@ -552,6 +556,11 @@ impl NNShogiPlayer {
 					}
 				}
 
+				let is_put_fu = match m {
+					&LegalMove::Put(MochigomaKind::Fu,_) => true,
+					_ => false,
+				};
+
 				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 				match next {
@@ -560,12 +569,15 @@ impl NNShogiPlayer {
 												info_sender,
 												on_error_handler,
 												teban.opposite(),next,mc,
-												is_put_fu,current_kyokumen_hash_map,
+												current_kyokumen_hash_map,
 												already_oute_hash_map,
 												ignore_oute_hash_map,
 												mhash,shash,limit,current_depth+1) {
-							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
-								return OuteEvaluation::Result(d);
+							OuteEvaluation::Result(d) if d - current_depth as i32 == 2 && is_put_fu => {
+								return OuteEvaluation::Foul;
+							},
+							OuteEvaluation::Foul => {
+								return OuteEvaluation::Foul;
 							},
 							OuteEvaluation::Result(d) => {
 								return OuteEvaluation::Result(d);
@@ -587,7 +599,7 @@ impl NNShogiPlayer {
 								info_sender:&USIInfoSender,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,banmen:&Banmen,
-								mc:&MochigomaCollections,is_put_fu:bool,
+								mc:&MochigomaCollections,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
 								already_oute_hash_map:&mut TwoKeyHashMap<()>,
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
@@ -625,6 +637,11 @@ impl NNShogiPlayer {
 					return OuteEvaluation::Timeout;
 				}
 
+				let is_put_fu = match m {
+					&LegalMove::Put(MochigomaKind::Fu,_) => true,
+					_ => false,
+				};
+
 				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 				let o = match m {
@@ -660,12 +677,15 @@ impl NNShogiPlayer {
 														info_sender,
 														on_error_handler,
 														teban.opposite(),next,mc,
-														is_put_fu,current_kyokumen_hash_map,
+														current_kyokumen_hash_map,
 														already_oute_hash_map,
 														ignore_oute_hash_map,
 														mhash,shash,limit,current_depth+1) {
-							OuteEvaluation::Result(d) if d >= 0 && !is_put_fu => {
-								return OuteEvaluation::Result(d);
+							OuteEvaluation::Result(d) if d - current_depth as i32 == 2 && is_put_fu => {
+								return OuteEvaluation::Foul;
+							},
+							OuteEvaluation::Foul => {
+								return OuteEvaluation::Foul;
 							},
 							OuteEvaluation::Result(d) => {
 								return OuteEvaluation::Result(d);
