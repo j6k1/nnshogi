@@ -556,11 +556,6 @@ impl NNShogiPlayer {
 					}
 				}
 
-				let is_put_fu = match m {
-					&LegalMove::Put(MochigomaKind::Fu,_) => true,
-					_ => false,
-				};
-
 				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 				match next {
@@ -573,9 +568,6 @@ impl NNShogiPlayer {
 												already_oute_hash_map,
 												ignore_oute_hash_map,
 												mhash,shash,limit,current_depth+1) {
-							OuteEvaluation::Result(d) if d - current_depth as i32 == 2 && is_put_fu => {
-								return OuteEvaluation::Foul;
-							},
 							OuteEvaluation::Foul => {
 								return OuteEvaluation::Foul;
 							},
