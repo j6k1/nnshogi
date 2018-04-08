@@ -617,6 +617,12 @@ impl NNShogiPlayer {
 			OuteEvaluation::Result(-1)
 		} else {
 			for m in &mvs {
+				match m {
+					&LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
+						return OuteEvaluation::Result(current_depth as i32);
+					},
+					_ => ()
+				}
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
 					Err(ref e) => {
