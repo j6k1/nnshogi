@@ -713,14 +713,31 @@ impl NNShogiPlayer {
 						let dy = dy as usize - 1;
 
 						let mut hash = h;
-						let k = kinds[sy][sx] as usize;
+						let k = kinds[sy][sx];
 
-						hash =  pull(hash,self.kyokumen_hash_seeds[k][sy * 8 + sx]);
+						hash =  pull(hash,self.kyokumen_hash_seeds[k as usize][sy * 8 + sx]);
 						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sy * 8 + sx]);
 
 						let dk = kinds[dy][dx] as usize;
 
 						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
+
+						let k = match k {
+							KomaKind::SFu => KomaKind::SFuN,
+							KomaKind::SKyou => KomaKind::SKyouN,
+							KomaKind::SKei => KomaKind::SKeiN,
+							KomaKind::SGin => KomaKind::SGinN,
+							KomaKind::SKaku => KomaKind::SKakuN,
+							KomaKind::SHisha => KomaKind::SHishaN,
+							KomaKind::GFu => KomaKind::GFuN,
+							KomaKind::GKyou => KomaKind::GKyouN,
+							KomaKind::GKei => KomaKind::GKeiN,
+							KomaKind::GGin => KomaKind::GGinN,
+							KomaKind::GKaku => KomaKind::GKakuN,
+							KomaKind::GHisha => KomaKind::GHishaN,
+							k => k,
+						} as usize;
+
 						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
 
 						hash = match obtained  {
@@ -752,6 +769,7 @@ impl NNShogiPlayer {
 									};
 
 									let k = *obtained as usize;
+
 									match t {
 										&Teban::Sente => {
 											hash = add(hash,self.mochigoma_hash_seeds[0][c][k]);
