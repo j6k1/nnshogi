@@ -3,6 +3,7 @@ use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::i32;
+use std::fs;
 
 use simplenn::function::activation::*;
 use simplenn::function::optimizer::*;
@@ -164,10 +165,14 @@ impl Intelligence {
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
 			PersistenceWithBinFile::new(
-				&format!("{}/{}",self.nnsavedir,self.nna_filename))?)?;
+				&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?)?;
 		self.nnb.save(
 			PersistenceWithBinFile::new(
-				&format!("{}/{}",self.nnsavedir,self.nnb_filename))?)?;
+				&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?)?;
+		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nna_filename),
+						&format!("{}/{}", self.nnsavedir,self.nna_filename))?;
+		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nnb_filename),
+						&format!("{}/{}", self.nnsavedir,self.nnb_filename))?;
 		Ok(())
 	}
 
