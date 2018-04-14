@@ -181,8 +181,9 @@ impl NNShogiPlayer {
 								already_oute_hash_map:&mut TwoKeyHashMap<()>,
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,depth:u32,current_depth:u32) -> Evaluation where L: Logger {
-		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
+								limit:Option<Instant>,
+								depth:u32,current_depth:u32,base_depth:u32) -> Evaluation where L: Logger {
+		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		match obtained {
 			Some(ObtainKind::Ou) => {
@@ -390,7 +391,9 @@ impl NNShogiPlayer {
 																&current_kyokumen_hash_map,
 																already_oute_hash_map,
 																ignore_oute_hash_map,
-																mhash,shash,limit,current_depth+1) {
+																mhash,shash,limit,
+																current_depth+1,
+																base_depth) {
 								OuteEvaluation::Result(d) if d >= 0 &&
 									!(is_put_fu && d - current_depth as i32 == 2) => {
 									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
@@ -452,7 +455,8 @@ impl NNShogiPlayer {
 								obtained,&current_kyokumen_hash_map,
 								already_oute_hash_map,
 								ignore_oute_hash_map,
-								mhash,shash,limit,depth-1,current_depth+1) {
+								mhash,shash,limit,depth-1,
+								current_depth+1,base_depth) {
 
 								Evaluation::Timeout(_) => {
 									return match best_move {
@@ -496,10 +500,12 @@ impl NNShogiPlayer {
 								already_oute_hash_map:&mut TwoKeyHashMap<()>,
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
+								limit:Option<Instant>,
+								current_depth:u32,
+								base_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -569,7 +575,8 @@ impl NNShogiPlayer {
 												current_kyokumen_hash_map,
 												already_oute_hash_map,
 												ignore_oute_hash_map,
-												mhash,shash,limit,current_depth+1) {
+												mhash,shash,limit,
+												current_depth+1,base_depth) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							},
@@ -600,10 +607,12 @@ impl NNShogiPlayer {
 								already_oute_hash_map:&mut TwoKeyHashMap<()>,
 								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,current_depth:u32) -> OuteEvaluation where L: Logger {
+								limit:Option<Instant>,
+								current_depth:u32,
+								base_depth:u32) -> OuteEvaluation where L: Logger {
 		let mvs = banmen.oute_only_moves_all(&teban, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, BASE_DEPTH, current_depth);
+		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -682,7 +691,8 @@ impl NNShogiPlayer {
 														current_kyokumen_hash_map,
 														already_oute_hash_map,
 														ignore_oute_hash_map,
-														mhash,shash,limit,current_depth+1) {
+														mhash,shash,limit,
+														current_depth+1,base_depth) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							}
@@ -1022,6 +1032,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_hash_map = self.kyokumen_hash_map.clone();
 
+		let base_depth = self.base_depth;
+
 		let result = match self.alphabeta(&*event_queue,
 					info_sender, &on_error_handler,
 					teban, &banmen, Score::NEGINFINITE,
@@ -1029,7 +1041,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					None, &kyokumen_hash_map,
 					&mut TwoKeyHashMap::new(),
 					&mut TwoKeyHashMap::new(),mhash,shash,
-					limit, BASE_DEPTH, 0) {
+					limit, base_depth, 0, base_depth) {
 			Evaluation::Result(_,Some(m)) => {
 				BestMove::Move(m,None)
 			},
