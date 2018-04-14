@@ -32,13 +32,14 @@ impl Intelligence {
 	pub fn new (savepath:String) -> Intelligence {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let model:NNModel = NNModel::with_bias_and_unit_initializer(
+		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
-											(2344,Box::new(FReLU::new())),
-											(2344,Box::new(FReLU::new())))
+											(4688,Box::new(FReLU::new())),
+											(4688,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
 										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
-										0f64,move || {
+										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
+										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
 												rnd.next_f64()
@@ -50,13 +51,14 @@ impl Intelligence {
 
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let model:NNModel = NNModel::with_bias_and_unit_initializer(
+		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
-											(2344,Box::new(FReLU::new())),
-											(2344,Box::new(FReLU::new())))
+											(4688,Box::new(FReLU::new())),
+											(4688,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
 										TextFileInputReader::new(format!("{}/nn.b.txt",savepath).as_str()).unwrap(),
-										0f64,move || {
+										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
+										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
 												rnd.next_f64()
