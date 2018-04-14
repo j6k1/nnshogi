@@ -38,7 +38,6 @@ enum Evaluation {
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum OuteEvaluation {
 	Result(i32),
-	Foul,
 	Timeout,
 }
 #[derive(Clone, Copy, Eq, PartialOrd, PartialEq, Debug)]
@@ -392,9 +391,6 @@ impl NNShogiPlayer {
 									!(is_put_fu && d - current_depth as i32 == 2) => {
 									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 								},
-								OuteEvaluation::Foul => {
-									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
-								},
 								OuteEvaluation::Timeout => {
 									return Evaluation::Timeout(Some(m.to_move()));
 								},
@@ -517,6 +513,8 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			return OuteEvaluation::Result(current_depth as i32)
 		} else {
+			let mut maxdepth = -1;
+
 			for m in &mvs {
 				match self.handle_events(event_queue, on_error_handler) {
 					Ok(_) => (),
@@ -568,11 +566,13 @@ impl NNShogiPlayer {
 												already_oute_hash_map,
 												ignore_oute_hash_map,
 												mhash,shash,limit,current_depth+1) {
-							OuteEvaluation::Foul => {
-								return OuteEvaluation::Foul;
+							OuteEvaluation::Result(-1) => {
+								return OuteEvaluation::Result(-1);
 							},
 							OuteEvaluation::Result(d) => {
-								return OuteEvaluation::Result(d);
+								if d > maxdepth {
+									maxdepth = d;
+								}
 							},
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
@@ -582,7 +582,7 @@ impl NNShogiPlayer {
 				}
 			}
 
-			OuteEvaluation::Result(-1)
+			OuteEvaluation::Result(maxdepth)
 		}
 	}
 
@@ -679,15 +679,16 @@ impl NNShogiPlayer {
 														already_oute_hash_map,
 														ignore_oute_hash_map,
 														mhash,shash,limit,current_depth+1) {
-							OuteEvaluation::Result(d) if d - current_depth as i32 == 2 && is_put_fu => {
-								return OuteEvaluation::Foul;
-							},
-							OuteEvaluation::Foul => {
-								return OuteEvaluation::Foul;
+							OuteEvaluation::Result(-1) => {
+								return OuteEvaluation::Result(-1);
+							}
+							OuteEvaluation::Result(d) if d >= 0 &&
+														!(is_put_fu && current_depth as i32 - d == 2)=> {
+								return OuteEvaluation::Result(d);
 							},
 							OuteEvaluation::Result(d) => {
 								return OuteEvaluation::Result(d);
-							},
+							}
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
 							}
