@@ -37,7 +37,7 @@ impl Intelligence {
 											(4688,Box::new(FReLU::new())),
 											(4688,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
-										TextFileInputReader::new(format!("{}/nn.a.txt",savepath).as_str()).unwrap(),
+										BinFileInputReader::new(format!("{}/nn.a.bin",savepath).as_str()).unwrap(),
 										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
@@ -56,7 +56,7 @@ impl Intelligence {
 											(4688,Box::new(FReLU::new())),
 											(4688,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
-										TextFileInputReader::new(format!("{}/nn.b.txt",savepath).as_str()).unwrap(),
+										BinFileInputReader::new(format!("{}/nn.b.bin",savepath).as_str()).unwrap(),
 										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
@@ -159,11 +159,11 @@ impl Intelligence {
 
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
-			PersistenceWithTextFile::new(
-				&format!("{}/nn.a.txt",self.nnsavepath.as_str()))?)?;
+			PersistenceWithBinFile::new(
+				&format!("{}/nn.a.bin",self.nnsavepath.as_str()))?)?;
 		self.nnb.save(
-			PersistenceWithTextFile::new(
-				&format!("{}/nn.b.txt",self.nnsavepath.as_str()))?)?;
+			PersistenceWithBinFile::new(
+				&format!("{}/nn.b.bin",self.nnsavepath.as_str()))?)?;
 		Ok(())
 	}
 
