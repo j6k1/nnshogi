@@ -73,6 +73,8 @@ pub struct NNShogiPlayer {
 	shash:u64,
 	kyokumen_hash_map:TwoKeyHashMap<u32>,
 	tinc:u32,
+	nna_filename:String,
+	nnb_filename:String,
 	evalutor:Option<Intelligence>,
 	pub history:Vec<(Banmen,MochigomaCollections)>,
 	base_depth:u32,
@@ -84,7 +86,7 @@ impl fmt::Debug for NNShogiPlayer {
 	}
 }
 impl NNShogiPlayer {
-	pub fn new() -> NNShogiPlayer {
+	pub fn new(nna_filename:String,nnb_filename:String) -> NNShogiPlayer {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
 		let mut kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1] = [[0; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1];
@@ -115,6 +117,8 @@ impl NNShogiPlayer {
 			shash:0,
 			kyokumen_hash_map:TwoKeyHashMap::new(),
 			tinc:0,
+			nna_filename:nna_filename,
+			nnb_filename:nnb_filename,
 			evalutor:None,
 			history:Vec::new(),
 			base_depth:BASE_DEPTH,
@@ -918,7 +922,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		match self.evalutor {
 			Some(_) => (),
 			None => {
-				self.evalutor = Some(Intelligence::new(String::from("data")));
+				self.evalutor = Some(Intelligence::new(
+										String::from("data"),
+										self.nna_filename.clone(),
+										self.nnb_filename.clone()));
 			}
 		}
 		Ok(())

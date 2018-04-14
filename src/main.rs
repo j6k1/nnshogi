@@ -16,7 +16,7 @@ use usiagent::output::USIStdErrorWriter;
 use player::NNShogiPlayer;
 
 fn main() {
-	let agent = UsiAgent::new(NNShogiPlayer::new());
+	let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
 
 	match agent.start_default() {
 		Ok(()) => (),

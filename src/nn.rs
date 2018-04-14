@@ -25,20 +25,22 @@ use error::*;
 pub struct Intelligence {
 	nna:NN<Adam,CrossEntropy>,
 	nnb:NN<Adam,CrossEntropy>,
-	nnsavepath:String,
+	nna_filename:String,
+	nnb_filename:String,
+	nnsavedir:String,
 	quited:bool,
 }
 impl Intelligence {
-	pub fn new (savepath:String) -> Intelligence {
+	pub fn new (savedir:String,nna_filename:String,nnb_filename:String) -> Intelligence {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
 		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
 											(4688,Box::new(FReLU::new())),
-											(4688,Box::new(FReLU::new())))
-											.add((1,Box::new(FSigmoid::new()))),
-										BinFileInputReader::new(format!("{}/nn.a.bin",savepath).as_str()).unwrap(),
-										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
+											(1,Box::new(FSigmoid::new()))),
+										BinFileInputReader::new(
+											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
+										vec![(1 / 2344) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
@@ -54,10 +56,10 @@ impl Intelligence {
 		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
 											(4688,Box::new(FReLU::new())),
-											(4688,Box::new(FReLU::new())))
-											.add((1,Box::new(FSigmoid::new()))),
-										BinFileInputReader::new(format!("{}/nn.b.bin",savepath).as_str()).unwrap(),
-										vec![(1 / 2344) as f64, (1 / 2344) as f64, 0f64],
+											(1,Box::new(FSigmoid::new()))),
+										BinFileInputReader::new(
+											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
+										vec![(1 / 2344) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
@@ -71,7 +73,9 @@ impl Intelligence {
 		Intelligence {
 			nna:nna,
 			nnb:nnb,
-			nnsavepath:savepath,
+			nna_filename:nna_filename,
+			nnb_filename:nnb_filename,
+			nnsavedir:savedir,
 			quited:false,
 		}
 	}
@@ -160,10 +164,10 @@ impl Intelligence {
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
 			PersistenceWithBinFile::new(
-				&format!("{}/nn.a.bin",self.nnsavepath.as_str()))?)?;
+				&format!("{}/{}",self.nnsavedir,self.nna_filename))?)?;
 		self.nnb.save(
 			PersistenceWithBinFile::new(
-				&format!("{}/nn.b.bin",self.nnsavepath.as_str()))?)?;
+				&format!("{}/{}",self.nnsavedir,self.nnb_filename))?)?;
 		Ok(())
 	}
 
