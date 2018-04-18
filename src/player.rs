@@ -697,7 +697,7 @@ impl NNShogiPlayer {
 								return OuteEvaluation::Result(-1);
 							}
 							OuteEvaluation::Result(d) if d >= 0 &&
-														!(is_put_fu && current_depth as i32 - d == 2)=> {
+														!(is_put_fu && d - current_depth as i32 == 2)=> {
 								return OuteEvaluation::Result(d);
 							},
 							OuteEvaluation::Timeout => {
