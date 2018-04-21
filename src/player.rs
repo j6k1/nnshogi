@@ -718,7 +718,7 @@ impl NNShogiPlayer {
 		match b {
 			&Banmen(ref kinds) => {
 				match m {
-					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, _)) => {
+					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, n)) => {
 						let sx = (9 - sx) as usize;
 						let sy = (sy - 1) as usize;
 						let dx = (9 - dx) as usize;
@@ -734,20 +734,24 @@ impl NNShogiPlayer {
 
 						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
 
-						let k = match k {
-							KomaKind::SFu => KomaKind::SFuN,
-							KomaKind::SKyou => KomaKind::SKyouN,
-							KomaKind::SKei => KomaKind::SKeiN,
-							KomaKind::SGin => KomaKind::SGinN,
-							KomaKind::SKaku => KomaKind::SKakuN,
-							KomaKind::SHisha => KomaKind::SHishaN,
-							KomaKind::GFu => KomaKind::GFuN,
-							KomaKind::GKyou => KomaKind::GKyouN,
-							KomaKind::GKei => KomaKind::GKeiN,
-							KomaKind::GGin => KomaKind::GGinN,
-							KomaKind::GKaku => KomaKind::GKakuN,
-							KomaKind::GHisha => KomaKind::GHishaN,
-							k => k,
+						let k = if n {
+							match k {
+								KomaKind::SFu => KomaKind::SFuN,
+								KomaKind::SKyou => KomaKind::SKyouN,
+								KomaKind::SKei => KomaKind::SKeiN,
+								KomaKind::SGin => KomaKind::SGinN,
+								KomaKind::SKaku => KomaKind::SKakuN,
+								KomaKind::SHisha => KomaKind::SHishaN,
+								KomaKind::GFu => KomaKind::GFuN,
+								KomaKind::GKyou => KomaKind::GKyouN,
+								KomaKind::GKei => KomaKind::GKeiN,
+								KomaKind::GGin => KomaKind::GGinN,
+								KomaKind::GKaku => KomaKind::GKakuN,
+								KomaKind::GHisha => KomaKind::GHishaN,
+								k => k,
+							}
+						} else {
+							k
 						} as usize;
 
 						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
