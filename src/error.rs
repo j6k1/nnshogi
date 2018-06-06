@@ -5,7 +5,6 @@ use std::convert::From;
 use usiagent::event::SystemEventKind;
 use usiagent::event::UserEventKind;
 use usiagent::error::USIAgentStartupError;
-use usiagent::error::EventHandlerError;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use simplenn::error::InvalidStateError;
@@ -38,22 +37,10 @@ impl error::Error for CommonError {
 		}
 	}
 }
-impl From<CommonError> for EventHandlerError<SystemEventKind,CommonError>
-	where SystemEventKind: fmt::Debug {
-	fn from(err: CommonError) -> EventHandlerError<SystemEventKind,CommonError> {
-		EventHandlerError::PlayerError(err)
-	}
-}
 impl<'a> From<CommonError> for USIAgentStartupError<'a,SystemEventKind,CommonError>
 	where SystemEventKind: fmt::Debug {
 	fn from(err: CommonError) -> USIAgentStartupError<'a,SystemEventKind,CommonError> {
 		USIAgentStartupError::PlayerError(err)
-	}
-}
-impl From<CommonError> for EventHandlerError<UserEventKind,CommonError>
-	where UserEventKind: fmt::Debug {
-	fn from(err: CommonError) -> EventHandlerError<UserEventKind,CommonError> {
-		EventHandlerError::PlayerError(err)
 	}
 }
 impl<'a> From<CommonError> for USIAgentStartupError<'a,UserEventKind,CommonError>
