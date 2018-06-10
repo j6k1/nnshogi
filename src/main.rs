@@ -14,14 +14,28 @@ use usiagent::UsiAgent;
 use usiagent::output::USIStdErrorWriter;
 
 use player::NNShogiPlayer;
+use error::ApplicationError;
 
 fn main() {
-	let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
-
-	match agent.start_default() {
+	match run() {
 		Ok(()) => (),
 		Err(ref e) =>  {
 			USIStdErrorWriter::write(e.description()).is_err();
 		}
 	};
+}
+fn run() -> Result<(),ApplicationError> {
+	let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
+
+	agent.start_default(|on_error_handler,e| {
+		match on_error_handler {
+			Some(ref h) => {
+				h.lock().map(|h| h.call(e)).is_err();
+			},
+			None => (),
+		}
+		Err(ApplicationError::StartupError(String::from(
+			"Startup failed."
+		)))
+	})
 }

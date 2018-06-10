@@ -72,3 +72,27 @@ impl From<UsiProtocolError> for CommonError {
 		}
 	}
 }
+#[derive(Debug)]
+pub enum ApplicationError {
+	StartupError(String),
+}
+impl fmt::Display for ApplicationError {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
+		}
+	}
+}
+impl error::Error for ApplicationError {
+	fn description(&self) -> &str {
+		match *self {
+			ApplicationError::StartupError(_) => "Startup failed.",
+		}
+	}
+
+	fn cause(&self) -> Option<&error::Error> {
+		match *self {
+			ApplicationError::StartupError(_) => None,
+		}
+	}
+}
