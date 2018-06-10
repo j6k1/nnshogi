@@ -997,25 +997,29 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let kyokumen_hash_map:TwoKeyHashMap<u32> = TwoKeyHashMap::new();
 		let history:Vec<(Banmen,MochigomaCollections)> = Vec::new();
 
-		self.history.push((banmen.clone(),mc.clone()));
-
 		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
 												mc,m,(0,0,kyokumen_hash_map,history),
-												|s,t,next,nmc,m,o,r| {
+												|s,t,banmen,mc,m,o,r| {
 			let (mut mhash,mut shash,mut kyokumen_hash_map,mut history) = r;
 
-			mhash = s.calc_main_hash(mhash,&t,&next,&nmc,m,&o);
-			shash = s.calc_sub_hash(shash,&t,&next,&nmc,m,&o);
+			match m {
+				&Some(ref m) => {
+					mhash = s.calc_main_hash(mhash,&t,&banmen,&mc,m,&o);
+					shash = s.calc_sub_hash(shash,&t,&banmen,&mc,m,&o);
 
-			match kyokumen_hash_map.get(&mhash,&shash) {
-				Some(c) => {
-					kyokumen_hash_map.insert(mhash,shash,c+1);
+					match kyokumen_hash_map.get(&mhash,&shash) {
+						Some(c) => {
+							kyokumen_hash_map.insert(mhash,shash,c+1);
+						},
+						None => {
+							kyokumen_hash_map.insert(mhash,shash,1);
+						}
+					};
 				},
-				None => {
-					kyokumen_hash_map.insert(mhash,shash,1);
-				}
+				&None => (),
 			}
-			history.push((next.clone(),nmc.clone()));
+
+			history.push((banmen.clone(),mc.clone()));
 			(mhash,shash,kyokumen_hash_map,history)
 		});
 
