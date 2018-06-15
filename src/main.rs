@@ -95,7 +95,7 @@ fn run() -> Result<(),ApplicationError> {
 														Box::new(move |_,e| {
 											match e {
 												&SelfMatchEvent::GameStart(n,_) => {
-													print!("プレイヤー1{}が先手で開始しました。\n",n);
+													print!("プレイヤー{}が先手で開始しました。\n",n);
 													Ok(())
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
@@ -114,8 +114,8 @@ fn run() -> Result<(),ApplicationError> {
 										}));
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::GameEnd,
-														Box::new(move |_,_| {
-											print!("ゲームが終了しました。\n");
+														Box::new(move |_,e| {
+											print!("ゲームが終了しました。{:?}\n",e);
 											Ok(())
 										}));
 									self_match_event_dispatcher
