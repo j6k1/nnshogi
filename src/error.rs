@@ -76,24 +76,32 @@ impl From<UsiProtocolError> for CommonError {
 #[derive(Debug)]
 pub enum ApplicationError {
 	StartupError(String),
+	AgentRunningError(String),
+	SelfMatchRunningError(String),
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
 			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
+			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
+			ApplicationError::SelfMatchRunningError(ref s) => write!(f, "{}",s),
 		}
 	}
 }
 impl error::Error for ApplicationError {
 	fn description(&self) -> &str {
 		match *self {
-			ApplicationError::StartupError(_) => "Startup failed.",
+			ApplicationError::StartupError(_) => "Startup Error.",
+			ApplicationError::AgentRunningError(_) => "An error occurred while running USIAgent.",
+			ApplicationError::SelfMatchRunningError(_) => "An error occurred while running the self-match.",
 		}
 	}
 
 	fn cause(&self) -> Option<&error::Error> {
 		match *self {
 			ApplicationError::StartupError(_) => None,
+			ApplicationError::AgentRunningError(_) => None,
+			ApplicationError::SelfMatchRunningError(_) => None,
 		}
 	}
 }
