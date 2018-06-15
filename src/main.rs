@@ -13,7 +13,7 @@ use std::error::Error;
 use std::env;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::io::{ self, BufWriter, Write  };
+use std::io::{ BufWriter, Write  };
 use std::fs;
 use std::fs::OpenOptions;
 
@@ -21,13 +21,13 @@ use getopts::Options;
 
 use usiagent::UsiAgent;
 use usiagent::selfmatch::*;
-use usiagent::logger::*;
 use usiagent::output::*;
 use usiagent::event::*;
 use usiagent::command::*;
 use usiagent::shogi::*;
 use usiagent::error::*;
 use usiagent::player::*;
+use usiagent::TryToString;
 
 use player::NNShogiPlayer;
 use error::ApplicationError;
@@ -55,7 +55,7 @@ fn run() -> Result<(),ApplicationError> {
 	if matches.opt_present("l") {
 		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new()));
 
-		let engine = SelfMatchEngine::new(
+		let mut engine = SelfMatchEngine::new(
 			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")),
 			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin")),
 			info_sender_arc,
@@ -65,21 +65,21 @@ fn run() -> Result<(),ApplicationError> {
 
 		let mut flip = false;
 
-		let mut on_before_newgame = move || {
+		let on_before_newgame = move || {
 			flip = !flip;
 			!flip
 		};
 
 		let system_event_queue = engine.system_event_queue.clone();
 
-		let mut input_read_handler = move |input| {
+		let input_read_handler = move |input| {
 			if input == "quit" {
 				return match system_event_queue.lock()  {
 					Ok(mut system_event_queue) => {
 						system_event_queue.push(SystemEvent::Quit);
 						Ok(())
 					},
-					Err(ref e) => {
+					Err(_) => {
 						Err(SelfMatchRunningError::InvalidState(String::from(
 							"Failed to secure exclusive lock of system_event_queue."
 						)))
@@ -92,38 +92,57 @@ fn run() -> Result<(),ApplicationError> {
 		let r = engine.start_default(|self_match_event_dispatcher| {
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::GameStart,
-														Box::new(move |ctx,e| {
-											Ok(())
+														Box::new(move |_,e| {
+											match e {
+												&SelfMatchEvent::GameStart(n,_) => {
+													print!("プレイヤー1{}が先手で開始しました。\n",n);
+													Ok(())
+												},
+												e => Err(EventHandlerError::InvalidState(e.event_kind())),
+											}
 										}));
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::Moved,
-														Box::new(move |ctx,e| {
-											Ok(())
+														Box::new(move |_,e| {
+											match e {
+												&SelfMatchEvent::Moved(t,m) => {
+													print!("Move: {:?}n",m);
+													Ok(())
+												},
+												e => Err(EventHandlerError::InvalidState(e.event_kind())),
+											}
 										}));
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::GameEnd,
-														Box::new(move |ctx,e| {
+														Box::new(move |_,_| {
+											print!("ゲームが終了しました。\n");
 											Ok(())
 										}));
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::Abort,
-														Box::new(move |ctx,e| {
-											Ok(())
+														Box::new(move |_,e| {
+											match e {
+												&SelfMatchEvent::Abort => {
+													print!("思考が途中で中断されました。\n");
+													Ok(())
+												},
+												e => Err(EventHandlerError::InvalidState(e.event_kind())),
+											}
 										}));
 								},
 								on_before_newgame,
-								None,KifuWriter::new(String::from("logs/kifu.txt")),
+								None,Some(KifuWriter::new(String::from("logs/kifu.txt"))?),
 								input_read_handler,
 								[
 									("BaseDepth",SysEventOption::Num(1)),
 									("MaxDepth",SysEventOption::Num(3)),
-								].into_iter().map(|&(k,v)| {
+								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
 									("BaseDepth",SysEventOption::Num(1)),
 									("MaxDepth",SysEventOption::Num(3)),
-								].into_iter().map(|&(k,v)| {
+								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								|on_error_handler,e| {
@@ -165,7 +184,7 @@ impl CosoleInfoSender {
 impl InfoSender for CosoleInfoSender {
 	fn send(&mut self,commands:Vec<UsiInfoSubCommand>) -> Result<(), InfoSendError> {
 		for command in commands {
-			print!("{}",command);
+			print!("{}\n",command.try_to_string()?);
 		}
 		Ok(())
 	}
@@ -175,8 +194,8 @@ pub struct KifuWriter {
 	writer:BufWriter<fs::File>,
 }
 impl KifuWriter {
-	pub fn new(file:String) -> Result<FileLogger,io::Error> {
-		Ok(FileLogger {
+	pub fn new(file:String) -> Result<KifuWriter,ApplicationError> {
+		Ok(KifuWriter {
 			writer:BufWriter::new(OpenOptions::new().append(true).create(true).open(file)?),
 		})
 	}

@@ -65,7 +65,6 @@ impl<E> From<PersistenceError<E>> for CommonError {
 		CommonError::Fail(String::from("An error occurred while saving model of NN."))
 	}
 }
-
 impl From<UsiProtocolError> for CommonError {
 	fn from(err: UsiProtocolError) -> CommonError {
 		match err {
@@ -76,6 +75,7 @@ impl From<UsiProtocolError> for CommonError {
 #[derive(Debug)]
 pub enum ApplicationError {
 	StartupError(String),
+	IOError(io::Error),
 	AgentRunningError(String),
 	SelfMatchRunningError(String),
 }
@@ -83,6 +83,7 @@ impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
 			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
+			ApplicationError::IOError(ref e) => write!(f, "{}",e),
 			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
 			ApplicationError::SelfMatchRunningError(ref s) => write!(f, "{}",s),
 		}
@@ -92,6 +93,7 @@ impl error::Error for ApplicationError {
 	fn description(&self) -> &str {
 		match *self {
 			ApplicationError::StartupError(_) => "Startup Error.",
+			ApplicationError::IOError(_) => "IO Error.",
 			ApplicationError::AgentRunningError(_) => "An error occurred while running USIAgent.",
 			ApplicationError::SelfMatchRunningError(_) => "An error occurred while running the self-match.",
 		}
@@ -100,8 +102,14 @@ impl error::Error for ApplicationError {
 	fn cause(&self) -> Option<&error::Error> {
 		match *self {
 			ApplicationError::StartupError(_) => None,
+			ApplicationError::IOError(ref e) => Some(e),
 			ApplicationError::AgentRunningError(_) => None,
 			ApplicationError::SelfMatchRunningError(_) => None,
 		}
+	}
+}
+impl From<io::Error> for ApplicationError {
+	fn from(err: io::Error) -> ApplicationError {
+		ApplicationError::IOError(err)
 	}
 }
