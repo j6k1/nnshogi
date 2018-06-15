@@ -4,6 +4,7 @@ use std::io;
 use std::convert::From;
 use usiagent::event::SystemEventKind;
 use usiagent::event::UserEventKind;
+use usiagent::error::USIAgentRunningError;
 use usiagent::error::USIAgentStartupError;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
@@ -37,16 +38,16 @@ impl error::Error for CommonError {
 		}
 	}
 }
-impl<'a> From<CommonError> for USIAgentStartupError<'a,SystemEventKind,CommonError>
+impl<'a> From<CommonError> for USIAgentRunningError<'a,SystemEventKind,CommonError>
 	where SystemEventKind: fmt::Debug {
-	fn from(err: CommonError) -> USIAgentStartupError<'a,SystemEventKind,CommonError> {
-		USIAgentStartupError::PlayerError(err)
+	fn from(err: CommonError) -> USIAgentRunningError<'a,SystemEventKind,CommonError> {
+		USIAgentRunningError::from(USIAgentStartupError::PlayerError(err))
 	}
 }
-impl<'a> From<CommonError> for USIAgentStartupError<'a,UserEventKind,CommonError>
+impl<'a> From<CommonError> for USIAgentRunningError<'a,UserEventKind,CommonError>
 	where UserEventKind: fmt::Debug {
-	fn from(err: CommonError) -> USIAgentStartupError<'a,UserEventKind,CommonError> {
-		USIAgentStartupError::PlayerError(err)
+	fn from(err: CommonError) -> USIAgentRunningError<'a,UserEventKind,CommonError> {
+		USIAgentRunningError::from(USIAgentStartupError::PlayerError(err))
 	}
 }
 impl From<InvalidStateError> for CommonError {

@@ -27,15 +27,15 @@ fn main() {
 fn run() -> Result<(),ApplicationError> {
 	let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
 
-	agent.start_default(|on_error_handler,e| {
+	let r = agent.start_default(|on_error_handler,e| {
 		match on_error_handler {
 			Some(ref h) => {
 				h.lock().map(|h| h.call(e)).is_err();
 			},
 			None => (),
 		}
-		Err(ApplicationError::StartupError(String::from(
-			"Startup failed."
-		)))
-	})
+	});
+	r.map_err(|_| ApplicationError::StartupError(String::from(
+		"Startup failed."
+	)))
 }
