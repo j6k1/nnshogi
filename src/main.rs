@@ -63,7 +63,7 @@ fn run() -> Result<(),ApplicationError> {
 			None,Some(10)
 		);
 
-		let mut flip = false;
+		let mut flip = true;
 
 		let on_before_newgame = move || {
 			flip = !flip;
@@ -106,7 +106,7 @@ fn run() -> Result<(),ApplicationError> {
 														Box::new(move |_,e| {
 											match e {
 												&SelfMatchEvent::Moved(t,m) => {
-													print!("Move: {:?}n",m);
+													print!("Move: {:?}\n",m);
 													Ok(())
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
