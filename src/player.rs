@@ -79,6 +79,8 @@ pub struct NNShogiPlayer {
 	pub history:Vec<(Banmen,MochigomaCollections)>,
 	base_depth:u32,
 	max_depth:u32,
+	count_of_move_started:u32,
+	moved:bool,
 }
 impl fmt::Debug for NNShogiPlayer {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -123,6 +125,8 @@ impl NNShogiPlayer {
 			history:Vec::new(),
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
+			count_of_move_started:0,
+			moved:false,
 		}
 	}
 
@@ -978,6 +982,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			self.stop = false;
 		}
 		self.tinc = 0;
+		self.count_of_move_started = 0;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,ban:Banmen,
@@ -1032,6 +1037,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.shash = shash;
 		self.kyokumen_hash_map = kyokumen_hash_map;
 		self.history = history;
+		self.count_of_move_started += 1;
+		self.moved = false;
 		Ok(())
 	}
 	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -1073,6 +1080,32 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 		};
 		self.tinc = self.get_update_inc(&self.tinc,&limit).unwrap_or(0);
+
+		if let BestMove::Move(m,_) = result {
+			let history = self.history.drain(0..)
+								.collect::<Vec<(Banmen,MochigomaCollections)>>();;
+			let last = history.last();
+			if let Some(&(ref banmen,ref mc)) = last {
+				 match self.teban {
+					Some(teban) => {
+						self.moved = true;
+						let (_,_,_,history) = self.apply_moves(teban,banmen.clone(),
+											mc.clone(),[m].into_iter()
+													.map(|m| m.clone())
+													.collect::<Vec<Move>>(),
+											Vec::new(),|_,_,banmen,mc,_,_,mut history| {
+							history.push((banmen.clone(),mc.clone()));
+							history
+						});
+						self.history = history;
+					},
+					None => {
+						return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+					}
+				}
+			}
+		}
+
 		Ok(result)
 	}
 	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -1088,21 +1121,23 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
 
-		let teban = match self.teban {
-			Some(teban) =>  teban,
-			None => {
-				return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+		if self.count_of_move_started > 0 {
+			let teban = match self.teban {
+				Some(teban) if self.moved => teban,
+				Some(teban) => teban.opposite(),
+				None => {
+					return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+				}
+			};
+
+			match self.evalutor {
+				Some(ref mut evalutor) => {
+					evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
+				},
+				None => (),
 			}
-		};
-
-		match self.evalutor {
-			Some(ref mut evalutor) => {
-				evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
-			},
-			None => (),
+			self.history = Vec::new();
 		}
-		self.history = Vec::new();
-
 		Ok(())
 	}
 	fn on_quit(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
