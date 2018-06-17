@@ -340,8 +340,6 @@ impl NNShogiPlayer {
 			_ => (),
 		}
 
-		let mut ignore_moves_map:TwoKeyHashMap<()> = TwoKeyHashMap::new();
-
 		for m in &mvs {
 			match self.handle_events(event_queue, on_error_handler) {
 				Ok(_) => (),
@@ -379,7 +377,6 @@ impl NNShogiPlayer {
 
 					match current_kyokumen_hash_map.get(&mhash,&shash) {
 						Some(c) if c >= 3 => {
-							ignore_moves_map.insert(mhash, shash, ());
 							continue;
 						},
 						Some(c) => {
@@ -479,25 +476,32 @@ impl NNShogiPlayer {
 						_ => None,
 					};
 
-					match obtained {
-						Some(o) => {
-							if let Ok(o) = MochigomaKind::try_from(o) {
-								let o = Some(o);
-								let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-								let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
-
-								if let Some(()) = ignore_moves_map.get(&mhash, &shash) {
-									continue;
+					{
+						let o = match obtained {
+							Some(o) => {
+								match MochigomaKind::try_from(o) {
+									Ok(o) => {
+										Some(o)
+									},
+									Err(_) => None,
 								}
-							}
-						},
-						None => {
-							let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&None);
-							let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&None);
+							},
+							None => None,
+						};
 
-							if let Some(()) = ignore_moves_map.get(&mhash, &shash) {
+						let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+						let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+						let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+
+						match current_kyokumen_hash_map.get(&mhash,&shash) {
+							Some(c) if c >= 3 => {
 								continue;
-							}
+							},
+							Some(c) => {
+								current_kyokumen_hash_map.insert(mhash,shash,c+1);
+							},
+							None => (),
 						}
 					}
 
