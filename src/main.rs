@@ -42,7 +42,7 @@ pub struct Config {
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	time_limit:Option<u32>,
-	running_time:Option<u32>,
+	running_time:Option<String>,
 	number_of_games:Option<u32>,
 }
 pub struct ConfigLoader {
@@ -150,16 +150,49 @@ fn run() -> Result<(),ApplicationError> {
 		};
 
 		let running_time = config.running_time.map_or(None,|t| {
-				if t == 0 {
+				if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
 					None
 				} else {
-					Some(Duration::from_millis(t as u64 * 1000))
+					Some(t)
 				}
 			});
 
-		let running_time:Option<Duration> = match matches.opt_str("t") {
-			Some(running_time) => Some(Duration::from_millis(running_time.parse::<u64>()? * 1000)),
+		let running_time:Option<String> = match matches.opt_str("t") {
+			Some(t) => {
+				if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
+					None
+				} else {
+					Some(t)
+				}
+			},
 			None => running_time,
+		};
+
+		let running_time = match running_time {
+			None => None,
+			Some(ref running_time) if running_time.ends_with("s") => {
+				let len = running_time.chars().count();
+				let s = running_time.chars().take(len-1).collect::<String>();
+				Some(Duration::from_secs(s.parse::<u64>()?))
+			},
+			Some(ref running_time) if running_time.ends_with("m") => {
+				let len = running_time.chars().count();
+				let s = running_time.chars().take(len-1).collect::<String>();
+				Some(Duration::from_secs(60 * s.parse::<u64>()?))
+			},
+			Some(ref running_time) if running_time.ends_with("h") => {
+				let len = running_time.chars().count();
+				let s = running_time.chars().take(len-1).collect::<String>();
+				Some(Duration::from_secs(60 * 60 * s.parse::<u64>()?))
+			},
+			Some(ref running_time) if running_time.ends_with("d") => {
+				let len = running_time.chars().count();
+				let s = running_time.chars().take(len-1).collect::<String>();
+				Some(Duration::from_secs(24 * 60 * 60 * s.parse::<u64>()?))
+			},
+			Some(ref running_time) => {
+				Some(Duration::from_secs(60 * running_time.parse::<u64>()?))
+			}
 		};
 
 		let number_of_games = config.number_of_games.map_or(None,|t| {
