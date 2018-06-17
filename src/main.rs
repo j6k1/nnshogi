@@ -284,8 +284,12 @@ fn run() -> Result<(),ApplicationError> {
 										.add_handler(SelfMatchEventKind::GameStart,
 														Box::new(move |_,e| {
 											match e {
-												&SelfMatchEvent::GameStart(n,_) => {
-													print!("プレイヤー{}が先手で開始しました。\n",n);
+												&SelfMatchEvent::GameStart(n,t,_) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("プレイヤー{}が{}で開始しました。\n",n,t);
 													Ok(())
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
