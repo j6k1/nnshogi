@@ -92,7 +92,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "basedepth", "Search-default-depth.", "number of depth");
 	opts.optopt("", "maxdepth", "Search-max-depth.", "number of depth");
 	opts.optopt("", "timelimit", "USI time limit.", "milli second");
-	opts.optopt("t", "time", "Running time.", "second");
+	opts.optopt("t", "time", "Running time.", "s: second, m: minute, h: hour, d: day");
 	opts.optopt("c", "count", "execute game count.", "number of game count");
 
 	let matches = match opts.parse(&args[1..]) {
@@ -168,6 +168,11 @@ fn run() -> Result<(),ApplicationError> {
 			None => running_time,
 		};
 
+		let running_time_none_parsed = match running_time {
+			None => String::from("0s"),
+			Some(ref running_time) => running_time.clone(),
+		};
+
 		let running_time = match running_time {
 			None => None,
 			Some(ref running_time) if running_time.ends_with("s") => {
@@ -209,7 +214,7 @@ fn run() -> Result<(),ApplicationError> {
 		};
 
 		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, running_time = {:?}, number_of_games = {:?}",
-			base_depth, max_depth, time_limit, running_time, number_of_games
+			base_depth, max_depth, time_limit, running_time_none_parsed, number_of_games
 		);
 
 		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new()));
