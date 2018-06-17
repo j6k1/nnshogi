@@ -940,7 +940,7 @@ impl NNShogiPlayer {
 							}
 						}
 
-						let dx = md.0 as usize;
+						let dx = 9 - md.0 as usize;
 						let dy = md.1 as usize - 1;
 
 						hash = add(hash,self.kyokumen_hash_seeds[k as usize][dy * 8 + dx]);
