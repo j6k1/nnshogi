@@ -1,5 +1,8 @@
 extern crate rand;
 extern crate getopts;
+extern crate toml;
+#[macro_use]
+extern crate serde_derive;
 
 extern crate usiagent;
 extern crate simplenn;
@@ -13,9 +16,12 @@ use std::error::Error;
 use std::env;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::io::{ BufWriter, Write  };
+use std::io::{ BufWriter, Write, BufReader, Read };
 use std::fs;
 use std::fs::OpenOptions;
+use std::fs::File;
+use std::path::Path;
+use std::time::Duration;
 
 use getopts::Options;
 
@@ -32,11 +38,51 @@ use usiagent::TryToString;
 use player::NNShogiPlayer;
 use error::ApplicationError;
 
+#[derive(Debug, Deserialize)]
+pub struct Config {
+	base_depth:Option<u32>,
+	max_depth:Option<u32>,
+	time_limit:Option<u32>,
+	running_time:Option<u32>,
+	number_of_games:Option<u32>,
+}
+pub struct ConfigLoader {
+	reader:BufReader<File>,
+}
+impl ConfigLoader {
+	pub fn new (file:&str) -> Result<ConfigLoader, ApplicationError> {
+		match Path::new(file).exists() {
+			true => {
+				Ok(ConfigLoader {
+					reader:BufReader::new(OpenOptions::new().read(true).create(false).open(file)?),
+				})
+			},
+			false => {
+				Err(ApplicationError::StartupError(String::from(
+					"設定ファイルが見つかりません。"
+				)))
+			}
+		}
+	}
+	pub fn load(&mut self) -> Result<Config,ApplicationError> {
+		let mut buf = String::new();
+		self.reader.read_to_string(&mut buf)?;
+		match toml::from_str(buf.as_str()) {
+			Ok(r) => Ok(r),
+			Err(ref e) => {
+				USIStdErrorWriter::write(&e.to_string()).is_err();
+				Err(ApplicationError::StartupError(String::from(
+					"設定ファイルのロード時にエラーが発生しました。"
+				)))
+			}
+		}
+	}
+}
 fn main() {
 	match run() {
 		Ok(()) => (),
 		Err(ref e) =>  {
-			USIStdErrorWriter::write(e.description()).is_err();
+			USIStdErrorWriter::write(&e.to_string()).is_err();
 		}
 	};
 }
@@ -53,14 +99,60 @@ fn run() -> Result<(),ApplicationError> {
 	};
 
 	if matches.opt_present("l") {
+		let config = ConfigLoader::new("settings.toml")?.load()?;
+
+		let base_depth = match config.base_depth {
+			Some(base_depth) if base_depth > 0 => base_depth,
+			_ => {
+				return Err(ApplicationError::StartupError(String::from(
+					"base_depthの設定値が不正です。"
+				)))
+			}
+		};
+
+		let max_depth = match config.max_depth {
+			Some(max_depth) if max_depth > 0 => max_depth,
+			_ => {
+				return Err(ApplicationError::StartupError(String::from(
+					"base_depthの設定値が不正です。"
+				)))
+			}
+		};
+
+		let mut time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
+				if l == 0 {
+					UsiGoTimeLimit::Infinite
+				} else {
+					UsiGoTimeLimit::Limit(Some((l,l)),None)
+				}
+			});
+
+		let mut running_time = config.running_time.map_or(None,|t| {
+				if t == 0 {
+					None
+				} else {
+					Some(Duration::from_millis(t as u64))
+				}
+			});
+		let mut number_of_games = config.number_of_games.map_or(None,|t| {
+				if t == 0 {
+					None
+				} else {
+					Some(t)
+				}
+			});
+		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, running_time = {:?}, number_of_games = {:?}",
+			base_depth, max_depth, time_limit, running_time, number_of_games
+		);
+
 		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new()));
 
 		let mut engine = SelfMatchEngine::new(
 			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")),
 			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin")),
 			info_sender_arc,
-			UsiGoTimeLimit::Limit(Some((10 * 1000, 10 * 1000)),None),
-			None,Some(10)
+			time_limit,
+			running_time,number_of_games
 		);
 
 		let mut flip = true;
@@ -106,7 +198,14 @@ fn run() -> Result<(),ApplicationError> {
 														Box::new(move |_,e| {
 											match e {
 												&SelfMatchEvent::Moved(t,m) => {
-													print!("Move: {:?}\n",m);
+													match t {
+														Teban::Sente => {
+															print!("先手: {}\n",m);
+														},
+														Teban::Gote => {
+															print!("後手: {}\n",m);
+														}
+													}
 													Ok(())
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
@@ -134,14 +233,14 @@ fn run() -> Result<(),ApplicationError> {
 								None,Some(KifuWriter::new(String::from("logs/kifu.txt"))?),
 								input_read_handler,
 								[
-									("BaseDepth",SysEventOption::Num(1)),
-									("MaxDepth",SysEventOption::Num(3)),
+									("BaseDepth",SysEventOption::Num(base_depth)),
+									("MaxDepth",SysEventOption::Num(max_depth)),
 								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
-									("BaseDepth",SysEventOption::Num(1)),
-									("MaxDepth",SysEventOption::Num(3)),
+									("BaseDepth",SysEventOption::Num(base_depth)),
+									("MaxDepth",SysEventOption::Num(max_depth)),
 								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
@@ -153,7 +252,7 @@ fn run() -> Result<(),ApplicationError> {
 										None => (),
 									}
 								});
-
+		std::io::stdout().flush().is_err();
 		r.map_err(|_| ApplicationError::SelfMatchRunningError(String::from(
 			"自己対局の実行中にエラーが発生しました。詳細はログを参照してください..."
 		)))
@@ -209,7 +308,7 @@ impl SelfMatchKifuWriter<SelfMatchRunningError> for KifuWriter {
 			Ok(sfen) => sfen,
 		};
 
-		match self.writer.write(sfen.as_bytes()) {
+		match self.writer.write(format!("{}\n",sfen).as_bytes()) {
 			Err(ref e) => {
 				Err(SelfMatchRunningError::InvalidState(e.to_string()))
 			},
