@@ -308,6 +308,8 @@ impl NNShogiPlayer {
 			_ => (),
 		}
 
+		let mut ignore_moves_map:TwoKeyHashMap<()> = TwoKeyHashMap::new();
+
 		for m in &mvs {
 			match self.handle_events(event_queue, on_error_handler) {
 				Ok(_) => (),
@@ -345,6 +347,7 @@ impl NNShogiPlayer {
 
 					match current_kyokumen_hash_map.get(&mhash,&shash) {
 						Some(c) if c >= 3 => {
+							ignore_moves_map.insert(mhash, shash, ());
 							continue;
 						},
 						Some(c) => {
@@ -443,6 +446,29 @@ impl NNShogiPlayer {
 						LegalMove::To(_,_,ref o) => *o,
 						_ => None,
 					};
+
+					match obtained {
+						Some(o) => {
+							if let Ok(o) = MochigomaKind::try_from(o) {
+								let o = Some(o);
+								let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
+								let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+
+								if let Some(()) = ignore_moves_map.get(&mhash, &shash) {
+									continue;
+								}
+							}
+						},
+						None => {
+							let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&None);
+							let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&None);
+
+							if let Some(()) = ignore_moves_map.get(&mhash, &shash) {
+								continue;
+							}
+						}
+					}
+
 					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 					let depth = match obtained {
