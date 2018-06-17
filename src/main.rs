@@ -44,6 +44,7 @@ pub struct Config {
 	time_limit:Option<u32>,
 	running_time:Option<String>,
 	number_of_games:Option<u32>,
+	silent:bool,
 }
 pub struct ConfigLoader {
 	reader:BufReader<File>,
@@ -106,7 +107,7 @@ fn run() -> Result<(),ApplicationError> {
 	if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
-		let silent = matches.opt_present("silent");
+		let silent =  matches.opt_present("silent") || config.silent;
 
 		let base_depth = match config.base_depth {
 			Some(base_depth) => base_depth,
@@ -149,12 +150,12 @@ fn run() -> Result<(),ApplicationError> {
 		}
 
 		let time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
-				if l == 0 {
-					UsiGoTimeLimit::Infinite
-				} else {
-					UsiGoTimeLimit::Limit(Some((l,l)),None)
-				}
-			});
+			if l == 0 {
+				UsiGoTimeLimit::Infinite
+			} else {
+				UsiGoTimeLimit::Limit(Some((l,l)),None)
+			}
+		});
 
 		let time_limit:UsiGoTimeLimit = match matches.opt_str("timelimit") {
 			Some(time_limit) => {
@@ -169,12 +170,12 @@ fn run() -> Result<(),ApplicationError> {
 		};
 
 		let running_time = config.running_time.map_or(None,|t| {
-				if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
-					None
-				} else {
-					Some(t)
-				}
-			});
+			if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
+				None
+			} else {
+				Some(t)
+			}
+		});
 
 		let running_time:Option<String> = match matches.opt_str("t") {
 			Some(t) => {
@@ -220,12 +221,12 @@ fn run() -> Result<(),ApplicationError> {
 		};
 
 		let number_of_games = config.number_of_games.map_or(None,|t| {
-				if t == 0 {
-					None
-				} else {
-					Some(t)
-				}
-			});
+			if t == 0 {
+				None
+			} else {
+				Some(t)
+			}
+		});
 
 		let number_of_games:Option<u32> = match matches.opt_str("c") {
 			Some(number_of_games) => {
