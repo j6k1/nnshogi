@@ -94,6 +94,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "timelimit", "USI time limit.", "milli second");
 	opts.optopt("t", "time", "Running time.", "s: second, m: minute, h: hour, d: day");
 	opts.optopt("c", "count", "execute game count.", "number of game count");
+	opts.optflag("", "silent", "silent mode.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -104,6 +105,8 @@ fn run() -> Result<(),ApplicationError> {
 
 	if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
+
+		let silent = matches.opt_present("silent");
 
 		let base_depth = match config.base_depth {
 			Some(base_depth) if base_depth > 0 => base_depth,
@@ -217,7 +220,7 @@ fn run() -> Result<(),ApplicationError> {
 			base_depth, max_depth, time_limit, running_time_none_parsed, number_of_games
 		);
 
-		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new()));
+		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new(silent)));
 
 		let mut engine = SelfMatchEngine::new(
 			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")),
@@ -345,17 +348,21 @@ fn run() -> Result<(),ApplicationError> {
 	}
 }
 struct CosoleInfoSender {
-
+	silent:bool,
 }
 impl CosoleInfoSender {
-	pub fn new() -> CosoleInfoSender {
-		CosoleInfoSender {}
+	pub fn new(silent:bool) -> CosoleInfoSender {
+		CosoleInfoSender {
+			silent:silent
+		}
 	}
 }
 impl InfoSender for CosoleInfoSender {
 	fn send(&mut self,commands:Vec<UsiInfoSubCommand>) -> Result<(), InfoSendError> {
-		for command in commands {
-			print!("{}\n",command.try_to_string()?);
+		if !self.silent {
+			for command in commands {
+				print!("{}\n",command.try_to_string()?);
+			}
 		}
 		Ok(())
 	}
