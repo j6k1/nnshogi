@@ -109,10 +109,10 @@ fn run() -> Result<(),ApplicationError> {
 		let silent = matches.opt_present("silent");
 
 		let base_depth = match config.base_depth {
-			Some(base_depth) if base_depth > 0 => base_depth,
+			Some(base_depth) => base_depth,
 			_ => {
 				return Err(ApplicationError::StartupError(String::from(
-					"base_depthの設定値が不正です。"
+					"base_depthの値が未設定です。"
 				)))
 			}
 		};
@@ -122,12 +122,18 @@ fn run() -> Result<(),ApplicationError> {
 			None => base_depth,
 		};
 
+		if base_depth <= 0 {
+			return Err(ApplicationError::StartupError(String::from(
+				"base_depthの設定値が不正です。"
+			)));
+		}
+
 		let max_depth = match config.max_depth {
-			Some(max_depth) if max_depth > 0 => max_depth,
+			Some(max_depth) => max_depth,
 			_ => {
 				return Err(ApplicationError::StartupError(String::from(
-					"base_depthの設定値が不正です。"
-				)))
+					"base_depthが未設定です。"
+				)));
 			}
 		};
 
@@ -135,6 +141,12 @@ fn run() -> Result<(),ApplicationError> {
 			Some(max_depth) => max_depth.parse()?,
 			None => max_depth,
 		};
+
+		if max_depth <= 0 {
+			return Err(ApplicationError::StartupError(String::from(
+				"max_depthの設定値が不正です。"
+			)));
+		}
 
 		let time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
 				if l == 0 {
@@ -147,8 +159,12 @@ fn run() -> Result<(),ApplicationError> {
 		let time_limit:UsiGoTimeLimit = match matches.opt_str("timelimit") {
 			Some(time_limit) => {
 				let l = time_limit.parse()?;
-				UsiGoTimeLimit::Limit(Some((l,l)),None)
-			},
+				if l == 0 {
+					UsiGoTimeLimit::Infinite
+				} else {
+					UsiGoTimeLimit::Limit(Some((l,l)),None)
+				}
+			}
 			None => time_limit,
 		};
 
@@ -212,7 +228,14 @@ fn run() -> Result<(),ApplicationError> {
 			});
 
 		let number_of_games:Option<u32> = match matches.opt_str("c") {
-			Some(number_of_games) => Some(number_of_games.parse()?),
+			Some(number_of_games) => {
+				let n = number_of_games.parse()?;
+				if n == 0 {
+					None
+				} else {
+					Some(n)
+				}
+			},
 			None => number_of_games,
 		};
 
