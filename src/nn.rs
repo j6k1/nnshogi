@@ -107,7 +107,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a + nnbanswerb * b;
 
-		Ok(((answer - 0.5f64) * i32::MAX as f64) as i32)
+		Ok((answer * i32::MAX as f64) as i32)
 	}
 
 	pub fn learning<'a>(&mut self,teban:Teban,

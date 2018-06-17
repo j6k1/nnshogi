@@ -40,10 +40,11 @@ enum OuteEvaluation {
 	Result(i32),
 	Timeout,
 }
-#[derive(Clone, Copy, Eq, PartialOrd, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 enum Score {
 	NEGINFINITE,
 	Value(i32),
+	NegativeValue(i32),
 	INFINITE,
 }
 impl Neg for Score {
@@ -53,8 +54,39 @@ impl Neg for Score {
 		match self {
 			Score::INFINITE => Score::NEGINFINITE,
 			Score::NEGINFINITE => Score::INFINITE,
-			Score::Value(v) => Score::Value(-v),
+			Score::Value(v) => Score::NegativeValue(v),
+			Score::NegativeValue(v) => Score::Value(v),
 		}
+	}
+}
+impl PartialOrd for Score {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering>	{
+		Some(match *self {
+			Score::INFINITE if *other == Score::INFINITE => {
+				Ordering::Equal
+			},
+			Score::INFINITE => Ordering::Greater,
+			Score::NEGINFINITE if *other == Score::NEGINFINITE => {
+				Ordering::Equal
+			},
+			Score::NEGINFINITE => Ordering::Less,
+			Score::Value(l) => {
+				match *other {
+					Score::Value(r) => l.partial_cmp(&r)?,
+					Score::NegativeValue(r) => r.partial_cmp(&l)?,
+					Score::INFINITE => Ordering::Less,
+					Score::NEGINFINITE => Ordering::Greater,
+				}
+			},
+			Score::NegativeValue(l) => {
+				match *other {
+					Score::NegativeValue(r) => l.partial_cmp(&r)?,
+					Score::Value(r) => r.partial_cmp(&l)?,
+					Score::INFINITE => Ordering::Less,
+					Score::NEGINFINITE => Ordering::Greater,
+				}
+			}
+		})
 	}
 }
 const BASE_DEPTH:u32 = 2;
