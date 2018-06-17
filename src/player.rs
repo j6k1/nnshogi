@@ -1076,15 +1076,17 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.history.clear();
 		self.kyokumen_hash_map.clear();
 
+		let mut kyokumen_hash_map:TwoKeyHashMap<u32> = TwoKeyHashMap::new();
 		let (mhash,shash) = self.calc_initial_hash(&ban,&ms,&mg);
 
-		self.kyokumen_hash_map.insert(mhash,shash,1);
+		kyokumen_hash_map.insert(mhash,shash,1);
 
 		let teban = teban;
 		let banmen = ban;
+
 		let mc = MochigomaCollections::new(ms,mg);
 
-		let kyokumen_hash_map:TwoKeyHashMap<u32> = TwoKeyHashMap::new();
+
 		let history:Vec<(Banmen,MochigomaCollections)> = Vec::new();
 
 		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
