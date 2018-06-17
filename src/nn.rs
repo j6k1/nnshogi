@@ -37,15 +37,15 @@ impl Intelligence {
 
 		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
-											(4688,Box::new(FReLU::new())),
-											(1,Box::new(FSigmoid::new()))),
-										//	(100,Box::new(FReLU::new())),
-										//	(100,Box::new(FReLU::new())))
-										//	.add((1,Box::new(FSigmoid::new()))),
+										//	(4688,Box::new(FReLU::new())),
+										//	(1,Box::new(FSigmoid::new()))),
+											(100,Box::new(FReLU::new())),
+											(100,Box::new(FReLU::new())))
+											.add((1,Box::new(FSigmoid::new()))),
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
-										vec![(1 / 2344) as f64, 0f64],
-										//vec![(1 / 1000) as f64, (1 / 1000) as f64, 0f64],
+										//vec![(1 / 2344) as f64, 0f64],
+										vec![(1 / 1000) as f64, (1 / 1000) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{
@@ -60,15 +60,15 @@ impl Intelligence {
 
 		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
 										NNUnits::new(2344,
-											(4688,Box::new(FReLU::new())),
-											(1,Box::new(FSigmoid::new()))),
-										//	(100,Box::new(FReLU::new())),
-										//	(100,Box::new(FReLU::new())))
-										//	.add((1,Box::new(FSigmoid::new()))),
+										//	(4688,Box::new(FReLU::new())),
+										//	(1,Box::new(FSigmoid::new()))),
+											(100,Box::new(FReLU::new())),
+											(100,Box::new(FReLU::new())))
+											.add((1,Box::new(FSigmoid::new()))),
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
-										vec![(1 / 2344) as f64, 0f64],
-										//vec![(1 / 1000) as f64, (1 / 1000) as f64, 0f64],
+										//vec![(1 / 2344) as f64, 0f64],
+										vec![(1 / 1000) as f64, (1 / 1000) as f64, 0f64],
 										move || {
 											let i = rnd.next_u32();
 											if i % 2 == 0{

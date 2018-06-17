@@ -632,6 +632,18 @@ impl NNShogiPlayer {
 					}
 				}
 
+				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+				match current_kyokumen_hash_map.get(&mhash,&shash) {
+					Some(c) if c >= 3 => {
+						continue;
+					},
+					Some(c) => {
+						current_kyokumen_hash_map.insert(mhash,shash,c+1);
+					},
+					None => (),
+				}
+
 				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 				match next {
@@ -640,7 +652,7 @@ impl NNShogiPlayer {
 												info_sender,
 												on_error_handler,
 												teban.opposite(),next,mc,
-												current_kyokumen_hash_map,
+												&current_kyokumen_hash_map,
 												already_oute_hash_map,
 												ignore_oute_hash_map,
 												mhash,shash,limit,
@@ -751,13 +763,25 @@ impl NNShogiPlayer {
 					}
 				}
 
+				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+				match current_kyokumen_hash_map.get(&mhash,&shash) {
+					Some(c) if c >= 3 => {
+						continue;
+					},
+					Some(c) => {
+						current_kyokumen_hash_map.insert(mhash,shash,c+1);
+					},
+					None => (),
+				}
+
 				match next {
 					(ref next,ref mc,_) => {
 						match self.respond_oute_only(event_queue,
 														info_sender,
 														on_error_handler,
 														teban.opposite(),next,mc,
-														current_kyokumen_hash_map,
+														&current_kyokumen_hash_map,
 														already_oute_hash_map,
 														ignore_oute_hash_map,
 														mhash,shash,limit,
