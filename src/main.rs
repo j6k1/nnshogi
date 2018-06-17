@@ -12,7 +12,6 @@ pub mod error;
 pub mod nn;
 pub mod hash;
 
-use std::error::Error;
 use std::env;
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -90,6 +89,11 @@ fn run() -> Result<(),ApplicationError> {
 	let args: Vec<String> = env::args().collect();
 	let mut opts = Options::new();
 	opts.optflag("l", "learn", "Self-game mode.");
+	opts.optopt("", "basedepth", "Search-default-depth.", "number of depth");
+	opts.optopt("", "maxdepth", "Search-max-depth.", "number of depth");
+	opts.optopt("", "timelimit", "USI time limit.", "milli second");
+	opts.optopt("t", "time", "Running time.", "second");
+	opts.optopt("c", "count", "execute game count.", "number of game count");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -110,6 +114,11 @@ fn run() -> Result<(),ApplicationError> {
 			}
 		};
 
+		let base_depth:u32 = match matches.opt_str("basedepth") {
+			Some(base_depth) => base_depth.parse()?,
+			None => base_depth,
+		};
+
 		let max_depth = match config.max_depth {
 			Some(max_depth) if max_depth > 0 => max_depth,
 			_ => {
@@ -119,7 +128,12 @@ fn run() -> Result<(),ApplicationError> {
 			}
 		};
 
-		let mut time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
+		let max_depth:u32 = match matches.opt_str("maxdepth") {
+			Some(max_depth) => max_depth.parse()?,
+			None => max_depth,
+		};
+
+		let time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
 				if l == 0 {
 					UsiGoTimeLimit::Infinite
 				} else {
@@ -127,20 +141,40 @@ fn run() -> Result<(),ApplicationError> {
 				}
 			});
 
-		let mut running_time = config.running_time.map_or(None,|t| {
+		let time_limit:UsiGoTimeLimit = match matches.opt_str("timelimit") {
+			Some(time_limit) => {
+				let l = time_limit.parse()?;
+				UsiGoTimeLimit::Limit(Some((l,l)),None)
+			},
+			None => time_limit,
+		};
+
+		let running_time = config.running_time.map_or(None,|t| {
 				if t == 0 {
 					None
 				} else {
-					Some(Duration::from_millis(t as u64))
+					Some(Duration::from_millis(t as u64 * 1000))
 				}
 			});
-		let mut number_of_games = config.number_of_games.map_or(None,|t| {
+
+		let running_time:Option<Duration> = match matches.opt_str("t") {
+			Some(running_time) => Some(Duration::from_millis(running_time.parse::<u64>()? * 1000)),
+			None => running_time,
+		};
+
+		let number_of_games = config.number_of_games.map_or(None,|t| {
 				if t == 0 {
 					None
 				} else {
 					Some(t)
 				}
 			});
+
+		let number_of_games:Option<u32> = match matches.opt_str("c") {
+			Some(number_of_games) => Some(number_of_games.parse()?),
+			None => number_of_games,
+		};
+
 		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, running_time = {:?}, number_of_games = {:?}",
 			base_depth, max_depth, time_limit, running_time, number_of_games
 		);

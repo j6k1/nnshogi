@@ -2,6 +2,7 @@ use std::fmt;
 use std::error;
 use std::io;
 use std::convert::From;
+use std::num::ParseIntError;
 use usiagent::event::SystemEventKind;
 use usiagent::event::UserEventKind;
 use usiagent::error::USIAgentRunningError;
@@ -76,6 +77,7 @@ impl From<UsiProtocolError> for CommonError {
 pub enum ApplicationError {
 	StartupError(String),
 	IOError(io::Error),
+	ParseIntError(ParseIntError),
 	AgentRunningError(String),
 	SelfMatchRunningError(String),
 }
@@ -84,6 +86,7 @@ impl fmt::Display for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
 			ApplicationError::IOError(ref e) => write!(f, "{}",e),
+			ApplicationError::ParseIntError(ref e) => write!(f, "{}",e),
 			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
 			ApplicationError::SelfMatchRunningError(ref s) => write!(f, "{}",s),
 		}
@@ -94,6 +97,7 @@ impl error::Error for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(_) => "Startup Error.",
 			ApplicationError::IOError(_) => "IO Error.",
+			ApplicationError::ParseIntError(_) => "An error occurred parsing the integer string.",
 			ApplicationError::AgentRunningError(_) => "An error occurred while running USIAgent.",
 			ApplicationError::SelfMatchRunningError(_) => "An error occurred while running the self-match.",
 		}
@@ -103,6 +107,7 @@ impl error::Error for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(_) => None,
 			ApplicationError::IOError(ref e) => Some(e),
+			ApplicationError::ParseIntError(ref e) => Some(e),
 			ApplicationError::AgentRunningError(_) => None,
 			ApplicationError::SelfMatchRunningError(_) => None,
 		}
@@ -111,5 +116,10 @@ impl error::Error for ApplicationError {
 impl From<io::Error> for ApplicationError {
 	fn from(err: io::Error) -> ApplicationError {
 		ApplicationError::IOError(err)
+	}
+}
+impl From<ParseIntError> for ApplicationError {
+	fn from(err: ParseIntError) -> ApplicationError {
+		ApplicationError::ParseIntError(err)
 	}
 }
