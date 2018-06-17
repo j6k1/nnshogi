@@ -10,7 +10,6 @@ extern crate simplenn;
 pub mod player;
 pub mod error;
 pub mod nn;
-pub mod hash;
 
 use std::env;
 use std::sync::Mutex;

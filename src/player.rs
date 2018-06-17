@@ -14,14 +14,13 @@ use usiagent::player::*;
 use usiagent::command::*;
 use usiagent::event::*;
 use usiagent::shogi::*;
+use usiagent::hash::*;
 use usiagent::OnErrorHandler;
 use usiagent::Logger;
 use usiagent::error::PlayerError;
 use usiagent::TryFrom;
 
 use nn::Intelligence;
-
-use hash::TwoKeyHashMap;
 
 const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
 const MOCHIGOMA_KIND_MAX:usize = MochigomaKind::Hisha as usize;
