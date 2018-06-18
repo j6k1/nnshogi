@@ -281,8 +281,7 @@ fn run() -> Result<(),ApplicationError> {
 
 		let r = engine.start_default(|self_match_event_dispatcher| {
 									self_match_event_dispatcher
-										.add_handler(SelfMatchEventKind::GameStart,
-														Box::new(move |_,e| {
+										.add_handler(SelfMatchEventKind::GameStart, move |_,e| {
 											match e {
 												&SelfMatchEvent::GameStart(n,t,_) => {
 													let t = match t {
@@ -294,10 +293,9 @@ fn run() -> Result<(),ApplicationError> {
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
 											}
-										}));
+										});
 									self_match_event_dispatcher
-										.add_handler(SelfMatchEventKind::Moved,
-														Box::new(move |_,e| {
+										.add_handler(SelfMatchEventKind::Moved, move |_,e| {
 											match e {
 												&SelfMatchEvent::Moved(t,m) => {
 													match t {
@@ -312,10 +310,9 @@ fn run() -> Result<(),ApplicationError> {
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
 											}
-										}));
+										});
 									self_match_event_dispatcher
-										.add_handler(SelfMatchEventKind::GameEnd,
-														Box::new(move |_,e| {
+										.add_handler(SelfMatchEventKind::GameEnd, move |_,e| {
 											match *e {
 												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Win(t)) => {
 													let t = match t {
@@ -395,10 +392,9 @@ fn run() -> Result<(),ApplicationError> {
 												}
 											}
 											Ok(())
-										}));
+										});
 									self_match_event_dispatcher
-										.add_handler(SelfMatchEventKind::Abort,
-														Box::new(move |_,e| {
+										.add_handler(SelfMatchEventKind::Abort, move |_,e| {
 											match e {
 												&SelfMatchEvent::Abort => {
 													print!("思考が途中で中断されました。\n");
@@ -406,7 +402,7 @@ fn run() -> Result<(),ApplicationError> {
 												},
 												e => Err(EventHandlerError::InvalidState(e.event_kind())),
 											}
-										}));
+										});
 								},
 								on_before_newgame,
 								None,Some(KifuWriter::new(String::from("logs/kifu.txt"))?),
