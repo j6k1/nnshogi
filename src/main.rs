@@ -14,8 +14,7 @@ pub mod nn;
 use std::env;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::io::{ BufWriter, Write, BufReader, Read };
-use std::fs;
+use std::io::{ Write, BufReader, Read };
 use std::fs::OpenOptions;
 use std::fs::File;
 use std::path::Path;
@@ -405,7 +404,7 @@ fn run() -> Result<(),ApplicationError> {
 										});
 								},
 								on_before_newgame,
-								None,Some(KifuWriter::new(String::from("logs/kifu.txt"))?),
+								None,Some(FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?),
 								input_read_handler,
 								[
 									("BaseDepth",SysEventOption::Num(base_depth)),
@@ -428,9 +427,10 @@ fn run() -> Result<(),ApplicationError> {
 									}
 								});
 		std::io::stdout().flush().is_err();
-		r.map_err(|_| ApplicationError::SelfMatchRunningError(String::from(
+		r.map_err(|_| ApplicationError::SelfMatchRunningError(
+						SelfMatchRunningError::InvalidState(String::from(
 			"自己対局の実行中にエラーが発生しました。詳細はログを参照してください..."
-		)))
+		))))
 	} else {
 		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
 
@@ -465,33 +465,5 @@ impl InfoSender for CosoleInfoSender {
 			}
 		}
 		Ok(())
-	}
-}
-#[derive(Debug)]
-pub struct KifuWriter {
-	writer:BufWriter<fs::File>,
-}
-impl KifuWriter {
-	pub fn new(file:String) -> Result<KifuWriter,ApplicationError> {
-		Ok(KifuWriter {
-			writer:BufWriter::new(OpenOptions::new().append(true).create(true).open(file)?),
-		})
-	}
-}
-impl SelfMatchKifuWriter<SelfMatchRunningError> for KifuWriter {
-	fn write(&mut self,initial_sfen:&String,m:&Vec<Move>) -> Result<(),SelfMatchRunningError> {
-		let sfen = match self.to_sfen(initial_sfen,m) {
-			Err(ref e) => {
-				return Err(SelfMatchRunningError::InvalidState(e.to_string()));
-			},
-			Ok(sfen) => sfen,
-		};
-
-		match self.writer.write(format!("{}\n",sfen).as_bytes()) {
-			Err(ref e) => {
-				Err(SelfMatchRunningError::InvalidState(e.to_string()))
-			},
-			Ok(_) => Ok(()),
-		}
 	}
 }

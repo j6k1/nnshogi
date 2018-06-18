@@ -9,6 +9,7 @@ use usiagent::error::USIAgentRunningError;
 use usiagent::error::USIAgentStartupError;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
+use usiagent::error::SelfMatchRunningError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
 
@@ -79,7 +80,7 @@ pub enum ApplicationError {
 	IOError(io::Error),
 	ParseIntError(ParseIntError),
 	AgentRunningError(String),
-	SelfMatchRunningError(String),
+	SelfMatchRunningError(SelfMatchRunningError),
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -88,7 +89,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::IOError(ref e) => write!(f, "{}",e),
 			ApplicationError::ParseIntError(ref e) => write!(f, "{}",e),
 			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
-			ApplicationError::SelfMatchRunningError(ref s) => write!(f, "{}",s),
+			ApplicationError::SelfMatchRunningError(ref e) => write!(f, "{}",e),
 		}
 	}
 }
@@ -109,7 +110,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::IOError(ref e) => Some(e),
 			ApplicationError::ParseIntError(ref e) => Some(e),
 			ApplicationError::AgentRunningError(_) => None,
-			ApplicationError::SelfMatchRunningError(_) => None,
+			ApplicationError::SelfMatchRunningError(ref e) => Some(e),
 		}
 	}
 }
@@ -121,5 +122,10 @@ impl From<io::Error> for ApplicationError {
 impl From<ParseIntError> for ApplicationError {
 	fn from(err: ParseIntError) -> ApplicationError {
 		ApplicationError::ParseIntError(err)
+	}
+}
+impl From<SelfMatchRunningError> for ApplicationError {
+	fn from(err: SelfMatchRunningError) -> ApplicationError {
+		ApplicationError::SelfMatchRunningError(err)
 	}
 }
