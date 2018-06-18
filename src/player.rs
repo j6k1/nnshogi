@@ -401,7 +401,7 @@ impl NNShogiPlayer {
 					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
 
 					match next {
-						(ref next,ref mc,_) if next.win_only_moves(&teban.opposite()).len() > 0 => {
+						(ref next,ref mc,_) if next.win_only_moves(&teban.opposite()).len() == 0 => {
 							let is_put_fu = match m {
 								LegalMove::Put(MochigomaKind::Fu,_) => true,
 								_ => false,
