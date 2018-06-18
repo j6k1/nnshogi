@@ -316,7 +316,84 @@ fn run() -> Result<(),ApplicationError> {
 									self_match_event_dispatcher
 										.add_handler(SelfMatchEventKind::GameEnd,
 														Box::new(move |_,e| {
-											print!("ゲームが終了しました。{:?}\n",e);
+											match *e {
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Win(t)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の勝ちです。\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Draw) => {
+													print!("引き分けです。\n");
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Resign(t)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の投了です。\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::NyuGyokuWin(t)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の入玉宣言勝ちです。\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::NyuGyokuLose(t)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}が入玉宣言しましたが、成立しませんでした（{}の負けです）。\n",t,t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::InvalidMove)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（不正な手）\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::PutFuAndMate)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（打ち歩詰め））\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::Sennichite)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（千日手）\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::SennichiteOu)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（連続王手の千日手）\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::NotRespondedOute)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（王手に応じなかった）\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Timeover(t)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}が制限時間を超過しました。（負け）\n",t);
+												},
+												ref e => {
+													return Err(EventHandlerError::InvalidState(e.event_kind()));
+												}
+											}
 											Ok(())
 										}));
 									self_match_event_dispatcher
