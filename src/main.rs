@@ -310,7 +310,7 @@ fn run() -> Result<(),ApplicationError> {
 						break;
 					}
 
-					let (teban, banmen, mc, _, mut mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
+					let (teban, mut banmen, mc, _, mut mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
 						Ok(mut position) => match position {
 							SystemEvent::Position(teban, p, n, m) => {
 								let(banmen,mc) = match p {
@@ -347,7 +347,13 @@ fn run() -> Result<(),ApplicationError> {
 
 					let mvs = mvs.into_iter().skip(start_move).collect::<Vec<Move>>();
 
-					sfen_list.push((teban, banmen, mc, mvs).to_sfen()?);
+					for m in &mvs {
+						match banmen.apply_move_none_check(&teban,&mc,m) {
+							(b,_,_) => banmen = b,
+						}
+					}
+
+					sfen_list.push((teban, banmen, mc, Vec::new()).to_sfen()?);
 
 					buf.clear();
 				}
