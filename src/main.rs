@@ -267,7 +267,7 @@ fn run() -> Result<(),ApplicationError> {
 								"initial_position.from_last及び--fromlastオプションが未設定です。"
 							)));
 						},
-						Some(fromlast) => {
+						Some(fromlast) if fromlast > 0 => {
 							match initial_position.path {
 								None => {
 									return Err(ApplicationError::StartupError(String::from(
@@ -276,6 +276,11 @@ fn run() -> Result<(),ApplicationError> {
 								},
 								Some(ref path) => Some((fromlast, path.clone())),
 							}
+						},
+						Some(_) => {
+							return Err(ApplicationError::StartupError(String::from(
+								"from_lastまたは--fromlastオプションの値には0より大きい値を指定してください。"
+							)));
 						}
 					}
 				}
