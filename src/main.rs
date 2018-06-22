@@ -339,13 +339,13 @@ fn run() -> Result<(),ApplicationError> {
 						}
 					};
 
-					let start_move = if mvs.len() < fromlast as usize {
-						0
+					let len = if mvs.len() < fromlast as usize {
+						mvs.len()
 					} else {
 						mvs.len() - fromlast as usize
 					};
 
-					let mvs = mvs.into_iter().skip(start_move).collect::<Vec<Move>>();
+					let mvs = mvs.into_iter().take(len).collect::<Vec<Move>>();
 
 					for m in &mvs {
 						match banmen.apply_move_none_check(&teban,&mc,m) {
