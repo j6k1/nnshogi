@@ -14,11 +14,13 @@ pub mod nn;
 use std::env;
 use std::sync::Mutex;
 use std::sync::Arc;
-use std::io::{ Write, BufReader, Read };
+use std::io::{ Write, BufReader, Read, BufRead };
 use std::fs::OpenOptions;
 use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
+use std::collections::HashMap;
+use rand::Rng;
 
 use getopts::Options;
 
@@ -43,6 +45,12 @@ pub struct Config {
 	running_time:Option<String>,
 	number_of_games:Option<u32>,
 	silent:bool,
+	initial_position:Option<InitialPositionKifu>,
+}
+#[derive(Debug, Deserialize)]
+pub struct InitialPositionKifu {
+	path:Option<String>,
+	from_last:Option<u32>,
 }
 pub struct ConfigLoader {
 	reader:BufReader<File>,
@@ -94,6 +102,8 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("t", "time", "Running time.", "s: second, m: minute, h: hour, d: day");
 	opts.optopt("c", "count", "execute game count.", "number of game count");
 	opts.optflag("", "silent", "silent mode.");
+	opts.optflag("", "last", "Back a few hands from the end.");
+	opts.optopt("", "fromlast", "Number of moves of from the end.", "move count.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -236,6 +246,116 @@ fn run() -> Result<(),ApplicationError> {
 				}
 			},
 			None => number_of_games,
+		};
+
+		let initial_position = if matches.opt_present("last") {
+			match config.initial_position {
+				None => {
+					return Err(ApplicationError::StartupError(String::from(
+						"initial_positionが未設定です。"
+					)));
+				},
+				Some(ref initial_position) => {
+					let fromlast = match matches.opt_str("fromlast") {
+						Some(fromlast) => Some(fromlast.parse::<u32>()?),
+						None => None,
+					};
+
+					match fromlast.or(initial_position.from_last) {
+						None => {
+							return Err(ApplicationError::StartupError(String::from(
+								"initial_position.from_last及び--fromlastオプションが未設定です。"
+							)));
+						},
+						Some(fromlast) => {
+							match initial_position.path {
+								None => {
+									return Err(ApplicationError::StartupError(String::from(
+										"initial_position.pathが未設定です。"
+									)));
+								},
+								Some(ref path) => Some((fromlast, path.clone())),
+							}
+						}
+					}
+				}
+			}
+		} else {
+			None
+		};
+
+		let initial_position_creator = match initial_position {
+			None => None,
+			Some((fromlast, path)) => {
+				let mut reader = BufReader::new(
+									OpenOptions::new()
+										.read(true).create(false).open(&*path)?);
+
+				let mut sfen_list:Vec<String> = Vec::new();
+
+				let mut buf = String::new();
+
+				let position_parser = PositionParser::new();
+
+				loop {
+					let n = reader.read_line(&mut buf)?;
+					buf = buf.trim().to_string();
+
+					if n == 0  {
+						break;
+					}
+
+					let (teban, banmen, mc, _, mut mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
+						Ok(mut position) => match position {
+							SystemEvent::Position(teban, p, n, m) => {
+								let(banmen,mc) = match p {
+									UsiInitialPosition::Startpos => {
+										(BANMEN_START_POS.clone(), MochigomaCollections::Pair(HashMap::new(),HashMap::new()))
+									},
+									UsiInitialPosition::Sfen(ref b,MochigomaCollections::Pair(ref ms,ref mg)) => {
+										(b.clone(),MochigomaCollections::Pair(ms.clone(),mg.clone()))
+									},
+									UsiInitialPosition::Sfen(ref b,MochigomaCollections::Empty) => {
+										(b.clone(),MochigomaCollections::Pair(HashMap::new(),HashMap::new()))
+									}
+								};
+								(teban,banmen,mc,n,m)
+							},
+							_ => {
+								return Err(ApplicationError::StartupError(String::from(
+									"棋譜ファイルのパース結果が不正です。"
+								)));
+							}
+						},
+						Err(_) => {
+							return Err(ApplicationError::StartupError(String::from(
+								"棋譜ファイルのパースでエラーが発生しました。"
+							)));
+						}
+					};
+
+					let start_move = if mvs.len() < fromlast as usize {
+						0
+					} else {
+						mvs.len() - fromlast as usize
+					};
+
+					let mvs = mvs.into_iter().skip(start_move).collect::<Vec<Move>>();
+
+					sfen_list.push((teban, banmen, mc, mvs).to_sfen()?);
+
+					buf.clear();
+				}
+
+				let mut rnd = rand::XorShiftRng::new_unseeded();
+				let len = sfen_list.len();
+
+				let f:Box<FnMut() -> String + Send + 'static> = Box::new(move || {
+					sfen_list[rnd.gen_range(0, len)].clone()
+				});
+
+				Some(f)
+			}
 		};
 
 		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, running_time = {:?}, number_of_games = {:?}",
@@ -404,7 +524,7 @@ fn run() -> Result<(),ApplicationError> {
 										});
 								},
 								on_before_newgame,
-								None,Some(FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?),
+								initial_position_creator,Some(FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?),
 								input_read_handler,
 								[
 									("BaseDepth",SysEventOption::Num(base_depth)),

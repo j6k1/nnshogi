@@ -12,6 +12,7 @@ use usiagent::error::UsiProtocolError;
 use usiagent::error::SelfMatchRunningError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
+use usiagent::error::SfenStringConvertError;
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -77,6 +78,7 @@ impl From<UsiProtocolError> for CommonError {
 #[derive(Debug)]
 pub enum ApplicationError {
 	StartupError(String),
+	SfenStringConvertError(SfenStringConvertError),
 	IOError(io::Error),
 	ParseIntError(ParseIntError),
 	AgentRunningError(String),
@@ -86,6 +88,7 @@ impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
 			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
+			ApplicationError::SfenStringConvertError(ref e) => write!(f, "{}",e),
 			ApplicationError::IOError(ref e) => write!(f, "{}",e),
 			ApplicationError::ParseIntError(ref e) => write!(f, "{}",e),
 			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
@@ -97,6 +100,7 @@ impl error::Error for ApplicationError {
 	fn description(&self) -> &str {
 		match *self {
 			ApplicationError::StartupError(_) => "Startup Error.",
+			ApplicationError::SfenStringConvertError(_) => "An error occurred during conversion to sfen string.",
 			ApplicationError::IOError(_) => "IO Error.",
 			ApplicationError::ParseIntError(_) => "An error occurred parsing the integer string.",
 			ApplicationError::AgentRunningError(_) => "An error occurred while running USIAgent.",
@@ -107,6 +111,7 @@ impl error::Error for ApplicationError {
 	fn cause(&self) -> Option<&error::Error> {
 		match *self {
 			ApplicationError::StartupError(_) => None,
+			ApplicationError::SfenStringConvertError(ref e) => Some(e),
 			ApplicationError::IOError(ref e) => Some(e),
 			ApplicationError::ParseIntError(ref e) => Some(e),
 			ApplicationError::AgentRunningError(_) => None,
@@ -127,5 +132,10 @@ impl From<ParseIntError> for ApplicationError {
 impl From<SelfMatchRunningError> for ApplicationError {
 	fn from(err: SelfMatchRunningError) -> ApplicationError {
 		ApplicationError::SelfMatchRunningError(err)
+	}
+}
+impl From<SfenStringConvertError> for ApplicationError {
+	fn from(err: SfenStringConvertError) -> ApplicationError {
+		ApplicationError::SfenStringConvertError(err)
 	}
 }
