@@ -161,7 +161,7 @@ fn run() -> Result<(),ApplicationError> {
 			if l == 0 {
 				UsiGoTimeLimit::Infinite
 			} else {
-				UsiGoTimeLimit::Limit(Some((l,l)),None)
+				UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
 			}
 		});
 
@@ -171,7 +171,7 @@ fn run() -> Result<(),ApplicationError> {
 				if l == 0 {
 					UsiGoTimeLimit::Infinite
 				} else {
-					UsiGoTimeLimit::Limit(Some((l,l)),None)
+					UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
 				}
 			}
 			None => time_limit,
