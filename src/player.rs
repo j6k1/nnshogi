@@ -103,7 +103,6 @@ pub struct NNShogiPlayer {
 	mhash:u64,
 	shash:u64,
 	kyokumen_hash_map:TwoKeyHashMap<u32>,
-	tinc:u32,
 	nna_filename:String,
 	nnb_filename:String,
 	evalutor:Option<Intelligence>,
@@ -149,7 +148,6 @@ impl NNShogiPlayer {
 			mhash:0,
 			shash:0,
 			kyokumen_hash_map:TwoKeyHashMap::new(),
-			tinc:0,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			evalutor:None,
@@ -1086,7 +1084,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		if !self.quited {
 			self.stop = false;
 		}
-		self.tinc = 0;
 		self.count_of_move_started = 0;
 		Ok(())
 	}
@@ -1152,8 +1149,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			info_sender:Arc<Mutex<S>>,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender {
 		let (teban,banmen,mc) = self.extract_kyokumen(&self.teban,&self.banmen,&self.mc)?;
-		let (limit,tinc) = limit.to_instant(teban, self.tinc);
-		self.tinc = tinc;
+		let limit = limit.to_instant(teban);
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_hash_map = self.kyokumen_hash_map.clone();
 
@@ -1186,7 +1182,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				BestMove::Resign
 			}
 		};
-		self.tinc = self.get_update_inc(&self.tinc,&limit).unwrap_or(0);
 
 		if let BestMove::Move(m,_) = result {
 			let history = self.history.drain(0..)
