@@ -513,6 +513,21 @@ impl NNShogiPlayer {
 							},
 							Some(c) => {
 								current_kyokumen_hash_map.insert(mhash,shash,c+1);
+
+								let s = Score::Value(0);
+
+								if s > scoreval {
+									scoreval = s;
+									best_move = Some(m.to_move());
+									if alpha < scoreval {
+										alpha = scoreval;
+									}
+									if scoreval >= beta {
+										return Evaluation::Result(scoreval,best_move);
+									}
+								}
+
+								continue;
 							},
 							None => (),
 						}
