@@ -14,9 +14,10 @@ use usiagent::player::*;
 use usiagent::command::*;
 use usiagent::event::*;
 use usiagent::shogi::*;
+use usiagent::rule::*;
 use usiagent::hash::*;
 use usiagent::OnErrorHandler;
-use usiagent::Logger;
+use usiagent::logger::*;
 use usiagent::error::PlayerError;
 use usiagent::TryFrom;
 
@@ -280,7 +281,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		let mvs:Vec<LegalMove> = banmen.legal_moves_all(&teban, mc);
+		let mvs:Vec<LegalMove> = Rule::legal_moves_all(&teban, &banmen, mc);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -304,9 +305,9 @@ impl NNShogiPlayer {
 					(100,m)
 				},
 				m => {
-					match banmen.apply_move_none_check(&teban,mc,&m.to_move()) {
+					match Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move()) {
 						(ref b,_,_) => {
-							if b.win_only_moves(&teban).len() > 0 {
+							if Rule::win_only_moves(&teban,b).len() > 0 {
 								(10,m)
 							} else {
 								match m {
@@ -411,10 +412,10 @@ impl NNShogiPlayer {
 						_ => (),
 					}
 
-					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
+					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
 					match next {
-						(ref next,ref mc,_) if next.win_only_moves(&teban.opposite()).len() == 0 => {
+						(ref next,ref mc,_) if Rule::win_only_moves(&teban.opposite(),next).len() == 0 => {
 							let is_put_fu = match m {
 								LegalMove::Put(MochigomaKind::Fu,_) => true,
 								_ => false,
@@ -517,7 +518,7 @@ impl NNShogiPlayer {
 						}
 					}
 
-					let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
+					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
 					let depth = match obtained {
 						Some(_) => depth + 1,
@@ -525,7 +526,7 @@ impl NNShogiPlayer {
 					};
 
 					match next {
-						(ref banmen,ref mc,_) if banmen.win_only_moves(&teban.opposite()).len() == 0 => {
+						(ref banmen,ref mc,_) if Rule::win_only_moves(&teban.opposite(),banmen).len() == 0 => {
 							match self.alphabeta(event_queue,
 								info_sender,
 								on_error_handler,
@@ -583,7 +584,7 @@ impl NNShogiPlayer {
 								current_depth:u32,
 								base_depth:u32)
 		-> OuteEvaluation where L: Logger, S: InfoSender {
-		let mvs = banmen.respond_oute_only_moves_all(&teban, mc);
+		let mvs = Rule::respond_oute_only_moves_all(&teban, &banmen, mc);
 
 		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
@@ -656,7 +657,7 @@ impl NNShogiPlayer {
 					None => (),
 				}
 
-				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
+				let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
 				match next {
 					(ref next,ref mc,_) => {
@@ -703,7 +704,7 @@ impl NNShogiPlayer {
 								current_depth:u32,
 								base_depth:u32)
 		-> OuteEvaluation where L: Logger, S: InfoSender {
-		let mvs = banmen.oute_only_moves_all(&teban, mc);
+		let mvs = Rule::oute_only_moves_all(&teban, &banmen, mc);
 
 		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
@@ -746,7 +747,7 @@ impl NNShogiPlayer {
 					_ => false,
 				};
 
-				let next = banmen.apply_move_none_check(&teban,mc,&m.to_move());
+				let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
 				let o = match m {
 					&LegalMove::To(_,_,ref o) => {

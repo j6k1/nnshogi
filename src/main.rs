@@ -30,9 +30,10 @@ use usiagent::output::*;
 use usiagent::event::*;
 use usiagent::command::*;
 use usiagent::shogi::*;
+use usiagent::rule::*;
+use usiagent::protocol::*;
 use usiagent::error::*;
 use usiagent::player::*;
-use usiagent::TryToString;
 
 use player::NNShogiPlayer;
 use error::ApplicationError;
@@ -348,7 +349,7 @@ fn run() -> Result<(),ApplicationError> {
 					let mvs = mvs.into_iter().take(len).collect::<Vec<Move>>();
 
 					for m in &mvs {
-						match banmen.apply_move_none_check(&teban,&mc,m) {
+						match Rule::apply_move_none_check(&banmen,&teban,&mc,m) {
 							(b,nmc,_) => {
 								banmen = b;
 								mc = nmc;
@@ -596,7 +597,7 @@ impl InfoSender for CosoleInfoSender {
 	fn send(&mut self,commands:Vec<UsiInfoSubCommand>) -> Result<(), InfoSendError> {
 		if !self.silent {
 			for command in commands {
-				print!("{}\n",command.try_to_string()?);
+				print!("{}\n",command.to_usi_command()?);
 			}
 		}
 		Ok(())
