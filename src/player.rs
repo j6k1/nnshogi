@@ -1240,9 +1240,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
 
 		if self.count_of_move_started > 0 {
-			let teban = match self.teban {
-				Some(teban) if self.moved => teban,
-				Some(teban) => teban.opposite(),
+			let (teban,last_teban) = match self.teban {
+				Some(teban) if self.moved => (teban,teban),
+				Some(teban) => (teban,teban.opposite()),
 				None => {
 					return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
 				}
@@ -1250,7 +1250,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 			match self.evalutor {
 				Some(ref mut evalutor) => {
-					evalutor.learning(teban,self.history.clone(),s,&*event_queue)?;
+					evalutor.learning(teban,last_teban,self.history.clone(),s,&*event_queue)?;
 				},
 				None => (),
 			}

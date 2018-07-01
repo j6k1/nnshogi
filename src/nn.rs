@@ -110,12 +110,12 @@ impl Intelligence {
 		Ok((answer * i32::MAX as f64) as i32)
 	}
 
-	pub fn learning<'a>(&mut self,teban:Teban,
+	pub fn learning<'a>(&mut self,teban:Teban,last_teban:Teban,
 		history:Vec<(Banmen,MochigomaCollections)>,s:&GameEndState,
 		event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(),CommonError> {
 
-		let mut t = teban;
+		let mut t = last_teban;
 
 		for h in history.iter().rev() {
 			match self.handle_events(&*event_queue) {
