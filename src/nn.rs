@@ -29,10 +29,11 @@ pub struct Intelligence {
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
+	learning_mode:bool,
 	quited:bool,
 }
 impl Intelligence {
-	pub fn new (savedir:String,nna_filename:String,nnb_filename:String) -> Intelligence {
+	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
 		let model:NNModel = NNModel::with_list_of_bias_and_unit_initializer(
@@ -85,6 +86,7 @@ impl Intelligence {
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
+			learning_mode:learning_mode,
 			quited:false,
 		}
 	}
@@ -97,10 +99,16 @@ impl Intelligence {
 		let nnaanswera = self.nna.solve(&input)?;
 		let nnbanswerb = self.nnb.solve(&input)?;
 
-		let mut rnd = rand::XorShiftRng::new_unseeded();
+		let (a,b) = if self.learning_mode {
+			let mut rnd = rand::XorShiftRng::new_unseeded();
 
-		let a = rnd.next_f64();
-		let b = 1f64 - a;
+			let a = rnd.next_f64();
+			let b = 1f64 - a;
+
+			(a,b)
+		} else {
+			(0.5f64,0.5f64)
+		};
 
 		let nnaanswera = nnaanswera[0];
 		let nnbanswerb = nnbanswerb[0];
@@ -158,7 +166,7 @@ impl Intelligence {
 				},
 				_ => {
 					self.nna.learn(&input,&(0..1).map(|_| a)
-													.collect::<Vec<f64>>())?;
+												.collect::<Vec<f64>>())?;
 					self.nnb.learn(&input,&(0..1).map(|_| b)
 													.collect::<Vec<f64>>())?;
 				}

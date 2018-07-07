@@ -381,8 +381,8 @@ fn run() -> Result<(),ApplicationError> {
 		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new(silent)));
 
 		let mut engine = SelfMatchEngine::new(
-			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")),
-			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin")),
+			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
+			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
 			info_sender_arc,
 			time_limit,
 			running_time,number_of_games
@@ -568,7 +568,7 @@ fn run() -> Result<(),ApplicationError> {
 			"自己対局の実行中にエラーが発生しました。詳細はログを参照してください..."
 		))))
 	} else {
-		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin")));
+		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),false));
 
 		let r = agent.start_default(|on_error_handler,e| {
 			match on_error_handler {
