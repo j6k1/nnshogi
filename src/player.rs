@@ -103,7 +103,7 @@ pub struct NNShogiPlayer {
 	mc:Option<MochigomaCollections>,
 	mhash:u64,
 	shash:u64,
-	kyokumen_hash_map:TwoKeyHashMap<u32>,
+	kyokumen_hash_map:TwoKeyHashMap<u64,u32>,
 	nna_filename:String,
 	nnb_filename:String,
 	learning_mode:bool,
@@ -228,9 +228,9 @@ impl NNShogiPlayer {
 								mut alpha:Score,beta:Score,
 								m:Option<Move>,mc:&MochigomaCollections,
 								obtained:Option<ObtainKind>,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
-								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32)
@@ -593,9 +593,9 @@ impl NNShogiPlayer {
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
-								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
@@ -713,9 +713,9 @@ impl NNShogiPlayer {
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,banmen:&Banmen,
 								mc:&MochigomaCollections,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<()>,
-								ignore_oute_hash_map:&mut TwoKeyHashMap<()>,
+								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
+								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
+								ignore_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
@@ -1111,7 +1111,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.history.clear();
 		self.kyokumen_hash_map.clear();
 
-		let mut kyokumen_hash_map:TwoKeyHashMap<u32> = TwoKeyHashMap::new();
+		let mut kyokumen_hash_map:TwoKeyHashMap<u64,u32> = TwoKeyHashMap::new();
 		let (mhash,shash) = self.calc_initial_hash(&ban,&ms,&mg);
 
 		kyokumen_hash_map.insert(mhash,shash,1);
