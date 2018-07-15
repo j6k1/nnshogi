@@ -1238,25 +1238,26 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		};
 
 		if let BestMove::Move(m,_) = result {
-			let history = self.history.drain(0..)
-								.collect::<Vec<(Banmen,MochigomaCollections,u64,u64)>>();;
-			let last = history.last();
-			if let Some(&(ref banmen,ref mc,mhash,shash)) = last {
-				 match self.teban {
-					Some(teban) => {
-						let (next,nmc,o) = Rule::apply_move_none_check(banmen,&teban,mc,&m);
-						self.moved = true;
-						let mut history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
-						let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
-						let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
-						history.push((next.clone(),nmc.clone(),mhash,shash));
-						self.history = history;
-					},
-					None => {
-						return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+			let h = match self.history.last() {
+				Some(&(ref banmen,ref mc,mhash,shash)) => {
+					match self.teban {
+						Some(teban) => {
+							let (next,nmc,o) = Rule::apply_move_none_check(banmen,&teban,mc,&m);
+							self.moved = true;
+							let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
+							let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+							(next.clone(),nmc.clone(),mhash,shash)
+						},
+						None => {
+							return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
+						}
 					}
+				},
+				None => {
+					return Err(CommonError::Fail(String::from("The history of banmen has not been set yet.")));
 				}
-			}
+			};
+			self.history.push(h);
 		}
 
 		Ok(result)
