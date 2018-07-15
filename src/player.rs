@@ -513,8 +513,6 @@ impl NNShogiPlayer {
 							None => None,
 						};
 
-						let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
-
 						let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
 						let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
@@ -524,6 +522,8 @@ impl NNShogiPlayer {
 							},
 							None => (),
 						}
+
+						let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
 						match current_kyokumen_hash_map.get(&mhash,&shash) {
 							Some(c) if c >= 3 => {
