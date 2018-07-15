@@ -103,12 +103,13 @@ pub struct NNShogiPlayer {
 	mc:Option<MochigomaCollections>,
 	mhash:u64,
 	shash:u64,
+	oute_kyokumen_hash_map:TwoKeyHashMap<u64,()>,
 	kyokumen_hash_map:TwoKeyHashMap<u64,u32>,
 	nna_filename:String,
 	nnb_filename:String,
 	learning_mode:bool,
 	evalutor:Option<Intelligence>,
-	pub history:Vec<(Banmen,MochigomaCollections)>,
+	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	base_depth:u32,
 	max_depth:u32,
 	count_of_move_started:u32,
@@ -149,6 +150,7 @@ impl NNShogiPlayer {
 			mc:None,
 			mhash:0,
 			shash:0,
+			oute_kyokumen_hash_map:TwoKeyHashMap::new(),
 			kyokumen_hash_map:TwoKeyHashMap::new(),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
@@ -388,6 +390,13 @@ impl NNShogiPlayer {
 					let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
 					let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
 
+					match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
+						Some(_) => {
+							continue;
+						},
+						None => (),
+					}
+
 					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
 					match current_kyokumen_hash_map.get(&mhash,&shash) {
@@ -508,6 +517,13 @@ impl NNShogiPlayer {
 
 						let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
 						let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+
+						match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
+							Some(_) => {
+								continue;
+							},
+							None => (),
+						}
 
 						match current_kyokumen_hash_map.get(&mhash,&shash) {
 							Some(c) if c >= 3 => {
@@ -1122,7 +1138,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mc = MochigomaCollections::new(ms,mg);
 
 
-		let history:Vec<(Banmen,MochigomaCollections)> = Vec::new();
+		let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
 
 		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
 												mc,m,(0,0,kyokumen_hash_map,history),
@@ -1146,17 +1162,37 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				&None => (),
 			}
 
-			history.push((banmen.clone(),mc.clone()));
+			history.push((banmen.clone(),mc.clone(),mhash,shash));
 			(mhash,shash,kyokumen_hash_map,history)
 		});
 
 		let (mhash,shash,kyokumen_hash_map,history) = r;
+
+		let mut oute_kyokumen_hash_map:TwoKeyHashMap<u64,()> = TwoKeyHashMap::new();
+		let mut current_teban = t.opposite();
+
+		for h in history.iter().rev() {
+			if current_teban == t {
+				match &h {
+					&(ref banmen,_, mhash,shash) => {
+						if Rule::win_only_moves(&current_teban,banmen).len() == 0 {
+							break;
+						} else {
+							oute_kyokumen_hash_map.insert(*mhash,*shash,());
+						}
+					}
+				}
+			}
+
+			current_teban = current_teban.opposite();
+		}
 
 		self.teban = Some(t);
 		self.banmen = Some(banmen);
 		self.mc = Some(mc);
 		self.mhash = mhash;
 		self.shash = shash;
+		self.oute_kyokumen_hash_map = oute_kyokumen_hash_map;
 		self.kyokumen_hash_map = kyokumen_hash_map;
 		self.history = history;
 		self.count_of_move_started += 1;
@@ -1203,20 +1239,17 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		if let BestMove::Move(m,_) = result {
 			let history = self.history.drain(0..)
-								.collect::<Vec<(Banmen,MochigomaCollections)>>();;
+								.collect::<Vec<(Banmen,MochigomaCollections,u64,u64)>>();;
 			let last = history.last();
-			if let Some(&(ref banmen,ref mc)) = last {
+			if let Some(&(ref banmen,ref mc,mhash,shash)) = last {
 				 match self.teban {
 					Some(teban) => {
+						let (next,nmc,o) = Rule::apply_move_none_check(banmen,&teban,mc,&m);
 						self.moved = true;
-						let (_,_,_,history) = self.apply_moves(teban,banmen.clone(),
-											mc.clone(),[m].into_iter()
-													.map(|m| m.clone())
-													.collect::<Vec<Move>>(),
-											Vec::new(),|_,_,banmen,mc,_,_,mut history| {
-							history.push((banmen.clone(),mc.clone()));
-							history
-						});
+						let mut history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
+						let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
+						let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+						history.push((next.clone(),nmc.clone(),mhash,shash));
 						self.history = history;
 					},
 					None => {

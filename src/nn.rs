@@ -119,7 +119,7 @@ impl Intelligence {
 	}
 
 	pub fn learning<'a>(&mut self,teban:Teban,last_teban:Teban,
-		history:Vec<(Banmen,MochigomaCollections)>,s:&GameEndState,
+		history:Vec<(Banmen,MochigomaCollections,u64,u64)>,s:&GameEndState,
 		event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(),CommonError> {
 
