@@ -406,7 +406,9 @@ impl NNShogiPlayer {
 						Some(c) => {
 							current_kyokumen_hash_map.insert(mhash,shash,c+1);
 						},
-						None => (),
+						None => {
+							current_kyokumen_hash_map.insert(mhash,shash,1);
+						}
 					}
 
 					match already_oute_hash_map.get(&mhash,&shash) {
@@ -524,7 +526,6 @@ impl NNShogiPlayer {
 						}
 						(mhash,shash)
 					};
-
 					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
 					let depth = match obtained {
@@ -559,7 +560,9 @@ impl NNShogiPlayer {
 
 									continue;
 								},
-								None => (),
+								None => {
+									current_kyokumen_hash_map.insert(mhash,shash,1);
+								}
 							}
 
 							match self.alphabeta(event_queue,
@@ -689,7 +692,9 @@ impl NNShogiPlayer {
 					Some(c) => {
 						current_kyokumen_hash_map.insert(mhash,shash,c+1);
 					},
-					None => (),
+					None => {
+						current_kyokumen_hash_map.insert(mhash,shash,1);
+					}
 				}
 
 				let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
@@ -820,7 +825,9 @@ impl NNShogiPlayer {
 					Some(c) => {
 						current_kyokumen_hash_map.insert(mhash,shash,c+1);
 					},
-					None => (),
+					None => {
+						current_kyokumen_hash_map.insert(mhash,shash,1);
+					}
 				}
 
 				match next {
@@ -1143,11 +1150,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
 
 		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
-												mc,m,(0,0,kyokumen_hash_map,history),
+												mc,m,(mhash,shash,kyokumen_hash_map,history),
 												|s,t,banmen,mc,m,o,r| {
 			let (prev_mhash,prev_shash,mut kyokumen_hash_map,mut history) = r;
 
-			match m {
+			let (mhash,shash) = match m {
 				&Some(ref m) => {
 					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,m,&o);
 					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,m,&o);
@@ -1160,9 +1167,12 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							kyokumen_hash_map.insert(mhash,shash,1);
 						}
 					};
+					(mhash,shash)
 				},
-				&None => (),
-			}
+				&None => {
+					(prev_mhash,prev_shash)
+				}
+			};
 
 			history.push((banmen.clone(),mc.clone(),prev_mhash,prev_shash));
 			(mhash,shash,kyokumen_hash_map,history)
