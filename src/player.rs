@@ -500,7 +500,7 @@ impl NNShogiPlayer {
 						_ => None,
 					};
 
-					{
+					let (mhash,shash) = {
 						let o = match obtained {
 							Some(o) => {
 								match MochigomaKind::try_from(o) {
@@ -522,7 +522,8 @@ impl NNShogiPlayer {
 							},
 							None => (),
 						}
-					}
+						(mhash,shash)
+					};
 
 					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
 
