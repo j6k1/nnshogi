@@ -496,7 +496,7 @@ impl NNShogiPlayer {
 				};
 			}
 			match *m {
-				(_,m) => {
+				(priority,m) => {
 					let obtained = match m {
 						LegalMove::To(_,_,ref o) => *o,
 						_ => None,
@@ -530,6 +530,7 @@ impl NNShogiPlayer {
 
 					let depth = match obtained {
 						Some(_) => depth + 1,
+						None if priority == 10 => depth + 1,
 						None => depth,
 					};
 
