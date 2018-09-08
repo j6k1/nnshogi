@@ -253,6 +253,12 @@ impl NNShogiPlayer {
 			}
 		}
 
+		let win_mvs = Rule::win_only_moves(&teban,&banmen);
+
+		if win_mvs.len() > 0 {
+			return Evaluation::Result(Score::INFINITE,Some(win_mvs[0].to_move()));
+		}
+
 		if depth == 0 || current_depth == self.max_depth {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
@@ -285,7 +291,14 @@ impl NNShogiPlayer {
 			}
 		}
 
-		let mvs:Vec<LegalMove> = Rule::legal_moves_all(&teban, &banmen, mc);
+		let mvs:Vec<LegalMove> = Rule::legal_moves_all(&teban, &banmen, mc).into_iter().filter(|m| {
+			match m {
+				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
+					false
+				},
+				_ => true,
+			}
+		}).collect::<Vec<LegalMove>>();
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -304,23 +317,16 @@ impl NNShogiPlayer {
 		}
 
 		let mut mvs:Vec<(u32,LegalMove)> = mvs.into_iter().map(|m| {
-			match m {
-				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
-					(100,m)
-				},
-				m => {
-					match Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move()) {
-						(ref b,_,_) => {
-							if Rule::win_only_moves(&teban,b).len() > 0 {
-								(10,m)
-							} else {
-								match m {
-									LegalMove::To(_,_,Some(_)) => {
-										(3,m)
-									},
-									_ => (0,m)
-								}
-							}
+			match Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move()) {
+				(ref b,_,_) => {
+					if Rule::win_only_moves(&teban,b).len() > 0 {
+						(10,m)
+					} else {
+						match m {
+							LegalMove::To(_,_,Some(_)) => {
+								(3,m)
+							},
+							_ => (0,m)
 						}
 					}
 				}
@@ -349,13 +355,6 @@ impl NNShogiPlayer {
 				Ordering::Greater
 			}
 		});
-
-		match mvs[0] {
-			(_,LegalMove::To(ref s,ref d,Some(ObtainKind::Ou))) => {
-				return Evaluation::Result(Score::INFINITE,Some(Move::To(*s,*d)));
-			},
-			_ => (),
-		}
 
 		for m in &mvs {
 			match self.handle_events(event_queue, on_error_handler) {
