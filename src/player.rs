@@ -259,6 +259,13 @@ impl NNShogiPlayer {
 			return Evaluation::Result(Score::INFINITE,Some(win_mvs[0].to_move()));
 		}
 
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
+		}
+
 		if depth == 0 || current_depth == self.max_depth {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
@@ -534,7 +541,7 @@ impl NNShogiPlayer {
 					};
 
 					match next {
-						(ref banmen,ref mc,_) if Rule::win_only_moves(&teban.opposite(),banmen).len() == 0 => {
+						(ref banmen,ref mc,_) => {
 
 							let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
@@ -545,7 +552,11 @@ impl NNShogiPlayer {
 								Some(c) => {
 									current_kyokumen_hash_map.insert(mhash,shash,c+1);
 
-									let s = Score::Value(0);
+									let s = if Rule::win_only_moves(&teban.opposite(),banmen).len() > 0 {
+										Score::NEGINFINITE
+									} else {
+										Score::Value(0)
+									};
 
 									if s > scoreval {
 										scoreval = s;
@@ -598,8 +609,7 @@ impl NNShogiPlayer {
 									return Evaluation::Error
 								}
 							}
-						},
-						_ => (),
+						}
 					}
 				}
 			}
