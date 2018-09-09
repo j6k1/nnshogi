@@ -1194,7 +1194,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mut current_teban = t.opposite();
 
 		for h in history.iter().rev().skip(1) {
-			if current_teban == t.opposite() {
+			if current_teban == t {
 				match &h {
 					&(ref banmen,_, mhash,shash) => {
 						if Rule::win_only_moves(&current_teban.opposite(),banmen).len() == 0 {
