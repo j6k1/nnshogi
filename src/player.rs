@@ -271,11 +271,6 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if self.stop {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None);
-		}
-
 		if depth == 0 || current_depth == self.max_depth {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
@@ -306,6 +301,11 @@ impl NNShogiPlayer {
 					}
 				}
 			}
+		}
+
+		if self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(None);
 		}
 
 		let mvs:Vec<LegalMove> = Rule::legal_moves_all(&teban, &banmen, mc).into_iter().filter(|m| {
