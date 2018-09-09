@@ -253,6 +253,11 @@ impl NNShogiPlayer {
 			}
 		}
 
+		if self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(None);
+		}
+
 		let win_mvs = Rule::win_only_moves(&teban,&banmen);
 
 		if win_mvs.len() > 0 {
@@ -264,6 +269,11 @@ impl NNShogiPlayer {
 			Err(ref e) => {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
+		}
+
+		if self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(None);
 		}
 
 		if depth == 0 || current_depth == self.max_depth {
