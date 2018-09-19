@@ -1202,12 +1202,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let mut oute_kyokumen_hash_map:TwoKeyHashMap<u64,()> = TwoKeyHashMap::new();
 		let mut current_teban = t.opposite();
+		let opponent = t.opposite();
 
 		for h in history.iter().rev().skip(1) {
-			if current_teban == t {
+			if current_teban == opponent {
 				match &h {
 					&(ref banmen,_, mhash,shash) => {
-						if Rule::win_only_moves(&current_teban.opposite(),banmen).len() == 0 {
+						if Rule::win_only_moves(&t,banmen).len() == 0 {
 							break;
 						} else {
 							oute_kyokumen_hash_map.insert(*mhash,*shash,());
