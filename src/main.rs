@@ -566,7 +566,14 @@ fn run() -> Result<(),ApplicationError> {
 		r.map_err(|_| ApplicationError::SelfMatchRunningError(
 						SelfMatchRunningError::InvalidState(String::from(
 			"自己対局の実行中にエラーが発生しました。詳細はログを参照してください..."
-		))))
+		)))).map(|r| {
+			print!("開始日時: {}\n",r.start_dt.format("%Y年%m月%d日 %H:%M:%S").to_string());
+			print!("終了日時: {}\n",r.end_dt.format("%Y年%m月%d日 %H:%M:%S").to_string());
+			print!("試合回数: {}\n",r.game_count);
+			let secs = r.elapsed.as_secs();
+			print!("経過時間: {}時間 {}分 {}.{:?}秒\n",
+					secs / (60 * 60), secs / 60, secs, r.elapsed.subsec_nanos() / 1_000_000);
+		})
 	} else {
 		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),false));
 
