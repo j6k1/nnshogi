@@ -571,8 +571,8 @@ fn run() -> Result<(),ApplicationError> {
 			print!("終了日時: {}\n",r.end_dt.format("%Y年%m月%d日 %H:%M:%S").to_string());
 			print!("試合回数: {}\n",r.game_count);
 			let secs = r.elapsed.as_secs();
-			print!("経過時間: {}時間 {}分 {}.{:?}秒\n",
-					secs / (60 * 60), secs / 60, secs, r.elapsed.subsec_nanos() / 1_000_000);
+			print!("経過時間: {}時間{}分{}.{:?}秒\n",
+					secs / (60 * 60), secs  % (60 * 60) / 60, secs % 60, r.elapsed.subsec_nanos() / 1_000_000);
 		})
 	} else {
 		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),false));
