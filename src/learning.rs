@@ -200,7 +200,7 @@ impl CsaLearnener {
 				match notify_quit.lock() {
 					Ok(mut notify_quit) => {
 						if *notify_quit {
-							return Ok(())
+							break;
 						}
 					},
 					Err(ref e) => {
