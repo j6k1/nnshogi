@@ -87,6 +87,7 @@ impl CsaLearnener {
 								match system_event_queue.lock() {
 									Ok(mut system_event_queue) => {
 										system_event_queue.push(SystemEvent::Quit);
+										return;
 									},
 									Err(ref e) => {
 										on_error_handler.lock().map(|h| h.call(e)).is_err();
