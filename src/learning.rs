@@ -38,7 +38,7 @@ impl CsaLearnener {
 		let logger = Arc::new(Mutex::new(logger));
 		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
 
-		let system_event_queue:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 
 		let mut system_event_dispatcher:USIEventDispatcher<SystemEventKind,
@@ -74,6 +74,7 @@ impl CsaLearnener {
 		print!("learning start... kifudir = {}\n", kifudir);
 
 		let on_error_handler = on_error_handler_arc.clone();
+		let system_event_queue = system_event_queue_arc.clone();
 
 		thread::spawn(move || {
 			let mut input_reader = USIStdInputReader::new();
@@ -114,6 +115,7 @@ impl CsaLearnener {
 		});
 
 		let on_error_handler = on_error_handler_arc.clone();
+		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
 		let mut count = 0;
@@ -196,6 +198,10 @@ impl CsaLearnener {
 				}
 
 				count += 1;
+
+				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
+					on_error_handler.lock().map(|h| h.call(e)).is_err();
+				}
 
 				match notify_quit.lock() {
 					Ok(mut notify_quit) => {
