@@ -3,10 +3,13 @@ name = "nnshogi"
 version = "0.1.0"
 authors = ["jinpu"]
 [dependencies.usiagent]
+#git = "https://github.com/j6k1/USIAgent.git"
 path = "F:\\source\\Rust\\USIAgent"
 [dependencies.simplenn]
+#git = "https://github.com/j6k1/simplenn.git"
 path = "F:\\source\\Rust\\simplenn"
 [dependencies.csaparser]
+#git = "https://github.com/j6k1/CsaParser.git"
 path = "F:\\source\\Rust\\CsaParser"
 [dependencies]
 rand = "0.4"
