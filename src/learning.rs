@@ -180,10 +180,12 @@ impl CsaLearnener {
 					history
 				});
 
+				let teban = teban.opposite();
+
 				let s = if teban == teban_at_start {
-					GameEndState::Lose
-				} else {
 					GameEndState::Win
+				} else {
+					GameEndState::Lose
 				};
 
 				match evalutor.learning(teban_at_start,teban,history,&s,&*user_event_queue) {
