@@ -176,16 +176,10 @@ impl CsaLearnener {
 					history
 				});
 
-				let s = match p.end_state {
-					Some(EndState::Toryo) if teban == teban_at_start => GameEndState::Win,
-					Some(EndState::Toryo) => GameEndState::Lose,
-					Some(EndState::Tsumi) if teban == teban_at_start => GameEndState::Lose,
-					Some(EndState::Tsumi) => GameEndState::Win,
-					_ => {
-						return Err(ApplicationError::LogicError(String::from(
-							"current EndState invalid!"
-						)));
-					}
+				let s = if teban == teban_at_start {
+					GameEndState::Lose
+				} else {
+					GameEndState::Win
 				};
 
 				match evalutor.learning(teban_at_start,teban,history,&s,&*user_event_queue) {
