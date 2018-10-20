@@ -6,6 +6,8 @@ authors = ["jinpu"]
 path = "F:\\source\\Rust\\USIAgent"
 [dependencies.simplenn]
 path = "F:\\source\\Rust\\simplenn"
+[dependencies.csaparser]
+path = "F:\\source\\Rust\\CsaParser"
 [dependencies]
 rand = "0.4"
 getopts = "0.2"

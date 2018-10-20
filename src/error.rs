@@ -3,6 +3,7 @@ use std::error;
 use std::io;
 use std::convert::From;
 use std::num::ParseIntError;
+use std::num::ParseFloatError;
 use usiagent::event::SystemEventKind;
 use usiagent::event::UserEventKind;
 use usiagent::error::USIAgentRunningError;
@@ -13,6 +14,7 @@ use usiagent::error::SelfMatchRunningError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
 use usiagent::error::SfenStringConvertError;
+use csaparser::error::CsaParserError;
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -81,8 +83,12 @@ pub enum ApplicationError {
 	SfenStringConvertError(SfenStringConvertError),
 	IOError(io::Error),
 	ParseIntError(ParseIntError),
+	ParseFloatError(ParseFloatError),
 	AgentRunningError(String),
 	SelfMatchRunningError(SelfMatchRunningError),
+	CsaParserError(CsaParserError),
+	LogicError(String),
+	LearningError(String),
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -91,8 +97,12 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::SfenStringConvertError(ref e) => write!(f, "{}",e),
 			ApplicationError::IOError(ref e) => write!(f, "{}",e),
 			ApplicationError::ParseIntError(ref e) => write!(f, "{}",e),
+			ApplicationError::ParseFloatError(ref e) => write!(f, "{}",e),
 			ApplicationError::AgentRunningError(ref s) => write!(f, "{}",s),
 			ApplicationError::SelfMatchRunningError(ref e) => write!(f, "{}",e),
+			ApplicationError::CsaParserError(ref e) => write!(f, "{}",e),
+			ApplicationError::LogicError(ref s) => write!(f,"{}",s),
+			ApplicationError::LearningError(ref s) => write!(f,"{}",s),
 		}
 	}
 }
@@ -103,8 +113,12 @@ impl error::Error for ApplicationError {
 			ApplicationError::SfenStringConvertError(_) => "An error occurred during conversion to sfen string.",
 			ApplicationError::IOError(_) => "IO Error.",
 			ApplicationError::ParseIntError(_) => "An error occurred parsing the integer string.",
+			ApplicationError::ParseFloatError(_) => "An error occurred parsing the float string.",
 			ApplicationError::AgentRunningError(_) => "An error occurred while running USIAgent.",
 			ApplicationError::SelfMatchRunningError(_) => "An error occurred while running the self-match.",
+			ApplicationError::CsaParserError(_) => "An error occurred parsing the csa file.",
+			ApplicationError::LogicError(_) => "Logic error.",
+			ApplicationError::LearningError(_) => "An error occurred while learning the neural network.",
 		}
 	}
 
@@ -114,8 +128,12 @@ impl error::Error for ApplicationError {
 			ApplicationError::SfenStringConvertError(ref e) => Some(e),
 			ApplicationError::IOError(ref e) => Some(e),
 			ApplicationError::ParseIntError(ref e) => Some(e),
+			ApplicationError::ParseFloatError(ref e) => Some(e),
 			ApplicationError::AgentRunningError(_) => None,
 			ApplicationError::SelfMatchRunningError(ref e) => Some(e),
+			ApplicationError::CsaParserError(ref e) => Some(e),
+			ApplicationError::LogicError(_) => None,
+			ApplicationError::LearningError(_) => None,
 		}
 	}
 }
@@ -129,6 +147,11 @@ impl From<ParseIntError> for ApplicationError {
 		ApplicationError::ParseIntError(err)
 	}
 }
+impl From<ParseFloatError> for ApplicationError {
+	fn from(err: ParseFloatError) -> ApplicationError {
+		ApplicationError::ParseFloatError(err)
+	}
+}
 impl From<SelfMatchRunningError> for ApplicationError {
 	fn from(err: SelfMatchRunningError) -> ApplicationError {
 		ApplicationError::SelfMatchRunningError(err)
@@ -137,5 +160,10 @@ impl From<SelfMatchRunningError> for ApplicationError {
 impl From<SfenStringConvertError> for ApplicationError {
 	fn from(err: SfenStringConvertError) -> ApplicationError {
 		ApplicationError::SfenStringConvertError(err)
+	}
+}
+impl From<CsaParserError> for ApplicationError {
+	fn from(err: CsaParserError) -> ApplicationError {
+		ApplicationError::CsaParserError(err)
 	}
 }

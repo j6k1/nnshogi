@@ -6,10 +6,12 @@ extern crate serde_derive;
 
 extern crate usiagent;
 extern crate simplenn;
+extern crate csaparser;
 
 pub mod player;
 pub mod error;
 pub mod nn;
+pub mod learning;
 
 use std::env;
 use std::sync::Mutex;
@@ -37,6 +39,7 @@ use usiagent::player::*;
 
 use player::NNShogiPlayer;
 use error::ApplicationError;
+use learning::CsaLearnener;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -105,6 +108,8 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optflag("", "silent", "silent mode.");
 	opts.optflag("", "last", "Back a few hands from the end.");
 	opts.optopt("", "fromlast", "Number of moves of from the end.", "move count.");
+	opts.optopt("", "kifudir", "Directory of game data to be used of learning.", "path string.");
+	opts.optopt("", "lowerrate", "Lower limit of the player rate value of learning target games.", "number of rate.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -113,7 +118,10 @@ fn run() -> Result<(),ApplicationError> {
 		}
 	};
 
-	if matches.opt_present("l") {
+	if let Some(kifudir) = matches.opt_str("kifudir") {
+		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
+		CsaLearnener::new().learning(kifudir,lowerrate)
+	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
 		let silent =  matches.opt_present("silent") || config.silent;
