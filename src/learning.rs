@@ -106,7 +106,6 @@ impl CsaLearnener {
 							},
 							Err(ref e) => {
 								on_error_handler.lock().map(|h| h.call(e)).is_err();
-								return;
 							}
 						}
 						return;
