@@ -134,6 +134,10 @@ impl CsaLearnener {
 				}
 
 				if !p.comments.iter().any(|ref mut c| {
+					if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
+						return false;
+					}
+
 					let c = c.split(':').collect::<Vec<&str>>();
 
 					if c.len() != 3 {
