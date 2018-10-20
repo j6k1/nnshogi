@@ -118,7 +118,7 @@ impl CsaLearnener {
 
 		let mut count = 0;
 
-		for entry in fs::read_dir(kifudir)? {
+		'files: for entry in fs::read_dir(kifudir)? {
 			let path = entry?.path();
 			print!("{}\n", path.display());
 			let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
@@ -200,7 +200,7 @@ impl CsaLearnener {
 				match notify_quit.lock() {
 					Ok(mut notify_quit) => {
 						if *notify_quit {
-							break;
+							break 'files;
 						}
 					},
 					Err(ref e) => {
@@ -211,6 +211,7 @@ impl CsaLearnener {
 					}
 				};
 			}
+
 			print!("done... \n");
 		}
 
