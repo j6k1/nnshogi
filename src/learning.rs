@@ -133,7 +133,7 @@ impl CsaLearnener {
 					}
 				}
 
-				if !p.comments.iter().any(|ref mut c| {
+				if !p.comments.iter().any(|c| {
 					if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
 						return false;
 					}
@@ -204,7 +204,7 @@ impl CsaLearnener {
 				}
 
 				match notify_quit.lock() {
-					Ok(mut notify_quit) => {
+					Ok(notify_quit) => {
 						if *notify_quit {
 							break 'files;
 						}
