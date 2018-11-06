@@ -118,7 +118,8 @@ impl Intelligence {
 		Ok((answer * i32::MAX as f64) as i32)
 	}
 
-	pub fn learning<'a>(&mut self,teban:Teban,last_teban:Teban,
+	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
+		teban:Teban,last_teban:Teban,
 		history:Vec<(Banmen,MochigomaCollections,u64,u64)>,s:&GameEndState,
 		event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(),CommonError> {
@@ -146,10 +147,16 @@ impl Intelligence {
 			let b = 1f64 - a;
 
 			match s {
-				&GameEndState::Win if t == teban => {
+				&GameEndState::Win if t == teban && enable_shake_shake => {
 					self.nna.learn(&input,&(0..1).map(|_| a)
 													.collect::<Vec<f64>>())?;
 					self.nnb.learn(&input,&(0..1).map(|_| b)
+													.collect::<Vec<f64>>())?;
+				},
+				&GameEndState::Win if t == teban => {
+					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+													.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
 													.collect::<Vec<f64>>())?;
 				},
 				&GameEndState::Win => {
@@ -164,10 +171,16 @@ impl Intelligence {
 					self.nnb.learn(&input,&(0..1).map(|_| 0f64)
 													.collect::<Vec<f64>>())?;
 				},
-				_ => {
+				_ if enable_shake_shake => {
 					self.nna.learn(&input,&(0..1).map(|_| a)
 												.collect::<Vec<f64>>())?;
 					self.nnb.learn(&input,&(0..1).map(|_| b)
+													.collect::<Vec<f64>>())?;
+				},
+				_  => {
+					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+												.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
 													.collect::<Vec<f64>>())?;
 				}
 			}

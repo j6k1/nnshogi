@@ -188,7 +188,7 @@ impl CsaLearnener {
 					GameEndState::Lose
 				};
 
-				match evalutor.learning(teban_at_start,teban,history,&s,&*user_event_queue) {
+				match evalutor.learning(false,teban_at_start,teban,history,&s,&*user_event_queue) {
 					Err(_) => {
 						return Err(ApplicationError::LearningError(String::from(
 							"An error occurred while learning the neural network."

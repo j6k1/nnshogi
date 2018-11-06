@@ -1319,7 +1319,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 			match self.evalutor {
 				Some(ref mut evalutor) => {
-					evalutor.learning(teban,last_teban,self.history.clone(),s,&*event_queue)?;
+					evalutor.learning(true,teban,last_teban,self.history.clone(),s,&*event_queue)?;
 				},
 				None => (),
 			}
