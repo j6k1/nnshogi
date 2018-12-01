@@ -24,8 +24,8 @@ use usiagent::event::GameEndState;
 use error::*;
 
 pub struct Intelligence {
-	nna:NN<Adam,CrossEntropy>,
-	nnb:NN<Adam,CrossEntropy>,
+	nna:NN<Adam,Mse>,
+	nnb:NN<Adam,Mse>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -51,7 +51,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let nna = NN::new(model,|s| Adam::new(s),CrossEntropy::new());
+		let nna = NN::new(model,|s| Adam::new(s),Mse::new());
 
 		let mut rnd = rand::XorShiftRng::new_unseeded();
 
@@ -70,7 +70,7 @@ impl Intelligence {
 												-rnd.next_f64()
 											}
 										}).unwrap();
-		let nnb = NN::new(model,|s| Adam::new(s),CrossEntropy::new());
+		let nnb = NN::new(model,|s| Adam::new(s),Mse::new());
 
 		Intelligence {
 			nna:nna,
