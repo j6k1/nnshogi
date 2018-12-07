@@ -1310,8 +1310,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		if self.count_of_move_started > 0 {
 			let (teban,last_teban) = match self.teban {
-				Some(teban) if self.moved => (teban,teban),
-				Some(teban) => (teban,teban.opposite()),
+				Some(teban) if self.moved => (teban,teban.opposite()),
+				Some(teban) => (teban,teban),
 				None => {
 					return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
 				}
