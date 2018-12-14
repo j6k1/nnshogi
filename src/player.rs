@@ -29,7 +29,7 @@ const MOCHIGOMA_MAX:usize = 18;
 const SUJI_MAX:usize = 9;
 const DAN_MAX:usize = 9;
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Evaluation {
 	Result(Score,Option<Move>),
 	Timeout(Option<Move>),
@@ -40,11 +40,11 @@ enum OuteEvaluation {
 	Result(i32),
 	Timeout,
 }
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Score {
 	NEGINFINITE,
-	Value(i32),
-	NegativeValue(i32),
+	Value(f64),
+	NegativeValue(f64),
 	INFINITE,
 }
 impl Neg for Score {
@@ -565,7 +565,7 @@ impl NNShogiPlayer {
 									let s = if Rule::win_only_moves(&teban.opposite(),banmen).len() > 0 {
 										Score::NEGINFINITE
 									} else {
-										Score::Value(0)
+										Score::Value(0f64)
 									};
 
 									if s > scoreval {

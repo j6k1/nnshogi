@@ -84,7 +84,7 @@ impl Intelligence {
 	}
 
 	pub fn evalute(&mut self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> Result<i32,InvalidStateError> {
+		-> Result<f64,InvalidStateError> {
 		let mut input:Vec<f64> = Vec::new();
 		input.extend_from_slice(&self.make_input(t,b,mc));
 
@@ -107,7 +107,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a + nnbanswerb * b;
 
-		Ok((answer * i32::MAX as f64) as i32)
+		Ok(answer * i32::MAX as f64)
 	}
 
 	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
