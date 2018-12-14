@@ -180,8 +180,6 @@ impl CsaLearnener {
 					history
 				});
 
-				let teban = teban;
-
 				let s = if teban.opposite() == teban_at_start {
 					GameEndState::Win
 				} else {
