@@ -1,5 +1,9 @@
 use rand;
 use rand::Rng;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
+use rand::distributions::Distribution;
+use statrs::distribution::Normal;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::i32;
@@ -34,7 +38,8 @@ pub struct Intelligence {
 }
 impl Intelligence {
 	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
-		let mut rnd = rand::XorShiftRng::new_unseeded();
+		let mut rnd = rand::thread_rng();
+		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
 										NNUnits::new(2344,
@@ -44,16 +49,12 @@ impl Intelligence {
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
 										move || {
-											let i = rnd.next_u32();
-											if i % 2 == 0{
-												rnd.next_f64()
-											} else {
-												-rnd.next_f64()
-											}
+											n.sample(&mut rnd)
 										}).unwrap();
 		let nna = NN::new(model,|_| SGD::new(0.1),Mse::new());
 
-		let mut rnd = rand::XorShiftRng::new_unseeded();
+		let mut rnd = rand::thread_rng();
+		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
 										NNUnits::new(2344,
@@ -63,12 +64,7 @@ impl Intelligence {
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
 										move || {
-											let i = rnd.next_u32();
-											if i % 2 == 0{
-												rnd.next_f64()
-											} else {
-												-rnd.next_f64()
-											}
+											n.sample(&mut rnd)
 										}).unwrap();
 		let nnb = NN::new(model,|_| SGD::new(0.1),Mse::new());
 
@@ -92,9 +88,10 @@ impl Intelligence {
 		let nnbanswerb = self.nnb.solve(&input)?;
 
 		let (a,b) = if self.learning_mode {
-			let mut rnd = rand::XorShiftRng::new_unseeded();
+			let mut rnd = rand::thread_rng();
+			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
-			let a = rnd.next_f64();
+			let a = rnd.gen();
 			let b = 1f64 - a;
 
 			(a,b)
@@ -134,8 +131,8 @@ impl Intelligence {
 			let mut input:Vec<f64> = Vec::new();
 			input.extend_from_slice(&self.make_input(t,&h.0,&h.1));
 
-			let mut rnd = rand::XorShiftRng::new_unseeded();
-			let a = rnd.next_f64();
+			let mut rnd = rand::thread_rng();
+			let a = rnd.gen();
 			let b = 1f64 - a;
 
 			match s {

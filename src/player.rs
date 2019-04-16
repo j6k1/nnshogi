@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 use rand;
 use rand::Rng;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 use std::sync::Arc;
 use std::sync::Mutex;
 use error::*;
@@ -122,21 +124,22 @@ impl fmt::Debug for NNShogiPlayer {
 }
 impl NNShogiPlayer {
 	pub fn new(nna_filename:String,nnb_filename:String,learning_mode:bool) -> NNShogiPlayer {
-		let mut rnd = rand::XorShiftRng::new_unseeded();
+		let mut rnd = rand::thread_rng();
+		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
 		let mut kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1] = [[0; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1];
 		let mut mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2] = [[[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2];
 
 		for i in 0..(KOMA_KIND_MAX + 1) {
 			for j in 0..(SUJI_MAX * DAN_MAX) {
-				kyokumen_hash_seeds[i][j] = rnd.next_u64();
+				kyokumen_hash_seeds[i][j] = rnd.gen();
 			}
 		}
 
 		for i in 0..MOCHIGOMA_MAX {
 			for j in 0..(MOCHIGOMA_KIND_MAX + 1) {
-				mochigoma_hash_seeds[0][i][j] = rnd.next_u64();
-				mochigoma_hash_seeds[1][i][j] = rnd.next_u64();
+				mochigoma_hash_seeds[0][i][j] = rnd.gen();
+				mochigoma_hash_seeds[1][i][j] = rnd.gen();
 			}
 		}
 

@@ -1,4 +1,6 @@
 extern crate rand;
+extern crate rand_xorshift;
+extern crate statrs;
 extern crate getopts;
 extern crate toml;
 #[macro_use]
@@ -23,6 +25,8 @@ use std::path::Path;
 use std::time::Duration;
 use std::collections::HashMap;
 use rand::Rng;
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
 
@@ -371,7 +375,8 @@ fn run() -> Result<(),ApplicationError> {
 					buf.clear();
 				}
 
-				let mut rnd = rand::XorShiftRng::new_unseeded();
+				let mut rnd = rand::thread_rng();
+				let mut rnd = XorShiftRng::from_seed(rnd.gen());
 				let len = sfen_list.len();
 
 				let f:Box<FnMut() -> String + Send + 'static> = Box::new(move || {
