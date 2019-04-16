@@ -39,6 +39,7 @@ pub struct Intelligence {
 impl Intelligence {
 	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
 		let mut rnd = rand::thread_rng();
+		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
@@ -54,6 +55,7 @@ impl Intelligence {
 		let nna = NN::new(model,|_| SGD::new(0.1),Mse::new());
 
 		let mut rnd = rand::thread_rng();
+		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
