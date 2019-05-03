@@ -167,13 +167,17 @@ impl CsaLearnener {
 				let teban = p.teban_at_start;
 				let teban_at_start = teban;
 				let banmen = p.initial_position;
+				let state = State::new(banmen);
 				let mc = p.initial_mochigoma;
 
 				let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
 
-				let (teban,_,_,history) = Rule::apply_moves_with_callback(&banmen,
+				let (teban,_,_,history) = Rule::apply_moves_with_callback(state,
 																teban,
-																mc,&m,history,
+																mc,&m.into_iter().map(|m| {
+																	m.to_applied_move()
+																}).collect::<Vec<AppliedMove>>(),
+																history,
 																|banmen,_,mc,_,_,history| {
 					let mut history = history;
 					history.push((banmen.clone(),mc.clone(),0,0));

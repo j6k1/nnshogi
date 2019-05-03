@@ -100,9 +100,7 @@ pub struct NNShogiPlayer {
 	pub quited:bool,
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-	pub teban:Option<Teban>,
-	banmen:Option<Banmen>,
-	mc:Option<MochigomaCollections>,
+	kyokumen:Option<Kyokumen>,
 	mhash:u64,
 	shash:u64,
 	oute_kyokumen_hash_map:TwoKeyHashMap<u64,()>,
@@ -148,9 +146,7 @@ impl NNShogiPlayer {
 			quited:false,
 			kyokumen_hash_seeds:kyokumen_hash_seeds,
 			mochigoma_hash_seeds:mochigoma_hash_seeds,
-			teban:None,
-			banmen:None,
-			mc:None,
+			kyokumen:None,
 			mhash:0,
 			shash:0,
 			oute_kyokumen_hash_map:TwoKeyHashMap::new(),
@@ -229,7 +225,7 @@ impl NNShogiPlayer {
 			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&Arc<Mutex<S>>,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-								teban:Teban,banmen:&Banmen,
+								teban:Teban,state:&State,
 								mut alpha:Score,beta:Score,
 								m:Option<Move>,mc:&MochigomaCollections,
 								obtained:Option<ObtainKind>,
@@ -261,7 +257,7 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(None);
 		}
 
-		let win_mvs = Rule::win_only_moves(&teban,&banmen);
+		let win_mvs = Rule::win_only_moves(teban,&state);
 
 		if win_mvs.len() > 0 {
 			return Evaluation::Result(Score::INFINITE,Some(win_mvs[0].to_move()));
@@ -282,7 +278,7 @@ impl NNShogiPlayer {
 			} else {
 				let s = match self.evalutor {
 					Some(ref mut evalutor) => {
-						match evalutor.evalute(teban,banmen,mc) {
+						match evalutor.evalute(teban,state.get_banmen(),mc) {
 							Ok(s) => Some(s),
 							Err(ref mut e) => {
 								on_error_handler.lock().map(|h| h.call(e)).is_err();
@@ -311,14 +307,7 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(None);
 		}
 
-		let mvs:Vec<LegalMove> = Rule::legal_moves_all(&teban, &banmen, mc).into_iter().filter(|m| {
-			match m {
-				LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
-					false
-				},
-				_ => true,
-			}
-		}).collect::<Vec<LegalMove>>();
+		let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -337,13 +326,13 @@ impl NNShogiPlayer {
 		}
 
 		let mut mvs:Vec<(u32,LegalMove)> = mvs.into_iter().map(|m| {
-			match Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move()) {
+			match Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move()) {
 				(ref b,_,_) => {
-					if Rule::win_only_moves(&teban,b).len() > 0 {
+					if Rule::win_only_moves(teban,b).len() > 0 {
 						(10,m)
 					} else {
 						match m {
-							LegalMove::To(_,_,Some(_)) => {
+							LegalMove::To(ref mt) if mt.obtained().is_some() => {
 								(3,m)
 							},
 							_ => (0,m)
@@ -392,22 +381,22 @@ impl NNShogiPlayer {
 			match *m {
 				(10,m) => {
 					let o = match m {
-						LegalMove::To(_,_,ref o) => {
-							match o {
-								&Some(o) => {
+						LegalMove::To(mt) => {
+							match mt.obtained() {
+								Some(o) => {
 									match MochigomaKind::try_from(o) {
 										Ok(o) => Some(o),
 										Err(_) => None,
 									}
 								},
-								&None => None,
+								None => None,
 							}
 						},
 						_ => None,
 					};
 
-					let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-					let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+					let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+					let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
 					match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
 						Some(_) => {
@@ -444,12 +433,12 @@ impl NNShogiPlayer {
 						_ => (),
 					}
 
-					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
+					let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 					match next {
-						(ref next,ref mc,_) if Rule::win_only_moves(&teban.opposite(),next).len() == 0 => {
+						(ref next,ref mc,_) if Rule::win_only_moves(teban.opposite(),next).len() == 0 => {
 							let is_put_fu = match m {
-								LegalMove::Put(MochigomaKind::Fu,_) => true,
+								LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
 								_ => false,
 							};
 
@@ -517,7 +506,7 @@ impl NNShogiPlayer {
 			match *m {
 				(priority,m) => {
 					let obtained = match m {
-						LegalMove::To(_,_,ref o) => *o,
+						LegalMove::To(ref m) => m.obtained(),
 						_ => None,
 					};
 
@@ -534,8 +523,8 @@ impl NNShogiPlayer {
 							None => None,
 						};
 
-						let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-						let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+						let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+						let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
 						match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
 							Some(_) => {
@@ -545,7 +534,7 @@ impl NNShogiPlayer {
 						}
 						(mhash,shash)
 					};
-					let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
+					let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 					let depth = match obtained {
 						Some(_) => depth + 1,
@@ -565,7 +554,7 @@ impl NNShogiPlayer {
 								Some(c) => {
 									current_kyokumen_hash_map.insert(mhash,shash,c+1);
 
-									let s = if Rule::win_only_moves(&teban.opposite(),banmen).len() > 0 {
+									let s = if Rule::win_only_moves(teban.opposite(),state).len() > 0 {
 										Score::NEGINFINITE
 									} else {
 										Score::Value(0f64)
@@ -635,7 +624,7 @@ impl NNShogiPlayer {
 								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&Arc<Mutex<S>>,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-								teban:Teban,banmen:&Banmen,
+								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
 								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
@@ -645,7 +634,7 @@ impl NNShogiPlayer {
 								current_depth:u32,
 								base_depth:u32)
 		-> OuteEvaluation where L: Logger, S: InfoSender {
-		let mvs = Rule::respond_oute_only_moves_all(&teban, &banmen, mc);
+		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
 		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
@@ -681,21 +670,21 @@ impl NNShogiPlayer {
 				}
 
 				let o = match m {
-					&LegalMove::To(_,_,ref o) => {
-						match o {
-							&Some(o) => {
+					&LegalMove::To(ref m) => {
+						match m.obtained() {
+							Some(o) => {
 								match MochigomaKind::try_from(o) {
 									Ok(o) => Some(o),
 									Err(_) => None,
 								}
 							},
-							&None => None,
+							None => None,
 						}
 					},
 					_ => None,
 				};
-				let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
@@ -720,7 +709,7 @@ impl NNShogiPlayer {
 					}
 				}
 
-				let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
+				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 				match next {
 					(ref next,ref mc,_) => {
@@ -757,7 +746,7 @@ impl NNShogiPlayer {
 								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&Arc<Mutex<S>>,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-								teban:Teban,banmen:&Banmen,
+								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
 								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
@@ -767,7 +756,7 @@ impl NNShogiPlayer {
 								current_depth:u32,
 								base_depth:u32)
 		-> OuteEvaluation where L: Logger, S: InfoSender {
-		let mvs = Rule::oute_only_moves_all(&teban, &banmen, mc);
+		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
 		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
@@ -788,8 +777,10 @@ impl NNShogiPlayer {
 		} else {
 			for m in &mvs {
 				match m {
-					&LegalMove::To(_,_,Some(ObtainKind::Ou)) => {
-						return OuteEvaluation::Result(current_depth as i32);
+					&LegalMove::To(ref m) => {
+						if let Some(ObtainKind::Ou) = m.obtained() {
+							return OuteEvaluation::Result(current_depth as i32);
+						}
 					},
 					_ => ()
 				}
@@ -806,29 +797,29 @@ impl NNShogiPlayer {
 				}
 
 				let is_put_fu = match m {
-					&LegalMove::Put(MochigomaKind::Fu,_) => true,
+					&LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
 					_ => false,
 				};
 
-				let next = Rule::apply_move_none_check(&banmen,&teban,mc,&m.to_move());
+				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 				let o = match m {
-					&LegalMove::To(_,_,ref o) => {
-						match o {
-							&Some(o) => {
+					&LegalMove::To(ref m) => {
+						match m.obtained() {
+							Some(o) => {
 								match MochigomaKind::try_from(o) {
 									Ok(o) => Some(o),
 									Err(_) => None,
 								}
 							},
-							&None => None,
+							None => None,
 						}
 					},
 					_ => None,
 				};
 
-				let mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m.to_move(),&o);
+				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
 				match already_oute_hash_map.get(&mhash,&shash) {
 					None => {
@@ -1143,9 +1134,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn newgame(&mut self) -> Result<(),CommonError> {
-		self.teban = None;
-		self.banmen = None;
-		self.mc = None;
+		self.kyokumen = None;
 		self.history.clear();
 		if !self.quited {
 			self.stop = false;
@@ -1153,34 +1142,37 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.count_of_move_started = 0;
 		Ok(())
 	}
-	fn set_position(&mut self,teban:Teban,ban:Banmen,
+	fn set_position(&mut self,teban:Teban,banmen:Banmen,
 					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,_:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
 		self.history.clear();
 		self.kyokumen_hash_map.clear();
 
 		let mut kyokumen_hash_map:TwoKeyHashMap<u64,u32> = TwoKeyHashMap::new();
-		let (mhash,shash) = self.calc_initial_hash(&ban,&ms,&mg);
+		let (mhash,shash) = self.calc_initial_hash(&banmen,&ms,&mg);
 
 		kyokumen_hash_map.insert(mhash,shash,1);
 
 		let teban = teban;
-		let banmen = ban;
+		let state = State::new(banmen);
 
 		let mc = MochigomaCollections::new(ms,mg);
 
 
 		let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
 
-		let (t,banmen,mc,r) = self.apply_moves(teban,banmen,
-												mc,m,(mhash,shash,kyokumen_hash_map,history),
+		let (t,state,mc,r) = self.apply_moves(teban,state,
+												mc,m.into_iter()
+													.map(|m| m.to_applied_move())
+													.collect::<Vec<AppliedMove>>(),
+												(mhash,shash,kyokumen_hash_map,history),
 												|s,t,banmen,mc,m,o,r| {
 			let (prev_mhash,prev_shash,mut kyokumen_hash_map,mut history) = r;
 
 			let (mhash,shash) = match m {
 				&Some(ref m) => {
-					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,m,&o);
-					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,m,&o);
+					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
+					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
 
 					match kyokumen_hash_map.get(&mhash,&shash) {
 						Some(c) => {
@@ -1211,7 +1203,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			if current_teban == opponent {
 				match &h {
 					&(ref banmen,_, mhash,shash) => {
-						if Rule::win_only_moves(&t,banmen).len() == 0 {
+						if Rule::win_only_moves(t,&State::new(banmen.clone())).len() == 0 {
 							break;
 						} else {
 							oute_kyokumen_hash_map.insert(*mhash,*shash,());
@@ -1223,9 +1215,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			current_teban = current_teban.opposite();
 		}
 
-		self.teban = Some(t);
-		self.banmen = Some(banmen);
-		self.mc = Some(mc);
+		self.kyokumen = Some(Kyokumen {
+			state:state,
+			mc:mc,
+			teban:t
+		});
 		self.mhash = mhash;
 		self.shash = shash;
 		self.oute_kyokumen_hash_map = oute_kyokumen_hash_map;
@@ -1238,7 +1232,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			info_sender:Arc<Mutex<S>>,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender {
-		let (teban,banmen,mc) = self.extract_kyokumen(&self.teban,&self.banmen,&self.mc)?;
+		let Kyokumen { teban, mc, state } = self.extract_kyokumen(&self.kyokumen)?;
+
 		let limit = limit.to_instant(teban);
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_hash_map = self.kyokumen_hash_map.clone();
@@ -1247,7 +1242,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let result = match self.alphabeta(&*event_queue,
 					&info_sender, &on_error_handler,
-					teban, &banmen, Score::NEGINFINITE,
+					teban, &state, Score::NEGINFINITE,
 					Score::INFINITE, None, &mc,
 					None, &kyokumen_hash_map,
 					&mut TwoKeyHashMap::new(),
@@ -1276,18 +1271,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		if let BestMove::Move(m,_) = result {
 			let h = match self.history.last() {
 				Some(&(ref banmen,ref mc,mhash,shash)) => {
-					match self.teban {
-						Some(teban) => {
-							let (next,nmc,o) = Rule::apply_move_none_check(banmen,&teban,mc,&m);
-							self.moved = true;
-							let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
-							let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
-							(next.clone(),nmc.clone(),mhash,shash)
-						},
-						None => {
-							return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
-						}
-					}
+					let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,&mc,m.to_applied_move());
+					self.moved = true;
+					let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
+					let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+					(next.get_banmen().clone(),nmc.clone(),mhash,shash)
 				},
 				None => {
 					return Err(CommonError::Fail(String::from("The history of banmen has not been set yet.")));
@@ -1312,10 +1300,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
 
 		if self.count_of_move_started > 0 {
-			let (teban,last_teban) = match self.teban {
-				Some(teban) if self.moved => (teban,teban.opposite()),
-				Some(teban) => (teban,teban),
-				None => {
+			let (teban,last_teban) = match self.extract_teban(&self.kyokumen) {
+				Ok(teban) if self.moved => (teban,teban.opposite()),
+				Ok(teban) => (teban,teban),
+				Err(_) => {
 					return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
 				}
 			};

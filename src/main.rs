@@ -352,6 +352,8 @@ fn run() -> Result<(),ApplicationError> {
 						}
 					};
 
+					let mut state = State::new(banmen);
+
 					let len = if mvs.len() < fromlast as usize {
 						mvs.len()
 					} else {
@@ -361,16 +363,16 @@ fn run() -> Result<(),ApplicationError> {
 					let mvs = mvs.into_iter().take(len).collect::<Vec<Move>>();
 
 					for m in &mvs {
-						match Rule::apply_move_none_check(&banmen,&teban,&mc,m) {
-							(b,nmc,_) => {
-								banmen = b;
+						match Rule::apply_move_none_check(&state,teban,&mc,m.to_applied_move()) {
+							(s,nmc,_) => {
+								state = s;
 								mc = nmc;
 								teban = teban.opposite();
 							}
 						}
 					}
 
-					sfen_list.push((teban, banmen, mc, Vec::new()).to_sfen()?);
+					sfen_list.push((teban, state.get_banmen().clone(), mc, Vec::new()).to_sfen()?);
 
 					buf.clear();
 				}
