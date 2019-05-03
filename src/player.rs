@@ -257,10 +257,15 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(None);
 		}
 
-		let win_mvs = Rule::win_only_moves(teban,&state);
+		let oute_mvs = Rule::oute_only_moves_all(teban,&state,mc);
 
-		if win_mvs.len() > 0 {
-			return Evaluation::Result(Score::INFINITE,Some(win_mvs[0].to_move()));
+		if oute_mvs.len() > 0 {
+			match oute_mvs[0] {
+				LegalMove::To(ref m) if m.obtained() == Some(ObtainKind::Ou) => {
+					return Evaluation::Result(Score::INFINITE,Some(oute_mvs[0].to_move()));
+				},
+				_ => (),
+			}
 		}
 
 		match self.handle_events(event_queue, on_error_handler) {
@@ -307,8 +312,6 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(None);
 		}
 
-		let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
-
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
 			Err(ref e) => {
@@ -316,56 +319,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if mvs.len() == 0 {
-			return Evaluation::Result(Score::NEGINFINITE,None);
-		}
-
-		if self.stop {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].to_move()));
-		}
-
-		let mut mvs:Vec<(u32,LegalMove)> = mvs.into_iter().map(|m| {
-			match Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move()) {
-				(ref b,_,_) => {
-					if Rule::win_only_moves(teban,b).len() > 0 {
-						(10,m)
-					} else {
-						match m {
-							LegalMove::To(ref mt) if mt.obtained().is_some() => {
-								(3,m)
-							},
-							_ => (0,m)
-						}
-					}
-				}
-			}
-		}).collect::<Vec<(u32,LegalMove)>>();
-
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
-
-		if (limit.is_some() &&
-			limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].1.to_move()));
-		}
-
-		mvs.sort_by(|a,b| {
-			if a.0 == b.0 {
-				Ordering::Equal
-			} else if a.0 > b.0 {
-				Ordering::Less
-			} else {
-				Ordering::Greater
-			}
-		});
-
-		for m in &mvs {
+		for m in &oute_mvs {
 			match self.handle_events(event_queue, on_error_handler) {
 				Ok(_) => (),
 				Err(ref e) => {
@@ -376,112 +330,113 @@ impl NNShogiPlayer {
 			if (limit.is_some() &&
 				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(Some(m.1.to_move()));
+				return Evaluation::Timeout(Some(m.to_move()));
 			}
-			match *m {
-				(10,m) => {
-					let o = match m {
-						LegalMove::To(mt) => {
-							match mt.obtained() {
-								Some(o) => {
-									match MochigomaKind::try_from(o) {
-										Ok(o) => Some(o),
-										Err(_) => None,
-									}
-								},
-								None => None,
-							}
-						},
-						_ => None,
+
+			let o = match m {
+				LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
+				_ => None,
+			};
+
+			let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+			let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+
+			match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
+				Some(_) => {
+					continue;
+				},
+				None => (),
+			}
+
+			let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+			match current_kyokumen_hash_map.get(&mhash,&shash) {
+				Some(c) if c >= 3 => {
+					continue;
+				},
+				Some(c) => {
+					current_kyokumen_hash_map.insert(mhash,shash,c+1);
+				},
+				None => {
+					current_kyokumen_hash_map.insert(mhash,shash,1);
+				}
+			}
+
+			match already_oute_hash_map.get(&mhash,&shash) {
+				None => {
+					already_oute_hash_map.insert(mhash,shash,());
+				},
+				Some(_) => (),
+			}
+
+			match ignore_oute_hash_map.get(&mhash,&shash) {
+				Some(_) => {
+					continue;
+				},
+				_ => (),
+			}
+
+			let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+
+			match next {
+				(ref next,ref mc,_) if !Rule::is_mate(teban.opposite(),next) => {
+					let is_put_fu = match m {
+						LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
+						_ => false,
 					};
 
-					let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-					let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-					match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
-						Some(_) => {
-							continue;
-						},
-						None => (),
-					}
-
-					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
-
-					match current_kyokumen_hash_map.get(&mhash,&shash) {
-						Some(c) if c >= 3 => {
-							continue;
-						},
-						Some(c) => {
-							current_kyokumen_hash_map.insert(mhash,shash,c+1);
-						},
-						None => {
-							current_kyokumen_hash_map.insert(mhash,shash,1);
+					match self.handle_events(event_queue, on_error_handler) {
+						Ok(_) => (),
+						Err(ref e) => {
+							on_error_handler.lock().map(|h| h.call(e)).is_err();
 						}
 					}
 
-					match already_oute_hash_map.get(&mhash,&shash) {
-						None => {
-							already_oute_hash_map.insert(mhash,shash,());
-						},
-						Some(_) => (),
+					if (limit.is_some() &&
+						limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+						self.send_message(info_sender, on_error_handler, "think timeout!");
+						return Evaluation::Timeout(Some(m.to_move()));
 					}
 
-					match ignore_oute_hash_map.get(&mhash,&shash) {
-						Some(_) => {
-							continue;
+					match self.respond_oute_only(event_queue,
+														info_sender,
+														on_error_handler,
+														teban.opposite(),next,mc,
+														&current_kyokumen_hash_map,
+														already_oute_hash_map,
+														ignore_oute_hash_map,
+														mhash,shash,limit,
+														current_depth+1,
+														base_depth) {
+						OuteEvaluation::Result(d) if d >= 0 &&
+							!(is_put_fu && d - current_depth as i32 == 2) => {
+							return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 						},
-						_ => (),
-					}
-
-					let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
-
-					match next {
-						(ref next,ref mc,_) if Rule::win_only_moves(teban.opposite(),next).len() == 0 => {
-							let is_put_fu = match m {
-								LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
-								_ => false,
-							};
-
-							match self.handle_events(event_queue, on_error_handler) {
-								Ok(_) => (),
-								Err(ref e) => {
-									on_error_handler.lock().map(|h| h.call(e)).is_err();
-								}
-							}
-
-							if (limit.is_some() &&
-								limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
-								self.send_message(info_sender, on_error_handler, "think timeout!");
-								return Evaluation::Timeout(Some(m.to_move()));
-							}
-
-							match self.respond_oute_only(event_queue,
-																info_sender,
-																on_error_handler,
-																teban.opposite(),next,mc,
-																&current_kyokumen_hash_map,
-																already_oute_hash_map,
-																ignore_oute_hash_map,
-																mhash,shash,limit,
-																current_depth+1,
-																base_depth) {
-								OuteEvaluation::Result(d) if d >= 0 &&
-									!(is_put_fu && d - current_depth as i32 == 2) => {
-									return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
-								},
-								OuteEvaluation::Timeout => {
-									return Evaluation::Timeout(Some(m.to_move()));
-								},
-								_ => (),
-							}
+						OuteEvaluation::Timeout => {
+							return Evaluation::Timeout(Some(m.to_move()));
 						},
 						_ => (),
 					}
 				},
-				_ => {
-					break;
-				}
+				_ => (),
 			}
+		}
+
+		let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
+
+		if mvs.len() == 0 {
+			return Evaluation::Result(Score::NEGINFINITE,None);
+		}
+
+		if self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(Some(mvs[0].to_move()));
+		}
+
+		if (limit.is_some() &&
+			limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(Some(mvs[0].to_move()))
 		}
 
 		let mut scoreval = Score::NEGINFINITE;
@@ -500,117 +455,130 @@ impl NNShogiPlayer {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return match best_move {
 					Some(best_move) => Evaluation::Timeout(Some(best_move)),
-					None => Evaluation::Timeout(Some(m.1.to_move())),
+					None => Evaluation::Timeout(Some(m.to_move())),
 				};
 			}
-			match *m {
-				(priority,m) => {
-					let obtained = match m {
-						LegalMove::To(ref m) => m.obtained(),
-						_ => None,
-					};
 
-					let (mhash,shash) = {
-						let o = match obtained {
-							Some(o) => {
-								match MochigomaKind::try_from(o) {
-									Ok(o) => {
-										Some(o)
-									},
-									Err(_) => None,
-								}
+			let obtained = match m {
+				LegalMove::To(ref m) => m.obtained(),
+				_ => None,
+			};
+
+			let (mhash,shash) = {
+				let o = match obtained {
+					Some(o) => {
+						match MochigomaKind::try_from(o) {
+							Ok(o) => {
+								Some(o)
 							},
-							None => None,
-						};
-
-						let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-						let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-						match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
-							Some(_) => {
-								continue;
-							},
-							None => (),
+							Err(_) => None,
 						}
-						(mhash,shash)
-					};
-					let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+					},
+					None => None,
+				};
 
-					let depth = match obtained {
-						Some(_) => depth + 1,
-						None if priority == 10 => depth + 1,
-						None => depth,
-					};
+				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-					match next {
-						(ref banmen,ref mc,_) => {
+				match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
+					Some(_) => {
+						continue;
+					},
+					None => (),
+				}
+				(mhash,shash)
+			};
 
-							let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+			let m = m.to_applied_move();
+			let next = Rule::apply_move_none_check(&state,teban,mc,m);
 
-							match current_kyokumen_hash_map.get(&mhash,&shash) {
-								Some(c) if c >= 3 => {
-									continue;
-								},
-								Some(c) => {
-									current_kyokumen_hash_map.insert(mhash,shash,c+1);
+			let depth = match obtained {
+				Some(_) => depth + 1,
+				None => {
+					if let AppliedMove::To(ref mv) = m {
+						let ps = Rule::apply_move_to_partial_state_none_check(state,teban,mc,m);
+						let banmen = state.get_banmen();
+						let (x,y) = mv.src().square_to_point();
 
-									let s = if Rule::win_only_moves(teban.opposite(),state).len() > 0 {
-										Score::NEGINFINITE
-									} else {
-										Score::Value(0f64)
-									};
+						if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,banmen.0[y as usize][x as usize]) ||
+						   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
+							depth + 1
+						} else {
+							depth
+						}
+					} else {
+						depth
+					}
+				}
+			};
 
-									if s > scoreval {
-										scoreval = s;
-										best_move = Some(m.to_move());
-										if alpha < scoreval {
-											alpha = scoreval;
-										}
-										if scoreval >= beta {
-											return Evaluation::Result(scoreval,best_move);
-										}
-									}
+			match next {
+				(ref banmen,ref mc,_) => {
 
-									continue;
-								},
-								None => {
-									current_kyokumen_hash_map.insert(mhash,shash,1);
+					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+
+					match current_kyokumen_hash_map.get(&mhash,&shash) {
+						Some(c) if c >= 3 => {
+							continue;
+						},
+						Some(c) => {
+							current_kyokumen_hash_map.insert(mhash,shash,c+1);
+
+							let s = if Rule::is_mate(teban.opposite(),state) {
+								Score::NEGINFINITE
+							} else {
+								Score::Value(0f64)
+							};
+
+							if s > scoreval {
+								scoreval = s;
+								best_move = Some(m.to_move());
+								if alpha < scoreval {
+									alpha = scoreval;
+								}
+								if scoreval >= beta {
+									return Evaluation::Result(scoreval,best_move);
 								}
 							}
 
-							match self.alphabeta(event_queue,
-								info_sender,
-								on_error_handler,
-								teban.opposite(),&banmen,
-								-beta,-alpha,Some(m.to_move()),&mc,
-								obtained,&current_kyokumen_hash_map,
-								already_oute_hash_map,
-								ignore_oute_hash_map,
-								mhash,shash,limit,depth-1,
-								current_depth+1,base_depth) {
+							continue;
+						},
+						None => {
+							current_kyokumen_hash_map.insert(mhash,shash,1);
+						}
+					}
 
-								Evaluation::Timeout(_) => {
-									return match best_move {
-										Some(best_move) => Evaluation::Timeout(Some(best_move)),
-										None => Evaluation::Timeout(Some(m.to_move())),
-									};
-								},
-								Evaluation::Result(s,_) => {
-									if -s > scoreval {
-										scoreval = -s;
-										best_move = Some(m.to_move());
-										if alpha < scoreval {
-											alpha = scoreval;
-										}
-										if scoreval >= beta {
-											return Evaluation::Result(scoreval,best_move);
-										}
-									}
-								},
-								Evaluation::Error => {
-									return Evaluation::Error
+					match self.alphabeta(event_queue,
+						info_sender,
+						on_error_handler,
+						teban.opposite(),&banmen,
+						-beta,-alpha,Some(m.to_move()),&mc,
+						obtained,&current_kyokumen_hash_map,
+						already_oute_hash_map,
+						ignore_oute_hash_map,
+						mhash,shash,limit,depth-1,
+						current_depth+1,base_depth) {
+
+						Evaluation::Timeout(_) => {
+							return match best_move {
+								Some(best_move) => Evaluation::Timeout(Some(best_move)),
+								None => Evaluation::Timeout(Some(m.to_move())),
+							};
+						},
+						Evaluation::Result(s,_) => {
+							if -s > scoreval {
+								scoreval = -s;
+								best_move = Some(m.to_move());
+								if alpha < scoreval {
+									alpha = scoreval;
+								}
+								if scoreval >= beta {
+									return Evaluation::Result(scoreval,best_move);
 								}
 							}
+						},
+						Evaluation::Error => {
+							return Evaluation::Error
 						}
 					}
 				}
