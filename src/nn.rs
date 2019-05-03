@@ -28,8 +28,8 @@ use usiagent::event::GameEndState;
 use error::*;
 
 pub struct Intelligence {
-	nna:NN<SGD,Mse>,
-	nnb:NN<SGD,Mse>,
+	nna:NN<SGD,CrossEntropy>,
+	nnb:NN<SGD,CrossEntropy>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -52,7 +52,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd)
 										}).unwrap();
-		let nna = NN::new(model,|_| SGD::new(0.1),Mse::new());
+		let nna = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
@@ -68,7 +68,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd)
 										}).unwrap();
-		let nnb = NN::new(model,|_| SGD::new(0.1),Mse::new());
+		let nnb = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
