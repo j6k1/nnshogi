@@ -513,7 +513,7 @@ impl NNShogiPlayer {
 			};
 
 			match next {
-				(ref banmen,ref mc,_) => {
+				(ref state,ref mc,_) => {
 
 					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
@@ -551,7 +551,7 @@ impl NNShogiPlayer {
 					match self.alphabeta(event_queue,
 						info_sender,
 						on_error_handler,
-						teban.opposite(),&banmen,
+						teban.opposite(),&state,
 						-beta,-alpha,Some(m.to_move()),&mc,
 						obtained,&current_kyokumen_hash_map,
 						already_oute_hash_map,
