@@ -50,7 +50,7 @@ impl Intelligence {
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
 										move || {
-											n.sample(&mut rnd)
+											n.sample(&mut rnd) * 0.1
 										}).unwrap();
 		let nna = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
@@ -66,7 +66,7 @@ impl Intelligence {
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
 										move || {
-											n.sample(&mut rnd)
+											n.sample(&mut rnd) *0.1
 										}).unwrap();
 		let nnb = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
