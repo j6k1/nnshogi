@@ -94,6 +94,7 @@ impl PartialOrd for Score {
 const BASE_DEPTH:u32 = 2;
 const MAX_DEPTH:u32 = 6;
 const TIMELIMIT_MARGIN:u64 = 50;
+const NETWORK_DELAY:u32 = 1100;
 
 pub struct NNShogiPlayer {
 	stop:bool,
@@ -112,6 +113,7 @@ pub struct NNShogiPlayer {
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	base_depth:u32,
 	max_depth:u32,
+	network_delay:u32,
 	count_of_move_started:u32,
 	moved:bool,
 }
@@ -158,9 +160,15 @@ impl NNShogiPlayer {
 			history:Vec::new(),
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
+			network_delay:NETWORK_DELAY,
 			count_of_move_started:0,
 			moved:false,
 		}
+	}
+
+	fn timelimit_reached(&self,limit:&Option<Instant>) -> bool {
+		let network_delay = self.network_delay;
+		limit.map_or(false,|l| l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN))
 	}
 
 	fn send_message<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
@@ -276,8 +284,7 @@ impl NNShogiPlayer {
 		}
 
 		if depth == 0 || current_depth == self.max_depth {
-			if (limit.is_some() &&
-				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+			if self.timelimit_reached(&limit) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None);
 			} else {
@@ -327,8 +334,7 @@ impl NNShogiPlayer {
 				}
 			}
 
-			if (limit.is_some() &&
-				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+			if self.timelimit_reached(&limit) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(Some(m.to_move()));
 			}
@@ -392,8 +398,7 @@ impl NNShogiPlayer {
 						}
 					}
 
-					if (limit.is_some() &&
-						limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+					if self.timelimit_reached(&limit) || self.stop {
 						self.send_message(info_sender, on_error_handler, "think timeout!");
 						return Evaluation::Timeout(Some(m.to_move()));
 					}
@@ -433,8 +438,7 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		}
 
-		if (limit.is_some() &&
-			limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+		if self.timelimit_reached(&limit) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(Some(mvs[0].to_move()))
 		}
@@ -450,8 +454,7 @@ impl NNShogiPlayer {
 				}
 			}
 
-			if (limit.is_some() &&
-				limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+			if self.timelimit_reached(&limit) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return match best_move {
 					Some(best_move) => Evaluation::Timeout(Some(best_move)),
@@ -613,8 +616,7 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if (limit.is_some() &&
-			limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+		if self.timelimit_reached(&limit) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return OuteEvaluation::Timeout;
 		}
@@ -631,8 +633,7 @@ impl NNShogiPlayer {
 						on_error_handler.lock().map(|h| h.call(e)).is_err();
 					}
 				}
-				if (limit.is_some() &&
-					limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+				if self.timelimit_reached(&limit) || self.stop {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return OuteEvaluation::Timeout;
 				}
@@ -734,8 +735,7 @@ impl NNShogiPlayer {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
-		if (limit.is_some() &&
-			limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+		if self.timelimit_reached(&limit) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return OuteEvaluation::Timeout;
 		}
@@ -758,8 +758,7 @@ impl NNShogiPlayer {
 						on_error_handler.lock().map(|h| h.call(e)).is_err();
 					}
 				}
-				if (limit.is_some() &&
-					limit.unwrap() - Instant::now() <= Duration::from_millis(TIMELIMIT_MARGIN)) || self.stop {
+				if self.timelimit_reached(&limit) || self.stop {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return OuteEvaluation::Timeout;
 				}
@@ -1065,6 +1064,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mut options:HashMap<String,UsiOptType> = HashMap::new();
 		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH)));
 		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH)));
+		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY)));
 		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
@@ -1097,6 +1097,14 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					_ => BASE_DEPTH,
 				};
 			},
+			"NetworkDelay" => {
+				self.network_delay = match value {
+					SysEventOption::Num(n) => {
+						n
+					},
+					_ => NETWORK_DELAY,
+				}
+			}
 			_ => (),
 		}
 		Ok(())
