@@ -95,6 +95,7 @@ const BASE_DEPTH:u32 = 2;
 const MAX_DEPTH:u32 = 6;
 const TIMELIMIT_MARGIN:u64 = 50;
 const NETWORK_DELAY:u32 = 1100;
+const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
 
 pub struct NNShogiPlayer {
 	stop:bool,
@@ -114,7 +115,7 @@ pub struct NNShogiPlayer {
 	base_depth:u32,
 	max_depth:u32,
 	network_delay:u32,
-	send_info_count:u64,
+	display_evalute_score:bool,
 	count_of_move_started:u32,
 	moved:bool,
 }
@@ -162,7 +163,7 @@ impl NNShogiPlayer {
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
 			network_delay:NETWORK_DELAY,
-			send_info_count:0,
+			display_evalute_score:DEFALUT_DISPLAY_EVALUTE_SCORE,
 			count_of_move_started:0,
 			moved:false,
 		}
@@ -170,9 +171,8 @@ impl NNShogiPlayer {
 
 	fn timelimit_reached(&self,limit:&Option<Instant>) -> bool {
 		let network_delay = self.network_delay;
-		let command_delay = self.send_info_count * 5;
 		limit.map_or(false,|l| {
-			l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + command_delay + TIMELIMIT_MARGIN)
+			l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
 		})
 	}
 
@@ -195,13 +195,12 @@ impl NNShogiPlayer {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
-
-		self.send_info_count += 1;
 	}
 
 	fn send_seldepth<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32, seldepth:u32)
 		where L: Logger, S: InfoSender {
+
 		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
 		commands.push(UsiInfoSubCommand::Depth(depth));
 		commands.push(UsiInfoSubCommand::SelDepth(seldepth));
@@ -220,7 +219,6 @@ impl NNShogiPlayer {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
-		self.send_info_count += 1;
 	}
 	/*
 	fn send_depth<L>(&mut self, info_sender:&USIInfoSender,
@@ -252,7 +250,10 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32)
 		-> Evaluation where L: Logger, S: InfoSender {
-		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+
+		if current_depth > base_depth {
+			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+		}
 
 		match obtained {
 			Some(ObtainKind::Ou) => {
@@ -311,7 +312,9 @@ impl NNShogiPlayer {
 
 				match s {
 					Some(s) => {
-						self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
+						if self.display_evalute_score {
+							self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
+						}
 						return Evaluation::Result(Score::Value(s),m);
 					},
 					None => {
@@ -615,7 +618,7 @@ impl NNShogiPlayer {
 		-> OuteEvaluation where L: Logger, S: InfoSender {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -735,7 +738,7 @@ impl NNShogiPlayer {
 		-> OuteEvaluation where L: Logger, S: InfoSender {
 		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
-		self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		match self.handle_events(event_queue, on_error_handler) {
 			Ok(_) => (),
@@ -1065,6 +1068,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
 		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
 		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
+		kinds.insert(String::from("DispEvaluteScore"),SysEventOptionKind::Bool);
 
 		Ok(kinds)
 	}
@@ -1073,6 +1077,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH)));
 		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH)));
 		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY)));
+		options.insert(String::from("DispEvaluteScore"),UsiOptType::Check(Some(DEFALUT_DISPLAY_EVALUTE_SCORE)));
 		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
@@ -1112,6 +1117,14 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					},
 					_ => NETWORK_DELAY,
 				}
+			},
+			"DispEvaluteScore" => {
+				self.display_evalute_score =  match value {
+					SysEventOption::Bool(b) => {
+						b
+					},
+					_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
+				}
 			}
 			_ => (),
 		}
@@ -1124,7 +1137,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			self.stop = false;
 		}
 		self.count_of_move_started = 0;
-		self.send_info_count = 0;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,banmen:Banmen,
