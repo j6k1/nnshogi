@@ -114,6 +114,7 @@ pub struct NNShogiPlayer {
 	base_depth:u32,
 	max_depth:u32,
 	network_delay:u32,
+	send_info_count:u64,
 	count_of_move_started:u32,
 	moved:bool,
 }
@@ -161,6 +162,7 @@ impl NNShogiPlayer {
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
 			network_delay:NETWORK_DELAY,
+			send_info_count:0,
 			count_of_move_started:0,
 			moved:false,
 		}
@@ -168,7 +170,10 @@ impl NNShogiPlayer {
 
 	fn timelimit_reached(&self,limit:&Option<Instant>) -> bool {
 		let network_delay = self.network_delay;
-		limit.map_or(false,|l| l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN))
+		let command_delay = self.send_info_count * 5;
+		limit.map_or(false,|l| {
+			l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + command_delay + TIMELIMIT_MARGIN)
+		})
 	}
 
 	fn send_message<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
@@ -190,6 +195,8 @@ impl NNShogiPlayer {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
+
+		self.send_info_count += 1;
 	}
 
 	fn send_seldepth<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
@@ -213,6 +220,7 @@ impl NNShogiPlayer {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
+		self.send_info_count += 1;
 	}
 	/*
 	fn send_depth<L>(&mut self, info_sender:&USIInfoSender,
@@ -1116,6 +1124,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			self.stop = false;
 		}
 		self.count_of_move_started = 0;
+		self.send_info_count = 0;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,banmen:Banmen,
