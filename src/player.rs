@@ -21,6 +21,7 @@ use usiagent::hash::*;
 use usiagent::OnErrorHandler;
 use usiagent::logger::*;
 use usiagent::error::PlayerError;
+use usiagent::error::UsiProtocolError;
 use usiagent::TryFrom;
 
 use nn::Intelligence;
@@ -102,7 +103,7 @@ pub struct NNShogiPlayer {
 	pub quited:bool,
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-	kyokumen:Option<Kyokumen>,
+	kyokumen:Option<Arc<Kyokumen>>,
 	mhash:u64,
 	shash:u64,
 	oute_kyokumen_hash_map:TwoKeyHashMap<u64,()>,
@@ -1212,11 +1213,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			current_teban = current_teban.opposite();
 		}
 
-		self.kyokumen = Some(Kyokumen {
+		self.kyokumen = Some(Arc::new(Kyokumen {
 			state:state,
 			mc:mc,
 			teban:t
-		});
+		}));
 		self.mhash = mhash;
 		self.shash = shash;
 		self.oute_kyokumen_hash_map = oute_kyokumen_hash_map;
@@ -1229,7 +1230,14 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			info_sender:Arc<Mutex<S>>,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender {
-		let Kyokumen { teban, mc, state } = self.extract_kyokumen(&self.kyokumen)?;
+		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+			UsiProtocolError::InvalidState(
+						String::from("Position information is not initialized."))
+		)?;
+
+		let teban = kyokumen.teban;
+		let state = &kyokumen.state;
+		let mc = &kyokumen.mc;
 
 		let limit = limit.to_instant(teban);
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
@@ -1239,8 +1247,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let result = match self.alphabeta(&*event_queue,
 					&info_sender, &on_error_handler,
-					teban, &state, Score::NEGINFINITE,
-					Score::INFINITE, None, &mc,
+					teban, state, Score::NEGINFINITE,
+					Score::INFINITE, None, mc,
 					None, &kyokumen_hash_map,
 					&mut TwoKeyHashMap::new(),
 					&mut TwoKeyHashMap::new(),mhash,shash,
@@ -1268,7 +1276,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		if let BestMove::Move(m,_) = result {
 			let h = match self.history.last() {
 				Some(&(ref banmen,ref mc,mhash,shash)) => {
-					let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,&mc,m.to_applied_move());
+					let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m.to_applied_move());
 					self.moved = true;
 					let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
 					let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
@@ -1296,13 +1304,18 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
 
+		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+			UsiProtocolError::InvalidState(
+						String::from("Information of 'teban' is not set."))
+		)?;
+
+		let teban = kyokumen.teban;
+
 		if self.count_of_move_started > 0 {
-			let (teban,last_teban) = match self.extract_teban(&self.kyokumen) {
-				Ok(teban) if self.moved => (teban,teban.opposite()),
-				Ok(teban) => (teban,teban),
-				Err(_) => {
-					return Err(CommonError::Fail(String::from("Information of 'teban' is not set.")));
-				}
+			let (teban,last_teban) = if self.moved {
+				(teban,teban.opposite())
+			} else {
+				(teban,teban)
 			};
 
 			match self.evalutor {
