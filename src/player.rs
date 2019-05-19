@@ -478,7 +478,7 @@ impl NNShogiPlayer {
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
 		} else if mvs.len() == 1 {
-			return Evaluation::Timeout(Some(mvs[0].to_move()));
+			return self.evalute(teban,state,mc,&Some(mvs[0].to_move()),info_sender,on_error_handler);
 		}
 
 		match self.handle_events(event_queue, on_error_handler) {
