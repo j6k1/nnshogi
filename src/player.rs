@@ -236,6 +236,37 @@ impl NNShogiPlayer {
 		}
 	}
 	*/
+
+	fn evalute<L,S>(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
+					info_sender:&Arc<Mutex<S>>,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
+		-> Evaluation where L: Logger, S: InfoSender {
+		let s = match self.evalutor {
+			Some(ref mut evalutor) => {
+				match evalutor.evalute(teban,state.get_banmen(),mc) {
+					Ok(s) => Some(s),
+					Err(ref mut e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				}
+			},
+			None => None,
+		};
+
+		match s {
+			Some(s) => {
+				if self.display_evalute_score {
+					self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
+				}
+				return Evaluation::Result(Score::Value(s),m.clone());
+			},
+			None => {
+				self.send_message(info_sender, on_error_handler, &format!("evalutor is not initialized!"));
+				return Evaluation::Error;
+			}
+		}
+	}
+
 	fn alphabeta<'a,L,S>(&mut self,
 			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&Arc<Mutex<S>>,
@@ -270,75 +301,34 @@ impl NNShogiPlayer {
 			}
 		}
 
-		if self.stop {
+		if self.timelimit_reached(&limit) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None);
 		}
 
-		let oute_mvs = Rule::oute_only_moves_all(teban,&state,mc);
-
-		if oute_mvs.len() > 0 {
-			match oute_mvs[0] {
-				LegalMove::To(ref m) if m.obtained() == Some(ObtainKind::Ou) => {
-					return Evaluation::Result(Score::INFINITE,Some(oute_mvs[0].to_move()));
-				},
-				_ => (),
-			}
-		}
-
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
-
-		if depth == 0 || current_depth == self.max_depth {
-			if self.timelimit_reached(&limit) || self.stop {
-				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(None);
-			} else {
-				let s = match self.evalutor {
-					Some(ref mut evalutor) => {
-						match evalutor.evalute(teban,state.get_banmen(),mc) {
-							Ok(s) => Some(s),
-							Err(ref mut e) => {
-								on_error_handler.lock().map(|h| h.call(e)).is_err();
-								return Evaluation::Error;
-							}
-						}
-					},
-					None => None,
-				};
-
-				match s {
-					Some(s) => {
-						if self.display_evalute_score {
-							self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
-						}
-						return Evaluation::Result(Score::Value(s),m);
-					},
-					None => {
-						self.send_message(info_sender, on_error_handler, &format!("evalutor is not initialized!"));
-						return Evaluation::Error;
-					}
+		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),state) {
+			if depth == 0 || current_depth == self.max_depth {
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return Evaluation::Timeout(None);
+				} else {
+					return self.evalute(teban,state,mc,&m,info_sender,on_error_handler);
 				}
 			}
-		}
 
-		if self.stop {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None);
-		}
+			(Rule::respond_oute_only_moves_all(teban, state, mc),true)
+		} else {
+			let oute_mvs = Rule::oute_only_moves_all(teban,&state,mc);
 
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			if oute_mvs.len() > 0 {
+				match oute_mvs[0] {
+					LegalMove::To(ref m) if m.obtained() == Some(ObtainKind::Ou) => {
+						return Evaluation::Result(Score::INFINITE,Some(oute_mvs[0].to_move()));
+					},
+					_ => (),
+				}
 			}
-		}
 
-		for m in &oute_mvs {
 			match self.handle_events(event_queue, on_error_handler) {
 				Ok(_) => (),
 				Err(ref e) => {
@@ -348,132 +338,163 @@ impl NNShogiPlayer {
 
 			if self.timelimit_reached(&limit) || self.stop {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(Some(m.to_move()));
+				return Evaluation::Timeout(Some(oute_mvs[0].to_move()))
 			}
 
-			let o = match m {
-				LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
-				_ => None,
-			};
-
-			let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-			let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-			match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
-				Some(_) => {
-					continue;
-				},
-				None => (),
-			}
-
-			let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
-
-			match current_kyokumen_hash_map.get(&mhash,&shash) {
-				Some(c) if c >= 3 => {
-					continue;
-				},
-				Some(c) => {
-					current_kyokumen_hash_map.insert(mhash,shash,c+1);
-				},
-				None => {
-					current_kyokumen_hash_map.insert(mhash,shash,1);
+			if depth == 0 || current_depth == self.max_depth {
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return Evaluation::Timeout(None);
+				} else {
+					return self.evalute(teban,state,mc,&m,info_sender,on_error_handler);
 				}
 			}
 
-			match already_oute_hash_map.get(&mhash,&shash) {
-				None => {
-					already_oute_hash_map.insert(mhash,shash,());
-				},
-				Some(_) => (),
-			}
+			for m in &oute_mvs {
+				let o = match m {
+					LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
+					_ => None,
+				};
 
-			match ignore_oute_hash_map.get(&mhash,&shash) {
-				Some(_) => {
-					continue;
-				},
-				_ => (),
-			}
+				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-			let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+				match self.oute_kyokumen_hash_map.get(&mhash,&shash) {
+					Some(_) => {
+						continue;
+					},
+					None => (),
+				}
 
-			match next {
-				(ref next,ref mc,_) if !Rule::is_mate(teban.opposite(),next) => {
-					let is_put_fu = match m {
-						LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
-						_ => false,
-					};
+				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
 
-					match self.handle_events(event_queue, on_error_handler) {
-						Ok(_) => (),
-						Err(ref e) => {
-							on_error_handler.lock().map(|h| h.call(e)).is_err();
+				match current_kyokumen_hash_map.get(&mhash,&shash) {
+					Some(c) if c >= 3 => {
+						continue;
+					},
+					Some(c) => {
+						current_kyokumen_hash_map.insert(mhash,shash,c+1);
+					},
+					None => {
+						current_kyokumen_hash_map.insert(mhash,shash,1);
+					}
+				}
+
+				match already_oute_hash_map.get(&mhash,&shash) {
+					None => {
+						already_oute_hash_map.insert(mhash,shash,());
+					},
+					Some(_) => (),
+				}
+
+				match ignore_oute_hash_map.get(&mhash,&shash) {
+					Some(_) => {
+						continue;
+					},
+					_ => (),
+				}
+
+				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+
+				match next {
+					(ref next,ref mc,_) if !Rule::is_mate(teban.opposite(),next) => {
+						let is_put_fu = match m {
+							LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
+							_ => false,
+						};
+
+						match self.handle_events(event_queue, on_error_handler) {
+							Ok(_) => (),
+							Err(ref e) => {
+								on_error_handler.lock().map(|h| h.call(e)).is_err();
+							}
 						}
-					}
 
-					if self.timelimit_reached(&limit) || self.stop {
-						self.send_message(info_sender, on_error_handler, "think timeout!");
-						return Evaluation::Timeout(Some(m.to_move()));
-					}
-
-					match self.respond_oute_only(event_queue,
-														info_sender,
-														on_error_handler,
-														teban.opposite(),next,mc,
-														&current_kyokumen_hash_map,
-														already_oute_hash_map,
-														ignore_oute_hash_map,
-														mhash,shash,limit,
-														current_depth+1,
-														base_depth) {
-						OuteEvaluation::Result(d) if d >= 0 &&
-							!(is_put_fu && d - current_depth as i32 == 2) => {
-							return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
-						},
-						OuteEvaluation::Timeout => {
+						if self.timelimit_reached(&limit) || self.stop {
+							self.send_message(info_sender, on_error_handler, "think timeout!");
 							return Evaluation::Timeout(Some(m.to_move()));
-						},
-						_ => (),
-					}
-				},
-				_ => (),
-			}
-		}
+						}
 
-		let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
+						match self.respond_oute_only(event_queue,
+															info_sender,
+															on_error_handler,
+															teban.opposite(),next,mc,
+															&current_kyokumen_hash_map,
+															already_oute_hash_map,
+															ignore_oute_hash_map,
+															mhash,shash,limit,
+															current_depth+1,
+															base_depth) {
+							OuteEvaluation::Result(d) if d >= 0 &&
+								!(is_put_fu && d - current_depth as i32 == 2) => {
+								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
+							},
+							OuteEvaluation::Timeout => {
+								return Evaluation::Timeout(Some(m.to_move()));
+							},
+							_ => (),
+						}
+					},
+					_ => (),
+				}
+
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
+
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return Evaluation::Timeout(Some(m.to_move()));
+				}
+			}
+
+			if oute_mvs.len() == 0 {
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
+
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return Evaluation::Timeout(None);
+				}
+			} else {
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return Evaluation::Timeout(Some(oute_mvs[0].to_move()));
+				}
+			}
+
+			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
+
+			(mvs,false)
+		};
 
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
 		}
 
-		if self.stop {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].to_move()));
+		match self.handle_events(event_queue, on_error_handler) {
+			Ok(_) => (),
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
+			}
 		}
 
 		if self.timelimit_reached(&limit) || self.stop {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].to_move()))
+			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		}
 
 		let mut scoreval = Score::NEGINFINITE;
 		let mut best_move:Option<Move> = None;
 
 		for m in &mvs {
-			match self.handle_events(event_queue, on_error_handler) {
-				Ok(_) => (),
-				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
-				}
-			}
-
-			if self.timelimit_reached(&limit) || self.stop {
-				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return match best_move {
-					Some(best_move) => Evaluation::Timeout(Some(best_move)),
-					None => Evaluation::Timeout(Some(m.to_move())),
-				};
-			}
-
 			let obtained = match m {
 				LegalMove::To(ref m) => m.obtained(),
 				_ => None,
@@ -521,6 +542,8 @@ impl NNShogiPlayer {
 						} else {
 							depth
 						}
+					} else if responded_oute {
+						depth + 1
 					} else {
 						depth
 					}
@@ -598,6 +621,21 @@ impl NNShogiPlayer {
 					}
 				}
 			}
+
+			match self.handle_events(event_queue, on_error_handler) {
+				Ok(_) => (),
+				Err(ref e) => {
+					on_error_handler.lock().map(|h| h.call(e)).is_err();
+				}
+			}
+
+			if self.timelimit_reached(&limit) || self.stop {
+				self.send_message(info_sender, on_error_handler, "think timeout!");
+				return match best_move {
+					Some(best_move) => Evaluation::Timeout(Some(best_move)),
+					None => Evaluation::Timeout(Some(m.to_move())),
+				};
+			}
 		}
 
 		Evaluation::Result(scoreval,best_move)
@@ -639,17 +677,6 @@ impl NNShogiPlayer {
 			let mut maxdepth = -1;
 
 			for m in &mvs {
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
-				if self.timelimit_reached(&limit) || self.stop {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return OuteEvaluation::Timeout;
-				}
-
 				let o = match m {
 					&LegalMove::To(ref m) => {
 						match m.obtained() {
@@ -717,6 +744,17 @@ impl NNShogiPlayer {
 						}
 					}
 				}
+
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return OuteEvaluation::Timeout;
+				}
 			}
 
 			OuteEvaluation::Result(maxdepth)
@@ -763,16 +801,6 @@ impl NNShogiPlayer {
 						}
 					},
 					_ => ()
-				}
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
-				if self.timelimit_reached(&limit) || self.stop {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return OuteEvaluation::Timeout;
 				}
 
 				let is_put_fu = match m {
@@ -847,6 +875,18 @@ impl NNShogiPlayer {
 							_ => (),
 						}
 					}
+				}
+
+				match self.handle_events(event_queue, on_error_handler) {
+					Ok(_) => (),
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+					}
+				}
+
+				if self.timelimit_reached(&limit) || self.stop {
+					self.send_message(info_sender, on_error_handler, "think timeout!");
+					return OuteEvaluation::Timeout;
 				}
 			}
 			OuteEvaluation::Result(-1)
