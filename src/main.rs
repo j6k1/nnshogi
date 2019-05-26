@@ -16,8 +16,6 @@ pub mod nn;
 pub mod learning;
 
 use std::env;
-use std::sync::Mutex;
-use std::sync::Arc;
 use std::io::{ Write, BufReader, Read, BufRead };
 use std::fs::OpenOptions;
 use std::fs::File;
@@ -34,7 +32,6 @@ use usiagent::UsiAgent;
 use usiagent::selfmatch::*;
 use usiagent::output::*;
 use usiagent::event::*;
-use usiagent::command::*;
 use usiagent::shogi::*;
 use usiagent::rule::*;
 use usiagent::protocol::*;
@@ -393,12 +390,12 @@ fn run() -> Result<(),ApplicationError> {
 			base_depth, max_depth, time_limit, running_time_none_parsed, number_of_games
 		);
 
-		let info_sender_arc = Arc::new(Mutex::new(CosoleInfoSender::new(silent)));
+		let info_sender = CosoleInfoSender::new(silent);
 
 		let mut engine = SelfMatchEngine::new(
 			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
 			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
-			info_sender_arc,
+			info_sender,
 			time_limit,
 			running_time,number_of_games
 		);
@@ -603,25 +600,5 @@ fn run() -> Result<(),ApplicationError> {
 		r.map_err(|_| ApplicationError::AgentRunningError(String::from(
 			"USIAgentの実行中にエラーが発生しました。詳細はログを参照してください..."
 		)))
-	}
-}
-struct CosoleInfoSender {
-	silent:bool,
-}
-impl CosoleInfoSender {
-	pub fn new(silent:bool) -> CosoleInfoSender {
-		CosoleInfoSender {
-			silent:silent
-		}
-	}
-}
-impl InfoSender for CosoleInfoSender {
-	fn send(&mut self,commands:Vec<UsiInfoSubCommand>) -> Result<(), InfoSendError> {
-		if !self.silent {
-			for command in commands {
-				print!("{}\n",command.to_usi_command()?);
-			}
-		}
-		Ok(())
 	}
 }

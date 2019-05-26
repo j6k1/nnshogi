@@ -13,8 +13,8 @@ use std::cmp::Ordering;
 use std::ops::Neg;
 
 use usiagent::player::*;
-use usiagent::command::*;
 use usiagent::event::*;
+use usiagent::command::*;
 use usiagent::shogi::*;
 use usiagent::rule::*;
 use usiagent::hash::*;
@@ -177,45 +177,32 @@ impl NNShogiPlayer {
 		})
 	}
 
-	fn send_message<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
+	fn send_message<L,S>(&mut self, info_sender:&mut S,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, message:&str)
-		where L: Logger, S: InfoSender {
+		where L: Logger, S: InfoSender,
+			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
 		commands.push(UsiInfoSubCommand::Str(String::from(message)));
 
-		match info_sender.lock() {
-			Ok(mut info_sender) => {
-				match info_sender.send(commands) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
-			},
+		match info_sender.send(commands) {
+			Ok(_) => (),
 			Err(ref e) => {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
 		}
 	}
 
-	fn send_seldepth<L,S>(&mut self, info_sender:&Arc<Mutex<S>>,
+	fn send_seldepth<L,S>(&mut self, info_sender:&mut S,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32, seldepth:u32)
-		where L: Logger, S: InfoSender {
+		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
 		commands.push(UsiInfoSubCommand::Depth(depth));
 		commands.push(UsiInfoSubCommand::SelDepth(seldepth));
 
 
-		match info_sender.lock() {
-			Ok(mut info_sender) => {
-				match info_sender.send(commands) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
-			},
+		match info_sender.send(commands) {
+			Ok(_) => (),
 			Err(ref e) => {
 				on_error_handler.lock().map(|h| h.call(e)).is_err();
 			}
@@ -238,8 +225,8 @@ impl NNShogiPlayer {
 	*/
 
 	fn evalute<L,S>(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
-					info_sender:&Arc<Mutex<S>>,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Evaluation where L: Logger, S: InfoSender {
+					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
+		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let s = match self.evalutor {
 			Some(ref mut evalutor) => {
 				match evalutor.evalute(teban,state.get_banmen(),mc) {
@@ -269,7 +256,7 @@ impl NNShogiPlayer {
 
 	fn alphabeta<'a,L,S>(&mut self,
 			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
-								info_sender:&Arc<Mutex<S>>,
+								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mut alpha:Score,beta:Score,
@@ -281,7 +268,7 @@ impl NNShogiPlayer {
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32)
-		-> Evaluation where L: Logger, S: InfoSender {
+		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		if current_depth > base_depth {
 			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
@@ -645,7 +632,7 @@ impl NNShogiPlayer {
 
 	fn respond_oute_only<'a,L,S>(&mut self,
 								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
-								info_sender:&Arc<Mutex<S>>,
+								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
@@ -656,7 +643,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,
 								current_depth:u32,
 								base_depth:u32)
-		-> OuteEvaluation where L: Logger, S: InfoSender {
+		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
@@ -765,7 +752,7 @@ impl NNShogiPlayer {
 
 	fn oute_only<'a,L,S>(&mut self,
 								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
-								info_sender:&Arc<Mutex<S>>,
+								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
@@ -776,7 +763,7 @@ impl NNShogiPlayer {
 								limit:Option<Instant>,
 								current_depth:u32,
 								base_depth:u32)
-		-> OuteEvaluation where L: Logger, S: InfoSender {
+		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
@@ -1111,6 +1098,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
 		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
 		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
+		kinds.insert(String::from("NetworkDelay"),SysEventOptionKind::Num);
 		kinds.insert(String::from("DispEvaluteScore"),SysEventOptionKind::Bool);
 
 		Ok(kinds)
@@ -1270,8 +1258,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-			info_sender:Arc<Mutex<S>>,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
-			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender {
+			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
+		-> Result<BestMove,CommonError>
+		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
@@ -1287,8 +1276,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let base_depth = self.base_depth;
 
+		let mut info_sender = info_sender;
+
 		let result = match self.alphabeta(&*event_queue,
-					&info_sender, &on_error_handler,
+					&mut info_sender, &on_error_handler,
 					teban, state, Score::NEGINFINITE,
 					Score::INFINITE, None, mc,
 					None, &kyokumen_hash_map,
@@ -1334,8 +1325,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(result)
 	}
 	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-			_:Arc<Mutex<S>>,_:Arc<Mutex<OnErrorHandler<L>>>)
-			-> Result<CheckMate,CommonError> where L: Logger, S: InfoSender {
+			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
+		-> Result<CheckMate,CommonError>
+		where L: Logger, S: InfoSender,
+			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		Ok(CheckMate::NotiImplemented)
 	}
 	fn on_stop(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
@@ -1344,7 +1337,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	}
 	fn gameover<L>(&mut self,s:&GameEndState,
 		event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger {
+		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
 			UsiProtocolError::InvalidState(
