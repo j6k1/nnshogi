@@ -390,7 +390,7 @@ fn run() -> Result<(),ApplicationError> {
 			base_depth, max_depth, time_limit, running_time_none_parsed, number_of_games
 		);
 
-		let info_sender = CosoleInfoSender::new(silent);
+		let info_sender = ConsoleInfoSender::new(silent);
 
 		let mut engine = SelfMatchEngine::new(
 			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
