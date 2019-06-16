@@ -28,8 +28,8 @@ use usiagent::event::GameEndState;
 use error::*;
 
 pub struct Intelligence {
-	nna:NN<Adam,CrossEntropy>,
-	nnb:NN<Adam,CrossEntropy>,
+	nna:NN<SGD,CrossEntropy>,
+	nnb:NN<SGD,CrossEntropy>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -52,7 +52,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nna = NN::new(model,|n| Adam::new(n),CrossEntropy::new());
+		let nna = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
@@ -68,7 +68,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nnb = NN::new(model,|n| Adam::new(n),CrossEntropy::new());
+		let nnb = NN::new(model,|_| SGD::new(0.1),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
@@ -115,6 +115,10 @@ impl Intelligence {
 		event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(),CommonError> {
 
+		const BASE_RATE:f64 = 0.96;
+
+		let mut rate = 1.0f64;
+
 		let mut t = last_teban;
 
 		for h in history.iter().rev() {
@@ -134,49 +138,51 @@ impl Intelligence {
 			input.extend_from_slice(&self.make_input(t,&h.0,&h.1));
 
 			let mut rnd = rand::thread_rng();
-			let a = rnd.gen();
+			let a:f64 = rnd.gen();
 			let b = 1f64 - a;
 
 			match s {
 				&GameEndState::Win if t == teban && enable_shake_shake => {
-					self.nna.learn(&input,&(0..1).map(|_| a)
+					self.nna.learn(&input,&(0..1).map(|_| a / 2.0f64 + a / 2.0f64 * rate)
 													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| b)
+					self.nnb.learn(&input,&(0..1).map(|_| b / 2.0f64 + b / 2.0f64 * rate)
 													.collect::<Vec<f64>>())?;
 				},
 				&GameEndState::Win if t == teban => {
-					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
+					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
 				},
 				&GameEndState::Win => {
-					self.nna.learn(&input,&(0..1).map(|_| 0f64)
+					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0f64)
+					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
 				},
 				_ if t == teban => {
-					self.nna.learn(&input,&(0..1).map(|_| 0f64)
+					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0f64)
+					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
 				},
 				_ if enable_shake_shake => {
-					self.nna.learn(&input,&(0..1).map(|_| a)
+					self.nna.learn(&input,&(0..1).map(|_| a / 2.0f64 + a / 2.0f64 * rate)
 												.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| b)
+					self.nnb.learn(&input,&(0..1).map(|_| b / 2.0f64 + b / 2.0f64 * rate)
 													.collect::<Vec<f64>>())?;
 				},
 				_  => {
-					self.nna.learn(&input,&(0..1).map(|_| 1f64)
+					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
 												.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 1f64)
+					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
 													.collect::<Vec<f64>>())?;
 				}
 			}
 
 			t = t.opposite();
+
+			rate = rate * BASE_RATE;
 		}
 
 		self.save()
