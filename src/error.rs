@@ -11,6 +11,7 @@ use usiagent::error::USIAgentStartupError;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use usiagent::error::SelfMatchRunningError;
+use usiagent::error::TypeConvertError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
 use usiagent::error::SfenStringConvertError;
@@ -58,6 +59,11 @@ impl<'a> From<CommonError> for USIAgentRunningError<'a,UserEventKind,CommonError
 impl From<InvalidStateError> for CommonError {
 	fn from(_: InvalidStateError) -> CommonError {
 		CommonError::Fail(String::from("invalid state."))
+	}
+}
+impl From<TypeConvertError<String>> for CommonError {
+	fn from(_: TypeConvertError<String>) -> CommonError {
+		CommonError::Fail(String::from("An error occurred during type conversion."))
 	}
 }
 impl From<io::Error> for CommonError {
