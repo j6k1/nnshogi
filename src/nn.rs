@@ -242,176 +242,10 @@ impl Intelligence {
 						};
 						let kind = kinds[y][x];
 
-						match kind {
-							KomaKind::SFu if t == Teban::Sente => {
-								inputs[y * 9 + x] = 1f64;
-							},
-							KomaKind::GFu if t == Teban::Gote => {
-								inputs[y * 9 + x] = 1f64;
-							},
-							KomaKind::SKyou if t == Teban::Sente => {
-								inputs[y * 9 + x + 81] = 1f64;
-							},
-							KomaKind::GKyou if t == Teban::Gote => {
-								inputs[y * 9 + x + 81] = 1f64;
-							},
-							KomaKind::SKei if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 2] = 1f64;
-							},
-							KomaKind::GKei if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 2] = 1f64;
-							},
-							KomaKind::SGin if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 3] = 1f64;
-							},
-							KomaKind::GGin if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 3] = 1f64;
-							},
-							KomaKind::SKin if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 4] = 1f64;
-							},
-							KomaKind::GKin if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 4] = 1f64;
-							},
-							KomaKind::SKaku if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 5] = 1f64;
-							},
-							KomaKind::GKaku if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 5] = 1f64;
-							},
-							KomaKind::SHisha if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 6] = 1f64;
-							},
-							KomaKind::GHisha if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 6] = 1f64;
-							},
-							KomaKind::SOu if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 7] = 1f64;
-							},
-							KomaKind::GOu if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 7] = 1f64;
-							},
-							KomaKind::SFuN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 8] = 1f64;
-							},
-							KomaKind::GFuN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 8] = 1f64;
-							},
-							KomaKind::SKyouN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 9] = 1f64;
-							},
-							KomaKind::GKyouN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 9] = 1f64;
-							},
-							KomaKind::SKeiN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 10] = 1f64;
-							},
-							KomaKind::GKeiN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 10] = 1f64;
-							},
-							KomaKind::SGinN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 11] = 1f64;
-							},
-							KomaKind::GGinN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 11] = 1f64;
-							},
-							KomaKind::SKakuN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 12] = 1f64;
-							},
-							KomaKind::GKakuN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 12] = 1f64;
-							},
-							KomaKind::SHishaN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 13] = 1f64;
-							},
-							KomaKind::GHishaN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 13] = 1f64;
-							},
-							KomaKind::GFu if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 14] = 1f64;
-							},
-							KomaKind::SFu if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 14] = 1f64;
-							},
-							KomaKind::GKyou if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 15] = 1f64;
-							},
-							KomaKind::SKyou if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 15] = 1f64;
-							},
-							KomaKind::GKei if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 16] = 1f64;
-							},
-							KomaKind::SKei if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 16] = 1f64;
-							},
-							KomaKind::GGin if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 17] = 1f64;
-							},
-							KomaKind::SGin if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 17] = 1f64;
-							},
-							KomaKind::GKin if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 18] = 1f64;
-							},
-							KomaKind::SKin if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 18] = 1f64;
-							},
-							KomaKind::GKaku if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 19] = 1f64;
-							},
-							KomaKind::SKaku if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 19] = 1f64;
-							},
-							KomaKind::GHisha if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 20] = 1f64;
-							},
-							KomaKind::SHisha if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 20] = 1f64;
-							},
-							KomaKind::GOu if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 21] = 1f64;
-							},
-							KomaKind::SOu if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 21] = 1f64;
-							},
-							KomaKind::GFuN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 22] = 1f64;
-							},
-							KomaKind::SFuN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 22] = 1f64;
-							},
-							KomaKind::GKyouN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 23] = 1f64;
-							},
-							KomaKind::SKyouN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 23] = 1f64;
-							},
-							KomaKind::GKeiN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 24] = 1f64;
-							},
-							KomaKind::SKeiN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 24] = 1f64;
-							},
-							KomaKind::GGinN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 25] = 1f64;
-							},
-							KomaKind::SGinN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 25] = 1f64;
-							},
-							KomaKind::GKakuN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 26] = 1f64;
-							},
-							KomaKind::SKakuN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 26] = 1f64;
-							},
-							KomaKind::GHishaN if t == Teban::Sente => {
-								inputs[y * 9 + x + 81 * 27] = 1f64;
-							},
-							KomaKind::SHishaN if t == Teban::Gote => {
-								inputs[y * 9 + x + 81 * 27] = 1f64;
-							},
-							_ => (),
+						if kind != KomaKind::Blank {
+							let index = self.input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+
+							inputs[index] = 1f64;
 						}
 					}
 				}
@@ -493,42 +327,23 @@ impl Intelligence {
 
 		match m {
 			Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
-				let (sx,sy,dx,dy,n) = match t {
-					Teban::Sente => (sx,sy,dx,dy,n),
-					Teban::Gote => (8-sx,8-sy,8-dx,8-dy,n),
-				};
-
 				match b {
 					&Banmen(ref kinds) => {
-						let sk = match t {
-							Teban::Sente => {
-								kinds[sy as usize][sx as usize]
-							},
-							Teban::Gote => {
-								kinds[sy as usize - 8][sx as usize - 8]
-							}
-						};
+						let sk = kinds[sy as usize][sx as usize];
 
-						d.push((self.input_index_with_banmen(t,sk,sx,sy)?,-1f64));
+						d.push((self.input_index_of_banmen(t,sk,sx,sy)?,-1f64));
 
-						let dk = match t {
-							Teban::Sente => {
-								kinds[dy as usize][dx as usize]
-							},
-							Teban::Gote => {
-								kinds[dy as usize - 8][dx as usize - 8]
-							}
-						};
+						let dk = kinds[dy as usize][dx as usize];
 
 						if dk != KomaKind::Blank {
-							d.push((self.input_index_with_banmen(t,dk,dx,dy)?,-1f64));
-							d.push((self.input_index_with_get_mochigoma(MochigomaKind::try_from(dk)?,mc)?,1f64));
+							d.push((self.input_index_of_banmen(t,dk,dx,dy)?,-1f64));
+							d.push((self.input_index_with_of_mochigoma_get(MochigomaKind::try_from(dk)?,mc)?,1f64));
 						}
 
 						if n {
-							d.push((self.input_index_with_banmen(t,sk.to_nari(),dx,dy)?,1f64));
+							d.push((self.input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
 						} else {
-							d.push((self.input_index_with_banmen(t,sk,dx,dy)?,1f64));
+							d.push((self.input_index_of_banmen(t,sk,dx,dy)?,1f64));
 						}
 					}
 				}
@@ -538,196 +353,235 @@ impl Intelligence {
 					Teban::Sente => (dx,dy),
 					Teban::Gote => (8-dx,8-dy),
 				};
-				d.push((self.input_index_with_put_mochigoma(kind,mc)?,-1f64));
-				d.push((self.input_index_with_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
+				d.push((self.input_index_with_of_mochigoma_put(kind,mc)?,-1f64));
+				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
 		}
 
 		Ok(d)
 	}
 
-	fn input_index_with_banmen(&self,teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
-		let index = match kind {
-			KomaKind::SFu if teban == Teban::Sente => {
-				y * 9 + x
+	fn input_index_of_banmen(&self,teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
+		let index = match teban {
+			Teban::Sente => {
+				match kind {
+					KomaKind::SFu => {
+						y * 9 + x
+					},
+					KomaKind::SKyou => {
+						y * 9 + x + 81
+					},
+					KomaKind::SKei => {
+						y * 9 + x + 81 * 2
+					},
+					KomaKind::SGin => {
+						y * 9 + x + 81 * 3
+					},
+					KomaKind::SKin => {
+						y * 9 + x + 81 * 4
+					},
+					KomaKind::SKaku => {
+						y * 9 + x + 81 * 5
+					},
+					KomaKind::SHisha => {
+						y * 9 + x + 81 * 6
+					},
+					KomaKind::SOu => {
+						y * 9 + x + 81 * 7
+					},
+					KomaKind::SFuN => {
+						y * 9 + x + 81 * 8
+					},
+					KomaKind::SKyouN => {
+						y * 9 + x + 81 * 9
+					},
+					KomaKind::SKeiN => {
+						y * 9 + x + 81 * 10
+					},
+					KomaKind::SGinN => {
+						y * 9 + x + 81 * 11
+					},
+					KomaKind::SKakuN => {
+						y * 9 + x + 81 * 12
+					},
+					KomaKind::SHishaN => {
+						y * 9 + x + 81 * 13
+					},
+					KomaKind::GFu => {
+						y * 9 + x + 81 * 14
+					},
+					KomaKind::GKyou => {
+						y * 9 + x + 81 * 15
+					},
+					KomaKind::GKei => {
+						y * 9 + x + 81 * 16
+					},
+					KomaKind::GGin => {
+						y * 9 + x + 81 * 17
+					},
+					KomaKind::GKin => {
+						y * 9 + x + 81 * 18
+					},
+					KomaKind::GKaku => {
+						y * 9 + x + 81 * 19
+					},
+					KomaKind::GHisha => {
+						y * 9 + x + 81 * 20
+					},
+					KomaKind::GOu => {
+						y * 9 + x + 81 * 21
+					},
+					KomaKind::GFuN => {
+						y * 9 + x + 81 * 22
+					},
+					KomaKind::GKyouN => {
+						y * 9 + x + 81 * 23
+					},
+					KomaKind::GKeiN => {
+						y * 9 + x + 81 * 24
+					},
+					KomaKind::GGinN => {
+						y * 9 + x + 81 * 25
+					},
+					KomaKind::GKakuN => {
+						y * 9 + x + 81 * 26
+					},
+					KomaKind::GHishaN => {
+						y * 9 + x + 81 * 27
+					},
+					_ => {
+						return Err(CommonError::Fail(
+									String::from(
+										"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
+								)));
+					},
+				}
 			},
-			KomaKind::GFu if teban == Teban::Gote => {
-				y * 9 + x
-			},
-			KomaKind::SKyou if teban == Teban::Sente => {
-				y * 9 + x + 81
-			},
-			KomaKind::GKyou if teban == Teban::Gote => {
-				y * 9 + x + 81
-			},
-			KomaKind::SKei if teban == Teban::Sente => {
-				y * 9 + x + 81 * 2
-			},
-			KomaKind::GKei if teban == Teban::Gote => {
-				y * 9 + x + 81 * 2
-			},
-			KomaKind::SGin if teban == Teban::Sente => {
-				y * 9 + x + 81 * 3
-			},
-			KomaKind::GGin if teban == Teban::Gote => {
-				y * 9 + x + 81 * 3
-			},
-			KomaKind::SKin if teban == Teban::Sente => {
-				y * 9 + x + 81 * 4
-			},
-			KomaKind::GKin if teban == Teban::Gote => {
-				y * 9 + x + 81 * 4
-			},
-			KomaKind::SKaku if teban == Teban::Sente => {
-				y * 9 + x + 81 * 5
-			},
-			KomaKind::GKaku if teban == Teban::Gote => {
-				y * 9 + x + 81 * 5
-			},
-			KomaKind::SHisha if teban == Teban::Sente => {
-				y * 9 + x + 81 * 6
-			},
-			KomaKind::GHisha if teban == Teban::Gote => {
-				y * 9 + x + 81 * 6
-			},
-			KomaKind::SOu if teban == Teban::Sente => {
-				y * 9 + x + 81 * 7
-			},
-			KomaKind::GOu if teban == Teban::Gote => {
-				y * 9 + x + 81 * 7
-			},
-			KomaKind::SFuN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 8
-			},
-			KomaKind::GFuN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 8
-			},
-			KomaKind::SKyouN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 9
-			},
-			KomaKind::GKyouN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 9
-			},
-			KomaKind::SKeiN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 10
-			},
-			KomaKind::GKeiN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 10
-			},
-			KomaKind::SGinN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 11
-			},
-			KomaKind::GGinN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 11
-			},
-			KomaKind::SKakuN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 12
-			},
-			KomaKind::GKakuN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 12
-			},
-			KomaKind::SHishaN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 13
-			},
-			KomaKind::GHishaN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 13
-			},
-			KomaKind::GFu if teban == Teban::Sente => {
-				y * 9 + x + 81 * 14
-			},
-			KomaKind::SFu if teban == Teban::Gote => {
-				y * 9 + x + 81 * 14
-			},
-			KomaKind::GKyou if teban == Teban::Sente => {
-				y * 9 + x + 81 * 15
-			},
-			KomaKind::SKyou if teban == Teban::Gote => {
-				y * 9 + x + 81 * 15
-			},
-			KomaKind::GKei if teban == Teban::Sente => {
-				y * 9 + x + 81 * 16
-			},
-			KomaKind::SKei if teban == Teban::Gote => {
-				y * 9 + x + 81 * 16
-			},
-			KomaKind::GGin if teban == Teban::Sente => {
-				y * 9 + x + 81 * 17
-			},
-			KomaKind::SGin if teban == Teban::Gote => {
-				y * 9 + x + 81 * 17
-			},
-			KomaKind::GKin if teban == Teban::Sente => {
-				y * 9 + x + 81 * 18
-			},
-			KomaKind::SKin if teban == Teban::Gote => {
-				y * 9 + x + 81 * 18
-			},
-			KomaKind::GKaku if teban == Teban::Sente => {
-				y * 9 + x + 81 * 19
-			},
-			KomaKind::SKaku if teban == Teban::Gote => {
-				y * 9 + x + 81 * 19
-			},
-			KomaKind::GHisha if teban == Teban::Sente => {
-				y * 9 + x + 81 * 20
-			},
-			KomaKind::SHisha if teban == Teban::Gote => {
-				y * 9 + x + 81 * 20
-			},
-			KomaKind::GOu if teban == Teban::Sente => {
-				y * 9 + x + 81 * 21
-			},
-			KomaKind::SOu if teban == Teban::Gote => {
-				y * 9 + x + 81 * 21
-			},
-			KomaKind::GFuN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 22
-			},
-			KomaKind::SFuN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 22
-			},
-			KomaKind::GKyouN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 23
-			},
-			KomaKind::SKyouN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 23
-			},
-			KomaKind::GKeiN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 24
-			},
-			KomaKind::SKeiN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 24
-			},
-			KomaKind::GGinN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 25
-			},
-			KomaKind::SGinN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 25
-			},
-			KomaKind::GKakuN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 26
-			},
-			KomaKind::SKakuN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 26
-			},
-			KomaKind::GHishaN if teban == Teban::Sente => {
-				y * 9 + x + 81 * 27
-			},
-			KomaKind::SHishaN if teban == Teban::Gote => {
-				y * 9 + x + 81 * 27
-			},
-			_ => {
-				return Err(CommonError::Fail(
-							String::from(
-								"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
-						)));
-			},
+			Teban::Gote => {
+				let (x,y) = (8-x,8-y);
+
+				match kind {
+					KomaKind::GFu => {
+						y * 9 + x
+					},
+					KomaKind::GKyou => {
+						y * 9 + x + 81
+					},
+					KomaKind::GKei => {
+						y * 9 + x + 81 * 2
+					},
+					KomaKind::GGin => {
+						y * 9 + x + 81 * 3
+					},
+					KomaKind::GKin => {
+						y * 9 + x + 81 * 4
+					},
+					KomaKind::GKaku => {
+						y * 9 + x + 81 * 5
+					},
+					KomaKind::GHisha => {
+						y * 9 + x + 81 * 6
+					},
+					KomaKind::GOu => {
+						y * 9 + x + 81 * 7
+					},
+					KomaKind::GFuN => {
+						y * 9 + x + 81 * 8
+					},
+					KomaKind::GKyouN => {
+						y * 9 + x + 81 * 9
+					},
+					KomaKind::GKeiN => {
+						y * 9 + x + 81 * 10
+					},
+					KomaKind::GGinN => {
+						y * 9 + x + 81 * 11
+					},
+					KomaKind::GKakuN => {
+						y * 9 + x + 81 * 12
+					},
+					KomaKind::GHishaN => {
+						y * 9 + x + 81 * 13
+					},
+					KomaKind::SFu => {
+						y * 9 + x + 81 * 14
+					},
+					KomaKind::SKyou => {
+						y * 9 + x + 81 * 15
+					},
+					KomaKind::SKei => {
+						y * 9 + x + 81 * 16
+					},
+					KomaKind::SGin => {
+						y * 9 + x + 81 * 17
+					},
+					KomaKind::SKin => {
+						y * 9 + x + 81 * 18
+					},
+					KomaKind::SKaku => {
+						y * 9 + x + 81 * 19
+					},
+					KomaKind::SHisha => {
+						y * 9 + x + 81 * 20
+					},
+					KomaKind::SOu => {
+						y * 9 + x + 81 * 21
+					},
+					KomaKind::SFuN => {
+						y * 9 + x + 81 * 22
+					},
+					KomaKind::SKyouN => {
+						y * 9 + x + 81 * 23
+					},
+					KomaKind::SKeiN => {
+						y * 9 + x + 81 * 24
+					},
+					KomaKind::SGinN => {
+						y * 9 + x + 81 * 25
+					},
+					KomaKind::SKakuN => {
+						y * 9 + x + 81 * 26
+					},
+					KomaKind::SHishaN => {
+						y * 9 + x + 81 * 27
+					},
+					_ => {
+						return Err(CommonError::Fail(
+									String::from(
+										"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
+								)));
+					}
+				}
+			}
 		};
 
 		Ok(index as usize)
 	}
 
-	fn input_index_with_get_mochigoma(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_get(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
+		let offset = match kind {
+			MochigomaKind::Fu => 81 * 28,
+			MochigomaKind::Kyou => 81 * 28 + 18,
+			MochigomaKind::Kei => 81 * 28 + 18 + 4,
+			MochigomaKind::Gin => 81 * 28 + 18 + 8,
+			MochigomaKind::Kin => 81 * 28 + 18 + 12,
+			MochigomaKind::Kaku => 81 * 28 + 18 + 16,
+			MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+		};
+
+		match mc.get(&kind) {
+			Some(c) => {
+				let offset = offset as usize;
+
+				Ok(offset + *c as usize)
+			},
+			_ => {
+				Ok(offset as usize)
+			}
+		}
+	}
+
+	fn input_index_with_of_mochigoma_put(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
 		match mc.get(&kind) {
 			Some(c) if *c > 0 => {
 				let offset = match kind {
@@ -749,29 +603,6 @@ impl Intelligence {
 					String::from(
 						"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
 				)))
-			}
-		}
-	}
-
-	fn input_index_with_put_mochigoma(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
-		let offset = match kind {
-			MochigomaKind::Fu => 81 * 28,
-			MochigomaKind::Kyou => 81 * 28 + 18,
-			MochigomaKind::Kei => 81 * 28 + 18 + 4,
-			MochigomaKind::Gin => 81 * 28 + 18 + 8,
-			MochigomaKind::Kin => 81 * 28 + 18 + 12,
-			MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-			MochigomaKind::Hisha => 81 * 28 + 18 + 18,
-		};
-
-		match mc.get(&kind) {
-			Some(c) => {
-				let offset = offset as usize;
-
-				Ok(offset + *c as usize)
-			},
-			_ => {
-				Ok(offset as usize)
 			}
 		}
 	}
