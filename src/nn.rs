@@ -385,6 +385,7 @@ impl Intelligence {
 		Ok(d)
 	}
 
+	#[inline]
 	fn input_index_of_banmen(&self,teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
 		let index = match teban {
 			Teban::Sente => {
@@ -582,6 +583,7 @@ impl Intelligence {
 		Ok(index as usize)
 	}
 
+	#[inline]
 	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
@@ -620,6 +622,7 @@ impl Intelligence {
 		}
 	}
 
+	#[inline]
 	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
