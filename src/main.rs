@@ -555,14 +555,14 @@ fn run() -> Result<(),ApplicationError> {
 								initial_position_creator,Some(FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?),
 								input_read_handler,
 								[
-									("BaseDepth",SysEventOption::Num(base_depth)),
-									("MaxDepth",SysEventOption::Num(max_depth)),
+									("BaseDepth",SysEventOption::Num(base_depth as i64)),
+									("MaxDepth",SysEventOption::Num(max_depth as i64)),
 								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
-									("BaseDepth",SysEventOption::Num(base_depth)),
-									("MaxDepth",SysEventOption::Num(max_depth)),
+									("BaseDepth",SysEventOption::Num(base_depth as i64)),
+									("MaxDepth",SysEventOption::Num(max_depth as i64)),
 								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),

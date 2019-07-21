@@ -23,6 +23,7 @@ use usiagent::logger::*;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use usiagent::TryFrom;
+use simplenn::SnapShot;
 
 use nn::Intelligence;
 
@@ -224,6 +225,20 @@ impl NNShogiPlayer {
 	}
 	*/
 
+	fn make_snapshot(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections)
+		-> Result<(SnapShot,SnapShot),CommonError> {
+
+		match self.evalutor {
+			Some(ref mut evalutor) => {
+				let ss = evalutor.make_snapshot(teban,state.get_banmen(),mc)?;
+				Ok(ss)
+			},
+			None => {
+				Err(CommonError::Fail(format!("evalutor is not initialized!")))
+			}
+		}
+	}
+
 	fn evalute<L,S>(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
@@ -254,13 +269,65 @@ impl NNShogiPlayer {
 		}
 	}
 
+	fn evalute_by_diff<L,S>(&mut self,snapshot:&(SnapShot,SnapShot),
+								is_opposite:bool,teban:Teban,state:&Option<&State>,
+								mc:&Option<&MochigomaCollections>,m:&Option<Move>,
+					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
+		-> Result<(Evaluation,(SnapShot,SnapShot)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		let state = match state {
+			&Some(ref state) => state,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_state is none!");
+				return Err(CommonError::Fail(String::from("prev_state is none!")));
+			}
+		};
+
+		let mc = match mc {
+			&Some(ref mc) => mc,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_mc is none!");
+				return Err(CommonError::Fail(String::from("prev_mc is none!")));
+			}
+		};
+
+		let m = match m {
+			Some(ref m) => {
+				m
+			},
+			None => {
+				self.send_message(info_sender, on_error_handler, "m is none!");
+				return Err(CommonError::Fail(String::from("m is none!")));
+			}
+		};
+
+		let (s,snapshot) = match self.evalutor {
+			Some(ref mut evalutor) => {
+				let r = evalutor.evalute_by_diff(snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
+				r
+			},
+			None => {
+				return Err(CommonError::Fail(String::from("evalutor is not initialized!")));
+			}
+		};
+
+		if self.display_evalute_score {
+			self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
+		}
+
+		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
+	}
+
 	fn alphabeta<'a,L,S>(&mut self,
 			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+								self_nn_snapshot:&(SnapShot,SnapShot),
+								opponent_nn_snapshot:&(SnapShot,SnapShot),
 								teban:Teban,state:&State,
 								mut alpha:Score,beta:Score,
 								m:Option<Move>,mc:&MochigomaCollections,
+								prev_state:Option<&State>,
+								prev_mc:Option<&MochigomaCollections>,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
 								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
@@ -293,17 +360,53 @@ impl NNShogiPlayer {
 			return Evaluation::Timeout(None);
 		}
 
-		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),state) {
+		let (mvs,responded_oute,
+				current_self_nn_ss,
+				current_opponent_nn_ss) = if Rule::is_mate(teban.opposite(),state) {
 			if depth == 0 || current_depth == self.max_depth {
 				if self.timelimit_reached(&limit) || self.stop {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				} else {
-					return self.evalute(teban,state,mc,&m,info_sender,on_error_handler);
+					let r = match self.evalute_by_diff(self_nn_snapshot,true,teban,&prev_state, &prev_mc, &m, info_sender, on_error_handler) {
+						Ok((r,_)) => r,
+						Err(ref e) => {
+							on_error_handler.lock().map(|h| h.call(e)).is_err();
+							return Evaluation::Error;
+						}
+					};
+
+					return r;
 				}
 			}
 
-			(Rule::respond_oute_only_moves_all(teban, state, mc),true)
+			let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
+				let self_nn_snapshot = 	match self.evalute_by_diff(self_nn_snapshot,
+																	true,
+																	teban,&prev_state,&prev_mc,
+																	&m,info_sender,on_error_handler) {
+					Ok((_,ss)) => ss,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				};
+
+				let opponent_nn_snapshot = match self.evalute_by_diff(opponent_nn_snapshot,
+																		false,
+																		teban.opposite(),&prev_state,&prev_mc,
+																		&m,info_sender,on_error_handler) {
+					Ok((_,ss)) => ss,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				};
+				(Some(self_nn_snapshot),Some(opponent_nn_snapshot))
+			} else {
+				(None,None)
+			};
+			(Rule::respond_oute_only_moves_all(teban, state, mc),true,current_self_nn_ss,current_opponent_nn_ss)
 		} else {
 			let oute_mvs = Rule::oute_only_moves_all(teban,&state,mc);
 
@@ -336,6 +439,34 @@ impl NNShogiPlayer {
 					return self.evalute(teban,state,mc,&m,info_sender,on_error_handler);
 				}
 			}
+
+
+			let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
+				let self_nn_snapshot = 	match self.evalute_by_diff(self_nn_snapshot,
+																	true,
+																	teban,&prev_state,&prev_mc,
+																	&m,info_sender,on_error_handler) {
+					Ok((_,ss)) => ss,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				};
+
+				let opponent_nn_snapshot = match self.evalute_by_diff(opponent_nn_snapshot,
+																		false,
+																		teban.opposite(),&prev_state,&prev_mc,
+																		&m,info_sender,on_error_handler) {
+					Ok((_,ss)) => ss,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						return Evaluation::Error;
+					}
+				};
+				(Some(self_nn_snapshot),Some(opponent_nn_snapshot))
+			} else {
+				(None,None)
+			};
 
 			for m in &oute_mvs {
 				let o = match m {
@@ -459,13 +590,34 @@ impl NNShogiPlayer {
 
 			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &state, mc);
 
-			(mvs,false)
+			(mvs,false,current_self_nn_ss,current_opponent_nn_ss)
+		};
+
+		let self_nn_snapshot = match current_self_nn_ss {
+			Some(ref ss) => ss,
+			None => self_nn_snapshot,
+		};
+
+		let opponent_nn_snapshot = match current_opponent_nn_ss {
+			Some(ref ss) => ss,
+			None => opponent_nn_snapshot,
 		};
 
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
+		} else if self.timelimit_reached(&limit) || self.stop {
+			self.send_message(info_sender, on_error_handler, "think timeout!");
+			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		} else if mvs.len() == 1 {
-			return self.evalute(teban,state,mc,&Some(mvs[0].to_move()),info_sender,on_error_handler);
+			let r = match self.evalute_by_diff(&self_nn_snapshot,false,teban,&Some(state), &Some(mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
+				Ok((r,_)) => r,
+				Err(ref e) => {
+					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					return Evaluation::Error;
+				}
+			};
+
+			return r;
 		}
 
 		match self.handle_events(event_queue, on_error_handler) {
@@ -539,6 +691,9 @@ impl NNShogiPlayer {
 				}
 			};
 
+			let prev_state = Some(state);
+			let prev_mc = Some(mc);
+
 			match next {
 				(ref state,ref mc,_) => {
 
@@ -578,8 +733,11 @@ impl NNShogiPlayer {
 					match self.alphabeta(event_queue,
 						info_sender,
 						on_error_handler,
+						&opponent_nn_snapshot,
+						&self_nn_snapshot,
 						teban.opposite(),&state,
 						-beta,-alpha,Some(m.to_move()),&mc,
+						prev_state,prev_mc,
 						obtained,&current_kyokumen_hash_map,
 						already_oute_hash_map,
 						ignore_oute_hash_map,
@@ -1105,9 +1263,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 	}
 	fn get_options(&mut self) -> Result<HashMap<String,UsiOptType>,CommonError> {
 		let mut options:HashMap<String,UsiOptType> = HashMap::new();
-		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH)));
-		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH)));
-		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY)));
+		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH as i64)));
+		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH as i64)));
+		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY as i64)));
 		options.insert(String::from("DispEvaluteScore"),UsiOptType::Check(Some(DEFALUT_DISPLAY_EVALUTE_SCORE)));
 		Ok(options)
 	}
@@ -1128,7 +1286,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			"MaxDepth" => {
 				self.max_depth = match value {
 					SysEventOption::Num(depth) => {
-						depth
+						depth as u32
 					},
 					_ => MAX_DEPTH,
 				};
@@ -1136,7 +1294,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			"BaseDepth" => {
 				self.base_depth = match value {
 					SysEventOption::Num(depth) => {
-						depth
+						depth as u32
 					},
 					_ => BASE_DEPTH,
 				};
@@ -1144,7 +1302,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			"NetworkDelay" => {
 				self.network_delay = match value {
 					SysEventOption::Num(n) => {
-						n
+						n as u32
 					},
 					_ => NETWORK_DELAY,
 				}
@@ -1156,7 +1314,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					},
 					_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
 				}
-			}
+			},
 			_ => (),
 		}
 		Ok(())
@@ -1278,10 +1436,19 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let mut info_sender = info_sender;
 
+		let self_nn_snapshot = self.make_snapshot(teban,state,mc)?;
+		let opponent_nn_snapshot = self.make_snapshot(teban.opposite(),state,mc)?;
+
+		let prev_state:Option<&State> = None;
+		let prev_mc:Option<&MochigomaCollections> = None;
+
 		let result = match self.alphabeta(&*event_queue,
 					&mut info_sender, &on_error_handler,
+					&self_nn_snapshot,&opponent_nn_snapshot,
 					teban, state, Score::NEGINFINITE,
 					Score::INFINITE, None, mc,
+					prev_state,
+					prev_mc,
 					None, &kyokumen_hash_map,
 					&mut TwoKeyHashMap::new(),
 					&mut TwoKeyHashMap::new(),mhash,shash,

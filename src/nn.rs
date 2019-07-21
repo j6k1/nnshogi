@@ -15,6 +15,7 @@ use simplenn::function::loss::*;
 use simplenn::NN;
 use simplenn::NNModel;
 use simplenn::NNUnits;
+use simplenn::SnapShot;
 use simplenn::persistence::*;
 use simplenn::error::InvalidStateError;
 
@@ -82,10 +83,19 @@ impl Intelligence {
 		}
 	}
 
-	pub fn evalute(&mut self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+	pub fn make_snapshot(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+		-> Result<(SnapShot,SnapShot),InvalidStateError> {
+		let input = self.make_input(t,b,mc);
+
+		let ssa = self.nna.solve_shapshot(&input)?;
+		let ssb = self.nnb.solve_shapshot(&input)?;
+
+		Ok((ssa,ssb))
+	}
+
+	pub fn evalute(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<f64,InvalidStateError> {
-		let mut input:Vec<f64> = Vec::new();
-		input.extend_from_slice(&self.make_input(t,b,mc));
+		let input = self.make_input(t,b,mc);
 
 		let nnaanswera = self.nna.solve(&input)?;
 		let nnbanswerb = self.nnb.solve(&input)?;
@@ -108,6 +118,33 @@ impl Intelligence {
 		let answer = nnaanswera * a + nnbanswerb * b;
 
 		Ok(answer * i32::MAX as f64)
+	}
+
+	pub fn evalute_by_diff(&self,snapshot:&(SnapShot,SnapShot),is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move)
+		-> Result<(f64,(SnapShot,SnapShot)),CommonError> {
+		let input = self.make_diff_input(is_opposite,t,b,mc,m)?;
+
+		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
+		let ssb = self.nnb.solve_diff(&input,&snapshot.1)?;
+
+		let (a,b) = if self.learning_mode {
+			let mut rnd = rand::thread_rng();
+			let mut rnd = XorShiftRng::from_seed(rnd.gen());
+
+			let a = rnd.gen();
+			let b = 1f64 - a;
+
+			(a,b)
+		} else {
+			(0.5f64,0.5f64)
+		};
+
+		let nnaanswera = ssa.r[0];
+		let nnbanswerb = ssb.r[0];
+
+		let answer = nnaanswera * a + nnbanswerb * b;
+
+		Ok((answer * i32::MAX as f64,(ssa,ssb)))
 	}
 
 	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
@@ -309,26 +346,16 @@ impl Intelligence {
 		inputs
 	}
 
-	pub fn make_diff_input(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:Move) -> Result<Vec<(usize,f64)>,CommonError> {
+	pub fn make_diff_input(&self,is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move) -> Result<Vec<(usize,f64)>,CommonError> {
 		let mut d = Vec::new();
 
-		let ms = HashMap::new();
-		let mg = HashMap::new();
-
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
-
-		let mc = match t {
-			Teban::Sente => ms,
-			Teban::Gote => mg,
-		};
-
 		match m {
-			Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
+			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
 				match b {
 					&Banmen(ref kinds) => {
+						let (sx,sy) = (9-sx,sy-1);
+						let (dx,dy) = (9-dx,dy-1);
+
 						let sk = kinds[sy as usize][sx as usize];
 
 						d.push((self.input_index_of_banmen(t,sk,sx,sy)?,-1f64));
@@ -337,7 +364,7 @@ impl Intelligence {
 
 						if dk != KomaKind::Blank {
 							d.push((self.input_index_of_banmen(t,dk,dx,dy)?,-1f64));
-							d.push((self.input_index_with_of_mochigoma_get(MochigomaKind::try_from(dk)?,mc)?,1f64));
+							d.push((self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?,1f64));
 						}
 
 						if n {
@@ -348,12 +375,9 @@ impl Intelligence {
 					}
 				}
 			},
-			Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
-				let (dx,dy) = match t {
-					Teban::Sente => (dx,dy),
-					Teban::Gote => (8-dx,8-dy),
-				};
-				d.push((self.input_index_with_of_mochigoma_put(kind,mc)?,-1f64));
+			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
+				let (dx,dy) = (9-dx,dy-1);
+				d.push((self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?,-1f64));
 				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
 		}
@@ -558,7 +582,22 @@ impl Intelligence {
 		Ok(index as usize)
 	}
 
-	fn input_index_with_of_mochigoma_get(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+		let ms = HashMap::new();
+		let mg = HashMap::new();
+
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let mc = match teban {
+			Teban::Sente if is_opposite => mg,
+			Teban::Sente => ms,
+			Teban::Gote if is_opposite => ms,
+			Teban::Gote => mg,
+		};
+
 		let offset = match kind {
 			MochigomaKind::Fu => 81 * 28,
 			MochigomaKind::Kyou => 81 * 28 + 18,
@@ -581,7 +620,22 @@ impl Intelligence {
 		}
 	}
 
-	fn input_index_with_of_mochigoma_put(&self,kind:MochigomaKind,mc:&HashMap<MochigomaKind,u32>) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+		let ms = HashMap::new();
+		let mg = HashMap::new();
+
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let mc = match teban {
+			Teban::Sente if is_opposite => mg,
+			Teban::Sente => ms,
+			Teban::Gote if is_opposite => ms,
+			Teban::Gote => mg,
+		};
+
 		match mc.get(&kind) {
 			Some(c) if *c > 0 => {
 				let offset = match kind {
