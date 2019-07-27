@@ -1,3 +1,4 @@
+use std;
 use std::collections::HashMap;
 use std::fmt;
 use rand;
@@ -107,8 +108,8 @@ pub struct NNShogiPlayer {
 	kyokumen:Option<Arc<Kyokumen>>,
 	mhash:u64,
 	shash:u64,
-	oute_kyokumen_hash_map:TwoKeyHashMap<u64,()>,
-	kyokumen_hash_map:TwoKeyHashMap<u64,u32>,
+	oute_kyokumen_map:KyokumenMap<u64,()>,
+	kyokumen_map:KyokumenMap<u64,u32>,
 	nna_filename:String,
 	nnb_filename:String,
 	learning_mode:bool,
@@ -155,8 +156,8 @@ impl NNShogiPlayer {
 			kyokumen:None,
 			mhash:0,
 			shash:0,
-			oute_kyokumen_hash_map:TwoKeyHashMap::new(),
-			kyokumen_hash_map:TwoKeyHashMap::new(),
+			oute_kyokumen_map:KyokumenMap::new(),
+			kyokumen_map:KyokumenMap::new(),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			learning_mode:learning_mode,
@@ -329,9 +330,9 @@ impl NNShogiPlayer {
 								prev_state:Option<&State>,
 								prev_mc:Option<&MochigomaCollections>,
 								obtained:Option<ObtainKind>,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
-								oute_kyokumen_hash_map:&TwoKeyHashMap<u64,()>,
+								current_kyokumen_map:&KyokumenMap<u64,u32>,
+								already_oute_map:&mut KyokumenMap<u64,()>,
+								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32)
@@ -421,39 +422,32 @@ impl NNShogiPlayer {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				match oute_kyokumen_hash_map.get(&mhash,&shash) {
+				match oute_kyokumen_map.get(teban,&mhash,&shash) {
 					Some(_) => {
 						continue;
 					},
 					None => (),
 				}
 
-				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
-
-				match current_kyokumen_hash_map.get(&mhash,&shash) {
-					Some(c) if c >= 3 => {
-						continue;
-					},
-					Some(c) => {
-						current_kyokumen_hash_map.insert(mhash,shash,c+1);
-					},
+				match already_oute_map.get(teban,&mhash,&shash) {
 					None => {
-						current_kyokumen_hash_map.insert(mhash,shash,1);
-					}
-				}
-
-				match already_oute_hash_map.get(&mhash,&shash) {
-					None => {
-						already_oute_hash_map.insert(mhash,shash,());
+						already_oute_map.insert(teban,mhash,shash,());
 					},
 					Some(_) => (),
 				}
 
-				match oute_kyokumen_hash_map.get(&mhash,&shash) {
-					Some(_) => {
+				let mut current_kyokumen_map = current_kyokumen_map.clone();
+
+				match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
+					Some(c) if c >= 3 => {
 						continue;
 					},
-					_ => (),
+					Some(c) => {
+						current_kyokumen_map.insert(teban,mhash,shash,c+1);
+					},
+					None => {
+						current_kyokumen_map.insert(teban,mhash,shash,1);
+					}
 				}
 
 				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
@@ -481,9 +475,9 @@ impl NNShogiPlayer {
 															info_sender,
 															on_error_handler,
 															teban.opposite(),next,mc,
-															&current_kyokumen_hash_map,
-															already_oute_hash_map,
-															oute_kyokumen_hash_map,
+															&current_kyokumen_map,
+															already_oute_map,
+															oute_kyokumen_map,
 															mhash,shash,limit,
 															current_depth+1,
 															base_depth) {
@@ -669,15 +663,15 @@ impl NNShogiPlayer {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				let mut oute_kyokumen_hash_map = oute_kyokumen_hash_map.clone();
+				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
 
 				if *priority == 10 {
-					match oute_kyokumen_hash_map.get(&mhash,&shash) {
+					match oute_kyokumen_map.get(teban,&mhash,&shash) {
 						Some(_) => {
 							continue;
 						},
 						None => {
-							oute_kyokumen_hash_map.insert(mhash,shash,());
+							oute_kyokumen_map.insert(teban,mhash,shash,());
 						},
 					}
 				}
@@ -699,15 +693,14 @@ impl NNShogiPlayer {
 
 			match next {
 				(ref state,ref mc,_) => {
+					let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-					let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
-
-					match current_kyokumen_hash_map.get(&mhash,&shash) {
+					match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
 						Some(c) if c >= 3 => {
 							continue;
 						},
 						Some(c) => {
-							current_kyokumen_hash_map.insert(mhash,shash,c+1);
+							current_kyokumen_map.insert(teban,mhash,shash,c+1);
 
 							let s = if Rule::is_mate(teban.opposite(),state) {
 								Score::NEGINFINITE
@@ -729,7 +722,7 @@ impl NNShogiPlayer {
 							continue;
 						},
 						None => {
-							current_kyokumen_hash_map.insert(mhash,shash,1);
+							current_kyokumen_map.insert(teban,mhash,shash,1);
 						}
 					}
 
@@ -741,9 +734,9 @@ impl NNShogiPlayer {
 						teban.opposite(),&state,
 						-beta,-alpha,Some(m.to_move()),&mc,
 						prev_state,prev_mc,
-						obtained,&current_kyokumen_hash_map,
-						already_oute_hash_map,
-						oute_kyokumen_hash_map,
+						obtained,&current_kyokumen_map,
+						already_oute_map,
+						oute_kyokumen_map,
 						mhash,shash,limit,depth-1,
 						current_depth+1,base_depth) {
 
@@ -797,9 +790,9 @@ impl NNShogiPlayer {
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
-								oute_kyokumen_hash_map:&TwoKeyHashMap<u64,()>,
+								current_kyokumen_map:&KyokumenMap<u64,u32>,
+								already_oute_map:&mut KyokumenMap<u64,()>,
+								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
@@ -844,17 +837,17 @@ impl NNShogiPlayer {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_hash_map.get(&mhash,&shash) {
+				match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
 					Some(c) if c >= 3 => {
 						continue;
 					},
 					Some(c) => {
-						current_kyokumen_hash_map.insert(mhash,shash,c+1);
+						current_kyokumen_map.insert(teban,mhash,shash,c+1);
 					},
 					None => {
-						current_kyokumen_hash_map.insert(mhash,shash,1);
+						current_kyokumen_map.insert(teban,mhash,shash,1);
 					}
 				}
 
@@ -862,7 +855,7 @@ impl NNShogiPlayer {
 
 				match next {
 					(ref next,ref mc,_) => {
-						let oute_kyokumen_hash_map = {
+						let oute_kyokumen_map = {
 							let (x,y,kind) = match m {
 								LegalMove::To(ref mv) => {
 									let (dx,dy) = mv.dst().square_to_point();
@@ -883,28 +876,28 @@ impl NNShogiPlayer {
 							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
 								Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
 
-								let mut oute_kyokumen_hash_map = oute_kyokumen_hash_map.clone();
+								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
 
-								match oute_kyokumen_hash_map.get(&mhash,&shash) {
+								match oute_kyokumen_map.get(teban,&mhash,&shash) {
 									Some(_) => {
 										continue;
 									},
 									None => {
-										oute_kyokumen_hash_map.insert(mhash,shash,());
+										oute_kyokumen_map.insert(teban,mhash,shash,());
 									},
 								}
 							}
 
-							oute_kyokumen_hash_map
+							oute_kyokumen_map
 						};
 
 						match self.oute_only(event_queue,
 												info_sender,
 												on_error_handler,
 												teban.opposite(),next,mc,
-												&current_kyokumen_hash_map,
-												already_oute_hash_map,
-												oute_kyokumen_hash_map,
+												&current_kyokumen_map,
+												already_oute_map,
+												oute_kyokumen_map,
 												mhash,shash,limit,
 												current_depth+1,base_depth) {
 							OuteEvaluation::Result(-1) => {
@@ -944,9 +937,9 @@ impl NNShogiPlayer {
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
-								current_kyokumen_hash_map:&TwoKeyHashMap<u64,u32>,
-								already_oute_hash_map:&mut TwoKeyHashMap<u64,()>,
-								oute_kyokumen_hash_map:&TwoKeyHashMap<u64,()>,
+								current_kyokumen_map:&KyokumenMap<u64,u32>,
+								already_oute_map:&mut KyokumenMap<u64,()>,
+								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
@@ -1005,26 +998,26 @@ impl NNShogiPlayer {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				match already_oute_hash_map.get(&mhash,&shash) {
+				match already_oute_map.get(teban,&mhash,&shash) {
 					None => {
-						already_oute_hash_map.insert(mhash,shash,());
+						already_oute_map.insert(teban,mhash,shash,());
 					},
 					Some(_) => {
 						return OuteEvaluation::Result(-1);
 					}
 				}
 
-				let mut current_kyokumen_hash_map = current_kyokumen_hash_map.clone();
+				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_hash_map.get(&mhash,&shash) {
-					Some(c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash) {
+					Some(&c) if c >= 3 => {
 						continue;
 					},
-					Some(c) => {
-						current_kyokumen_hash_map.insert(mhash,shash,c+1);
+					Some(&c) => {
+						current_kyokumen_map.insert(teban,mhash,shash,c+1);
 					},
 					None => {
-						current_kyokumen_hash_map.insert(mhash,shash,1);
+						current_kyokumen_map.insert(teban,mhash,shash,1);
 					}
 				}
 
@@ -1034,9 +1027,9 @@ impl NNShogiPlayer {
 														info_sender,
 														on_error_handler,
 														teban.opposite(),next,mc,
-														&current_kyokumen_hash_map,
-														already_oute_hash_map,
-														oute_kyokumen_hash_map,
+														&current_kyokumen_map,
+														already_oute_map,
+														oute_kyokumen_map,
 														mhash,shash,limit,
 														current_depth+1,base_depth) {
 							OuteEvaluation::Result(-1) => {
@@ -1362,12 +1355,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,_:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
 		self.history.clear();
-		self.kyokumen_hash_map.clear();
+		self.kyokumen_map = KyokumenMap::new();
 
-		let mut kyokumen_hash_map:TwoKeyHashMap<u64,u32> = TwoKeyHashMap::new();
+		let kyokumen_map:KyokumenMap<u64,u32> = KyokumenMap::new();
 		let (mhash,shash) = self.calc_initial_hash(&banmen,&ms,&mg);
-
-		kyokumen_hash_map.insert(mhash,shash,1);
 
 		let teban = teban;
 		let state = State::new(banmen);
@@ -1381,21 +1372,21 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 												mc,m.into_iter()
 													.map(|m| m.to_applied_move())
 													.collect::<Vec<AppliedMove>>(),
-												(mhash,shash,kyokumen_hash_map,history),
+												(mhash,shash,kyokumen_map,history),
 												|s,t,banmen,mc,m,o,r| {
-			let (prev_mhash,prev_shash,mut kyokumen_hash_map,mut history) = r;
+			let (prev_mhash,prev_shash,mut kyokumen_map,mut history) = r;
 
 			let (mhash,shash) = match m {
 				&Some(ref m) => {
 					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
 					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
 
-					match kyokumen_hash_map.get(&mhash,&shash) {
+					match kyokumen_map.get(t,&mhash,&shash).map(|&c| c) {
 						Some(c) => {
-							kyokumen_hash_map.insert(mhash,shash,c+1);
+							kyokumen_map.insert(t,mhash,shash,c+1);
 						},
 						None => {
-							kyokumen_hash_map.insert(mhash,shash,1);
+							kyokumen_map.insert(t,mhash,shash,1);
 						}
 					};
 					(mhash,shash)
@@ -1406,27 +1397,31 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			};
 
 			history.push((banmen.clone(),mc.clone(),prev_mhash,prev_shash));
-			(mhash,shash,kyokumen_hash_map,history)
+			(mhash,shash,kyokumen_map,history)
 		});
 
-		let (mhash,shash,kyokumen_hash_map,history) = r;
+		let (mhash,shash,kyokumen_map,history) = r;
 
-		let mut oute_kyokumen_hash_map:TwoKeyHashMap<u64,()> = TwoKeyHashMap::new();
+		let mut oute_kyokumen_map:KyokumenMap<u64,()> = KyokumenMap::new();
 		let mut current_teban = t.opposite();
-		let opponent = t.opposite();
 
-		for h in history.iter().rev().skip(1) {
-			if current_teban == opponent {
-				match &h {
-					&(ref banmen,_, mhash,shash) => {
-						if Rule::win_only_moves(t,&State::new(banmen.clone())).len() == 0 {
-							break;
-						} else {
-							oute_kyokumen_hash_map.insert(*mhash,*shash,());
-						}
+		let mut current_cont = true;
+		let mut opponent_cont = true;
+
+		for h in history.iter().rev() {
+			match &h {
+				&(ref banmen,_, mhash,shash) => {
+					if current_cont && Rule::is_mate(current_teban,&State::new(banmen.clone())) {
+						oute_kyokumen_map.insert(current_teban,*mhash,*shash,());
+					} else if !opponent_cont {
+						break;
+					} else {
+						current_cont = false;
 					}
 				}
 			}
+
+			std::mem::swap(&mut current_cont, &mut opponent_cont);
 
 			current_teban = current_teban.opposite();
 		}
@@ -1438,8 +1433,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		}));
 		self.mhash = mhash;
 		self.shash = shash;
-		self.oute_kyokumen_hash_map = oute_kyokumen_hash_map;
-		self.kyokumen_hash_map = kyokumen_hash_map;
+		self.oute_kyokumen_map = oute_kyokumen_map;
+		self.kyokumen_map = kyokumen_map;
 		self.history = history;
 		self.count_of_move_started += 1;
 		self.moved = false;
@@ -1460,8 +1455,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let limit = limit.to_instant(teban);
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
-		let kyokumen_hash_map = self.kyokumen_hash_map.clone();
-		let oute_kyokumen_hash_map = self.oute_kyokumen_hash_map.clone();
+		let kyokumen_map = self.kyokumen_map.clone();
+		let oute_kyokumen_map = self.oute_kyokumen_map.clone();
 		let base_depth = self.base_depth;
 
 		let mut info_sender = info_sender;
@@ -1479,9 +1474,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					Score::INFINITE, None, mc,
 					prev_state,
 					prev_mc,
-					None, &kyokumen_hash_map,
-					&mut TwoKeyHashMap::new(),
-					&oute_kyokumen_hash_map,
+					None, &kyokumen_map,
+					&mut KyokumenMap::new(),
+					&oute_kyokumen_map,
 					mhash,shash,
 					limit, base_depth, 0, base_depth) {
 			Evaluation::Result(_,Some(m)) => {
