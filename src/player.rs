@@ -438,11 +438,11 @@ impl NNShogiPlayer {
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
-					Some(c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash) {
+					Some(&c) if c >= 3 => {
 						continue;
 					},
-					Some(c) => {
+					Some(&c) => {
 						current_kyokumen_map.insert(teban,mhash,shash,c+1);
 					},
 					None => {
@@ -695,11 +695,11 @@ impl NNShogiPlayer {
 				(ref state,ref mc,_) => {
 					let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-					match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
-						Some(c) if c >= 3 => {
+					match current_kyokumen_map.get(teban,&mhash,&shash) {
+						Some(&c) if c >= 3 => {
 							continue;
 						},
-						Some(c) => {
+						Some(&c) => {
 							current_kyokumen_map.insert(teban,mhash,shash,c+1);
 
 							let s = if Rule::is_mate(teban.opposite(),state) {
@@ -839,11 +839,11 @@ impl NNShogiPlayer {
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_map.get(teban,&mhash,&shash).map(|&c| c) {
-					Some(c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash) {
+					Some(&c) if c >= 3 => {
 						continue;
 					},
-					Some(c) => {
+					Some(&c) => {
 						current_kyokumen_map.insert(teban,mhash,shash,c+1);
 					},
 					None => {
@@ -1381,8 +1381,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
 					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
 
-					match kyokumen_map.get(t,&mhash,&shash).map(|&c| c) {
-						Some(c) => {
+					match kyokumen_map.get(t,&mhash,&shash) {
+						Some(&c) => {
 							kyokumen_map.insert(t,mhash,shash,c+1);
 						},
 						None => {
