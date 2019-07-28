@@ -7,11 +7,14 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use error::*;
 use std::num::Wrapping;
 use std::time::{Instant,Duration};
 use std::cmp::Ordering;
 use std::ops::Neg;
+use std::sync::atomic;
+use std::sync::atomic::AtomicBool;
 
 use usiagent::player::*;
 use usiagent::event::*;
@@ -23,6 +26,7 @@ use usiagent::OnErrorHandler;
 use usiagent::logger::*;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
+use usiagent::error::EventHandlerError;
 use usiagent::TryFrom;
 use simplenn::SnapShot;
 
@@ -44,6 +48,7 @@ enum Evaluation {
 enum OuteEvaluation {
 	Result(i32),
 	Timeout,
+	Error,
 }
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Score {
@@ -100,35 +105,16 @@ const TIMELIMIT_MARGIN:u64 = 50;
 const NETWORK_DELAY:u32 = 1100;
 const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
 
-pub struct NNShogiPlayer {
-	stop:bool,
-	quited:bool,
+struct Search {
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-	kyokumen:Option<Arc<Kyokumen>>,
-	mhash:u64,
-	shash:u64,
-	oute_kyokumen_map:KyokumenMap<u64,()>,
-	kyokumen_map:KyokumenMap<u64,u32>,
-	nna_filename:String,
-	nnb_filename:String,
-	learning_mode:bool,
-	evalutor:Option<Intelligence>,
-	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	base_depth:u32,
 	max_depth:u32,
 	network_delay:u32,
 	display_evalute_score:bool,
-	count_of_move_started:u32,
-	moved:bool,
 }
-impl fmt::Debug for NNShogiPlayer {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "NNShogiPlayer")
-	}
-}
-impl NNShogiPlayer {
-	pub fn new(nna_filename:String,nnb_filename:String,learning_mode:bool) -> NNShogiPlayer {
+impl Search {
+	pub fn new() -> Search {
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -148,28 +134,52 @@ impl NNShogiPlayer {
 			}
 		}
 
-		NNShogiPlayer {
-			stop:false,
-			quited:false,
+		Search {
 			kyokumen_hash_seeds:kyokumen_hash_seeds,
 			mochigoma_hash_seeds:mochigoma_hash_seeds,
-			kyokumen:None,
-			mhash:0,
-			shash:0,
-			oute_kyokumen_map:KyokumenMap::new(),
-			kyokumen_map:KyokumenMap::new(),
-			nna_filename:nna_filename,
-			nnb_filename:nnb_filename,
-			learning_mode:learning_mode,
-			evalutor:None,
-			history:Vec::new(),
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
 			network_delay:NETWORK_DELAY,
 			display_evalute_score:DEFALUT_DISPLAY_EVALUTE_SCORE,
-			count_of_move_started:0,
-			moved:false,
 		}
+	}
+
+	fn create_event_dispatcher<L>(&self,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
+		-> USIEventDispatcher<UserEventKind,UserEvent,Search,L,CommonError> where L: Logger {
+
+		let mut event_dispatcher = USIEventDispatcher::new(&on_error_handler.clone());
+
+		{
+			let stop = stop.clone();
+
+			event_dispatcher.add_handler(UserEventKind::Stop, move |_,e| {
+				match e {
+					&UserEvent::Stop => {
+						stop.store(true,atomic::Ordering::Release);
+						Ok(())
+					},
+					e => Err(EventHandlerError::InvalidState(e.event_kind())),
+				}
+			});
+		}
+
+		{
+			let stop = stop.clone();
+			let quited = quited.clone();
+
+			event_dispatcher.add_handler(UserEventKind::Stop, move |_,e| {
+				match e {
+					&UserEvent::Quit => {
+						quited.store(true,atomic::Ordering::Release);
+						stop.store(true,atomic::Ordering::Release);
+						Ok(())
+					},
+					e => Err(EventHandlerError::InvalidState(e.event_kind())),
+				}
+			});
+		}
+
+		event_dispatcher
 	}
 
 	fn timelimit_reached(&self,limit:&Option<Instant>) -> bool {
@@ -226,51 +236,34 @@ impl NNShogiPlayer {
 	}
 	*/
 
-	fn make_snapshot(&self,teban:Teban,state:&State,mc:&MochigomaCollections)
+	fn make_snapshot(&self,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections)
 		-> Result<(SnapShot,SnapShot),CommonError> {
 
-		match self.evalutor {
-			Some(ref evalutor) => {
-				let ss = evalutor.make_snapshot(teban,state.get_banmen(),mc)?;
-				Ok(ss)
-			},
-			None => {
-				Err(CommonError::Fail(format!("evalutor is not initialized!")))
-			}
-		}
+		let r = evalutor.make_snapshot(teban,state.get_banmen(),mc)?;
+
+		Ok(r)
 	}
 
-	fn evalute<L,S>(&self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
+	fn evalute<L,S>(&self,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		let s = match self.evalutor {
-			Some(ref evalutor) => {
-				match evalutor.evalute(teban,state.get_banmen(),mc) {
-					Ok(s) => Some(s),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-						return Evaluation::Error;
-					}
-				}
-			},
-			None => None,
-		};
 
-		match s {
-			Some(s) => {
-				if self.display_evalute_score {
-					self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
-				}
-				return Evaluation::Result(Score::Value(s),m.clone());
-			},
-			None => {
-				self.send_message(info_sender, on_error_handler, &format!("evalutor is not initialized!"));
+		let s = match evalutor.evalute(teban,state.get_banmen(),mc) {
+			Ok(s) => s,
+			Err(ref e) => {
+				on_error_handler.lock().map(|h| h.call(e)).is_err();
 				return Evaluation::Error;
 			}
+		};
+
+		if self.display_evalute_score {
+			self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
 		}
+
+		Evaluation::Result(Score::Value(s),m.clone())
 	}
 
-	fn evalute_by_diff<L,S>(&self,snapshot:&(SnapShot,SnapShot),
+	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,snapshot:&(SnapShot,SnapShot),
 								is_opposite:bool,teban:Teban,state:&Option<&State>,
 								mc:&Option<&MochigomaCollections>,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
@@ -301,15 +294,7 @@ impl NNShogiPlayer {
 			}
 		};
 
-		let (s,snapshot) = match self.evalutor {
-			Some(ref evalutor) => {
-				let r = evalutor.evalute_by_diff(snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
-				r
-			},
-			None => {
-				return Err(CommonError::Fail(String::from("evalutor is not initialized!")));
-			}
-		};
+		let (s,snapshot) = evalutor.evalute_by_diff(snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
 
 		if self.display_evalute_score {
 			self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
@@ -318,25 +303,44 @@ impl NNShogiPlayer {
 		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
 	}
 
-	fn alphabeta<'a,L,S>(&mut self,
-			event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
+	fn alphabeta<L,S>(&self,
+			event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Search,L,CommonError>,
+								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								self_nn_snapshot:&(SnapShot,SnapShot),
 								opponent_nn_snapshot:&(SnapShot,SnapShot),
 								teban:Teban,state:&State,
-								mut alpha:Score,beta:Score,
+								alpha:Score,beta:Score,
 								m:Option<Move>,mc:&MochigomaCollections,
 								prev_state:Option<&State>,
 								prev_mc:Option<&MochigomaCollections>,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut KyokumenMap<u64,()>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
-								depth:u32,current_depth:u32,base_depth:u32)
-		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+								depth:u32,current_depth:u32,base_depth:u32,
+								stop:&Arc<AtomicBool>,
+								strategy:fn (&Search,
+											&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+											&mut USIEventDispatcher<UserEventKind,
+												UserEvent,Search,L,CommonError>,
+											&Arc<Intelligence>,&mut S,
+											&Arc<Mutex<OnErrorHandler<L>>>,
+											&(SnapShot,SnapShot),&(SnapShot,SnapShot),
+											Teban,&State,Score,Score,
+											&MochigomaCollections,
+											Option<ObtainKind>,
+											&KyokumenMap<u64,u32>,
+											&Arc<RwLock<KyokumenMap<u64,bool>>>,
+											&KyokumenMap<u64,()>,
+											u64,u64,Option<Instant>,
+											u32,u32,u32,&Arc<AtomicBool>,&Vec<(u32,LegalMove)>,bool) -> Evaluation
+	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		if current_depth > base_depth {
 			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
@@ -349,25 +353,20 @@ impl NNShogiPlayer {
 			_ => (),
 		}
 
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
+		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-		if self.timelimit_reached(&limit) || self.stop {
+		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None);
 		}
 
 		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),state) {
 			if depth == 0 || current_depth == self.max_depth {
-				if self.timelimit_reached(&limit) || self.stop {
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				} else {
-					let r = match self.evalute_by_diff(self_nn_snapshot,true,teban,&prev_state, &prev_mc, &m, info_sender, on_error_handler) {
+					let r = match self.evalute_by_diff(evalutor,self_nn_snapshot,true,teban,&prev_state, &prev_mc, &m, info_sender, on_error_handler) {
 						Ok((r,_)) => r,
 						Err(ref e) => {
 							on_error_handler.lock().map(|h| h.call(e)).is_err();
@@ -392,24 +391,19 @@ impl NNShogiPlayer {
 				}
 			}
 
-			match self.handle_events(event_queue, on_error_handler) {
-				Ok(_) => (),
-				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
-				}
-			}
+			let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-			if self.timelimit_reached(&limit) || self.stop {
+			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(Some(oute_mvs[0].to_move()))
 			}
 
 			if depth == 0 || current_depth == self.max_depth {
-				if self.timelimit_reached(&limit) || self.stop {
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				} else {
-					return self.evalute(teban,state,mc,&m,info_sender,on_error_handler);
+					return self.evalute(evalutor,teban,state,mc,&m,info_sender,on_error_handler);
 				}
 			}
 
@@ -429,11 +423,19 @@ impl NNShogiPlayer {
 					None => (),
 				}
 
-				match already_oute_map.get(teban,&mhash,&shash) {
-					None => {
-						already_oute_map.insert(teban,mhash,shash,());
+				match already_oute_map.write() {
+					Ok(mut already_oute_map) => {
+						match already_oute_map.get(teban,&mhash,&shash) {
+							None => {
+								already_oute_map.insert(teban,mhash,shash,false);
+							},
+							Some(_) => (),
+						}
 					},
-					Some(_) => (),
+					Err(ref e) => {
+						let _ = on_error_handler.lock().map(|h| h.call(e));
+						return Evaluation::Error;
+					}
 				}
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
@@ -459,19 +461,15 @@ impl NNShogiPlayer {
 							_ => false,
 						};
 
-						match self.handle_events(event_queue, on_error_handler) {
-							Ok(_) => (),
-							Err(ref e) => {
-								on_error_handler.lock().map(|h| h.call(e)).is_err();
-							}
-						}
+						let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-						if self.timelimit_reached(&limit) || self.stop {
+						if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 							self.send_message(info_sender, on_error_handler, "think timeout!");
 							return Evaluation::Timeout(Some(m.to_move()));
 						}
 
 						match self.respond_oute_only(event_queue,
+															event_dispatcher,
 															info_sender,
 															on_error_handler,
 															teban.opposite(),next,mc,
@@ -480,7 +478,8 @@ impl NNShogiPlayer {
 															oute_kyokumen_map,
 															mhash,shash,limit,
 															current_depth+1,
-															base_depth) {
+															base_depth,stop,
+															) {
 							OuteEvaluation::Result(d) if d >= 0 &&
 								!(is_put_fu && d - current_depth as i32 == 2) => {
 								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
@@ -494,33 +493,23 @@ impl NNShogiPlayer {
 					_ => (),
 				}
 
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
+				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-				if self.timelimit_reached(&limit) || self.stop {
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(Some(m.to_move()));
 				}
 			}
 
 			if oute_mvs.len() == 0 {
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
+				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-				if self.timelimit_reached(&limit) || self.stop {
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				}
 			} else {
-				if self.timelimit_reached(&limit) || self.stop {
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(Some(oute_mvs[0].to_move()));
 				}
@@ -532,7 +521,8 @@ impl NNShogiPlayer {
 		};
 
 		let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
-			let self_nn_snapshot = 	match self.evalute_by_diff(self_nn_snapshot,
+			let self_nn_snapshot = 	match self.evalute_by_diff(evalutor,
+																self_nn_snapshot,
 																true,
 																teban,&prev_state,&prev_mc,
 																&m,info_sender,on_error_handler) {
@@ -543,7 +533,8 @@ impl NNShogiPlayer {
 				}
 			};
 
-			let opponent_nn_snapshot = match self.evalute_by_diff(opponent_nn_snapshot,
+			let opponent_nn_snapshot = match self.evalute_by_diff(evalutor,
+																	opponent_nn_snapshot,
 																	false,
 																	teban.opposite(),&prev_state,&prev_mc,
 																	&m,info_sender,on_error_handler) {
@@ -570,11 +561,11 @@ impl NNShogiPlayer {
 
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
-		} else if self.timelimit_reached(&limit) || self.stop {
+		} else if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		} else if mvs.len() == 1 {
-			let r = match self.evalute_by_diff(&self_nn_snapshot,false,teban,&Some(state), &Some(mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
+			let r = match self.evalute_by_diff(evalutor,&self_nn_snapshot,false,teban,&Some(state), &Some(mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
 				Ok((r,_)) => r,
 				Err(ref e) => {
 					on_error_handler.lock().map(|h| h.call(e)).is_err();
@@ -585,20 +576,12 @@ impl NNShogiPlayer {
 			return r;
 		}
 
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
+		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-		if self.timelimit_reached(&limit) || self.stop {
+		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(Some(mvs[0].to_move()));
 		}
-
-		let mut scoreval = Score::NEGINFINITE;
-		let mut best_move:Option<Move> = None;
 
 		let mut mvs = mvs.into_iter().map(|m| {
 			let ps = Rule::apply_move_to_partial_state_none_check(state,teban,mc,m.to_applied_move());
@@ -641,67 +624,139 @@ impl NNShogiPlayer {
 
 		mvs.sort_by(|a,b| b.0.cmp(&a.0));
 
-		for (priority,m) in &mvs {
-			let obtained = match m {
-				LegalMove::To(ref m) => m.obtained(),
-				_ => None,
-			};
+		strategy(self,event_queue,
+					event_dispatcher,
+					evalutor,
+					info_sender,
+					on_error_handler,
+					&opponent_nn_snapshot,
+					&self_nn_snapshot,
+					teban.opposite(),&state,
+					-beta,-alpha,&mc,
+					obtained,&current_kyokumen_map,
+					already_oute_map,
+					oute_kyokumen_map,
+					mhash,shash,limit,depth-1,
+					current_depth+1,base_depth,stop,
+					&mvs,
+					responded_oute)
+	}
 
-			let (mhash,shash) = {
-				let o = match obtained {
-					Some(o) => {
-						match MochigomaKind::try_from(o) {
-							Ok(o) => {
-								Some(o)
-							},
-							Err(_) => None,
-						}
-					},
-					None => None,
-				};
+	fn startup_strategy(&self,teban:Teban,state:&State,mc:&MochigomaCollections,
+						m:&LegalMove,mhash:u64,shash:u64,
+						priority:u32,
+						oute_kyokumen_map:&KyokumenMap<u64,()>,
+						current_kyokumen_map:&KyokumenMap<u64,u32>,
+						depth:u32,responded_oute:bool)
+		-> Option<(u32,u64,u64,KyokumenMap<u64,()>,KyokumenMap<u64,u32>)> {
 
-				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+		let obtained = match m {
+			LegalMove::To(ref m) => m.obtained(),
+			_ => None,
+		};
 
-				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+		let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+		let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				if *priority == 10 {
-					match oute_kyokumen_map.get(teban,&mhash,&shash) {
-						Some(_) => {
-							continue;
+		let (mhash,shash) = {
+			let o = match obtained {
+				Some(o) => {
+					match MochigomaKind::try_from(o) {
+						Ok(o) => {
+							Some(o)
 						},
-						None => {
-							oute_kyokumen_map.insert(teban,mhash,shash,());
-						},
+						Err(_) => None,
 					}
+				},
+				None => None,
+			};
+
+			let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+			let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+
+			if priority == 10 {
+				match oute_kyokumen_map.get(teban,&mhash,&shash) {
+					Some(_) => {
+						return None;
+					},
+					None => {
+						oute_kyokumen_map.insert(teban,mhash,shash,());
+					},
 				}
+			}
 
-				(mhash,shash)
-			};
+			(mhash,shash)
+		};
 
-			let m = m.to_applied_move();
-			let next = Rule::apply_move_none_check(&state,teban,mc,m);
+		let depth = match priority {
+			10 | 5 => depth + 1,
+			_ if responded_oute => depth + 1,
+			_ => depth,
+		};
 
-			let depth = match priority {
-				10 | 5 => depth + 1,
-				_ if responded_oute => depth + 1,
-				_ => depth,
-			};
+		match current_kyokumen_map.get(teban,&mhash,&shash) {
+			Some(&c) if c >= 3 => {
+				return None;
+			},
+			Some(&c) => {
+				current_kyokumen_map.insert(teban,mhash,shash,c+1);
 
-			let prev_state = Some(state);
-			let prev_mc = Some(mc);
+				return None;
+			},
+			None => {
+				current_kyokumen_map.insert(teban,mhash,shash,1);
+			}
+		}
 
-			match next {
-				(ref state,ref mc,_) => {
-					let mut current_kyokumen_map = current_kyokumen_map.clone();
+		Some((depth,mhash,shash,oute_kyokumen_map,current_kyokumen_map))
+	}
 
-					match current_kyokumen_map.get(teban,&mhash,&shash) {
-						Some(&c) if c >= 3 => {
-							continue;
-						},
-						Some(&c) => {
-							current_kyokumen_map.insert(teban,mhash,shash,c+1);
+	fn single_search<L,S>(search:&Search,event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Search,L,CommonError>,
+								evalutor:&Arc<Intelligence>,
+								info_sender:&mut S,
+								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+								self_nn_snapshot:&(SnapShot,SnapShot),
+								opponent_nn_snapshot:&(SnapShot,SnapShot),
+								teban:Teban,state:&State,
+								mut alpha:Score,beta:Score,
+								mc:&MochigomaCollections,
+								obtained:Option<ObtainKind>,
+								current_kyokumen_map:&KyokumenMap<u64,u32>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+								oute_kyokumen_map:&KyokumenMap<u64,()>,
+								mhash:u64,shash:u64,
+								limit:Option<Instant>,
+								depth:u32,current_depth:u32,base_depth:u32,
+								stop:&Arc<AtomicBool>,
+								mvs:&Vec<(u32,LegalMove)>,
+								responded_oute:bool)
+		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
+		let mut scoreval = Score::NEGINFINITE;
+		let mut best_move:Option<Move> = None;
+
+		for (priority,m) in mvs {
+			match search.startup_strategy(teban,state,mc,m,
+											mhash,shash,
+										 	*priority,
+											oute_kyokumen_map,
+											current_kyokumen_map,
+											depth,responded_oute) {
+				Some(r) => {
+					let (depth,mut mhash,mut shash,
+						 mut oute_kyokumen_map,
+						 mut current_kyokumen_map) = r;
+
+					let m = m.to_applied_move();
+					let prev_state = Some(state);
+					let prev_mc = Some(mc);
+
+					let next = Rule::apply_move_none_check(&state,teban,mc,m);
+
+					match next {
+						(ref state,ref mc,_) => {
 							let s = if Rule::is_mate(teban.opposite(),state) {
 								Score::NEGINFINITE
 							} else {
@@ -719,97 +774,89 @@ impl NNShogiPlayer {
 								}
 							}
 
-							continue;
-						},
-						None => {
-							current_kyokumen_map.insert(teban,mhash,shash,1);
-						}
-					}
+							match search.alphabeta(
+								event_queue,
+								event_dispatcher,
+								evalutor,
+								info_sender,
+								on_error_handler,
+								&opponent_nn_snapshot,
+								&self_nn_snapshot,
+								teban.opposite(),&state,
+								-beta,-alpha,Some(m.to_move()),&mc,
+								prev_state,prev_mc,
+								obtained,&current_kyokumen_map,
+								already_oute_map,
+								&oute_kyokumen_map,
+								mhash,shash,limit,depth-1,
+								current_depth+1,base_depth,
+								stop,Search::single_search) {
 
-					match self.alphabeta(event_queue,
-						info_sender,
-						on_error_handler,
-						&opponent_nn_snapshot,
-						&self_nn_snapshot,
-						teban.opposite(),&state,
-						-beta,-alpha,Some(m.to_move()),&mc,
-						prev_state,prev_mc,
-						obtained,&current_kyokumen_map,
-						already_oute_map,
-						oute_kyokumen_map,
-						mhash,shash,limit,depth-1,
-						current_depth+1,base_depth) {
-
-						Evaluation::Timeout(_) => {
-							return match best_move {
-								Some(best_move) => Evaluation::Timeout(Some(best_move)),
-								None => Evaluation::Timeout(Some(m.to_move())),
-							};
-						},
-						Evaluation::Result(s,_) => {
-							if -s > scoreval {
-								scoreval = -s;
-								best_move = Some(m.to_move());
-								if alpha < scoreval {
-									alpha = scoreval;
-								}
-								if scoreval >= beta {
-									return Evaluation::Result(scoreval,best_move);
+								Evaluation::Timeout(_) => {
+									return match best_move {
+										Some(best_move) => Evaluation::Timeout(Some(best_move)),
+										None => Evaluation::Timeout(Some(m.to_move())),
+									};
+								},
+								Evaluation::Result(s,_) => {
+									if -s > scoreval {
+										scoreval = -s;
+										best_move = Some(m.to_move());
+										if alpha < scoreval {
+											alpha = scoreval;
+										}
+										if scoreval >= beta {
+											return Evaluation::Result(scoreval,best_move);
+										}
+									}
+								},
+								Evaluation::Error => {
+									return Evaluation::Error
 								}
 							}
-						},
-						Evaluation::Error => {
-							return Evaluation::Error
 						}
 					}
-				}
-			}
 
-			match self.handle_events(event_queue, on_error_handler) {
-				Ok(_) => (),
-				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
-				}
-			}
+					let _ = event_dispatcher.dispatch_events(search,&*event_queue);
 
-			if self.timelimit_reached(&limit) || self.stop {
-				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return match best_move {
-					Some(best_move) => Evaluation::Timeout(Some(best_move)),
-					None => Evaluation::Timeout(Some(m.to_move())),
-				};
+					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
+						search.send_message(info_sender, on_error_handler, "think timeout!");
+						return match best_move {
+							Some(best_move) => Evaluation::Timeout(Some(best_move)),
+							None => Evaluation::Timeout(Some(m.to_move())),
+						};
+					}
+				},
+				None => (),
 			}
 		}
 
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn respond_oute_only<'a,L,S>(&mut self,
-								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
+	fn respond_oute_only<L,S>(&self,
+								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Search,L,CommonError>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut KyokumenMap<u64,()>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
-								base_depth:u32)
+								base_depth:u32,stop:&Arc<AtomicBool>)
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
+		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
-		if self.timelimit_reached(&limit) || self.stop {
+		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return OuteEvaluation::Timeout;
 		}
@@ -892,6 +939,7 @@ impl NNShogiPlayer {
 						};
 
 						match self.oute_only(event_queue,
+												event_dispatcher,
 												info_sender,
 												on_error_handler,
 												teban.opposite(),next,mc,
@@ -899,7 +947,7 @@ impl NNShogiPlayer {
 												already_oute_map,
 												oute_kyokumen_map,
 												mhash,shash,limit,
-												current_depth+1,base_depth) {
+												current_depth+1,base_depth,stop) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							},
@@ -911,17 +959,16 @@ impl NNShogiPlayer {
 							OuteEvaluation::Timeout => {
 								return OuteEvaluation::Timeout;
 							},
+							OuteEvaluation::Error => {
+								return OuteEvaluation::Error;
+							}
 						}
 					}
 				}
 
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
-					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
-					}
-				}
-				if self.timelimit_reached(&limit) || self.stop {
+				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return OuteEvaluation::Timeout;
 				}
@@ -931,31 +978,30 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn oute_only<'a,L,S>(&mut self,
-								event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>,
-								info_sender:&mut S,
-								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-								teban:Teban,state:&State,
-								mc:&MochigomaCollections,
-								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut KyokumenMap<u64,()>,
-								oute_kyokumen_map:&KyokumenMap<u64,()>,
-								mhash:u64,shash:u64,
-								limit:Option<Instant>,
-								current_depth:u32,
-								base_depth:u32)
+	fn oute_only<L,S>(&self,
+						event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+						event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Search,L,CommonError>,
+						info_sender:&mut S,
+						on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+						teban:Teban,state:&State,
+						mc:&MochigomaCollections,
+						current_kyokumen_map:&KyokumenMap<u64,u32>,
+						already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+						oute_kyokumen_map:&KyokumenMap<u64,()>,
+						mhash:u64,shash:u64,
+						limit:Option<Instant>,
+						current_depth:u32,
+						base_depth:u32,
+						stop:&Arc<AtomicBool>)
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
-		match self.handle_events(event_queue, on_error_handler) {
-			Ok(_) => (),
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-			}
-		}
-		if self.timelimit_reached(&limit) || self.stop {
+		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+
+		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return OuteEvaluation::Timeout;
 		}
@@ -998,12 +1044,29 @@ impl NNShogiPlayer {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				match already_oute_map.get(teban,&mhash,&shash) {
-					None => {
-						already_oute_map.insert(teban,mhash,shash,());
+				let completed = match already_oute_map.read() {
+					Ok(already_oute_map) => {
+						already_oute_map.get(teban,&mhash,&shash).map(|&b| b).unwrap_or(false)
 					},
-					Some(_) => {
-						return OuteEvaluation::Result(-1);
+					Err(ref e) => {
+						let _ = on_error_handler.lock().map(|h| h.call(e));
+						return OuteEvaluation::Error;
+					}
+				};
+
+				if completed {
+					return OuteEvaluation::Result(-1);
+				} else {
+					match already_oute_map.write() {
+						Ok(mut already_oute_map) => {
+							if let None = already_oute_map.get(teban,&mhash,&shash) {
+								already_oute_map.insert(teban,mhash,shash,false);
+							}
+						},
+						Err(ref e) => {
+							let _ = on_error_handler.lock().map(|h| h.call(e));
+							return OuteEvaluation::Error;
+						}
 					}
 				}
 
@@ -1024,6 +1087,7 @@ impl NNShogiPlayer {
 				match next {
 					(ref next,ref mc,_) => {
 						match self.respond_oute_only(event_queue,
+														event_dispatcher,
 														info_sender,
 														on_error_handler,
 														teban.opposite(),next,mc,
@@ -1031,7 +1095,7 @@ impl NNShogiPlayer {
 														already_oute_map,
 														oute_kyokumen_map,
 														mhash,shash,limit,
-														current_depth+1,base_depth) {
+														current_depth+1,base_depth,stop) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							}
@@ -1047,14 +1111,19 @@ impl NNShogiPlayer {
 					}
 				}
 
-				match self.handle_events(event_queue, on_error_handler) {
-					Ok(_) => (),
+				match already_oute_map.write() {
+					Ok(mut already_oute_map) => {
+						already_oute_map.insert(teban,mhash,shash,true);
+					},
 					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						let _ = on_error_handler.lock().map(|h| h.call(e));
+						return OuteEvaluation::Error;
 					}
 				}
 
-				if self.timelimit_reached(&limit) || self.stop {
+				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+
+				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return OuteEvaluation::Timeout;
 				}
@@ -1270,6 +1339,45 @@ impl NNShogiPlayer {
 		(mhash,shash.0)
 	}
 }
+pub struct NNShogiPlayer {
+	search:Arc<Search>,
+	kyokumen:Option<Arc<Kyokumen>>,
+	mhash:u64,
+	shash:u64,
+	oute_kyokumen_map:KyokumenMap<u64,()>,
+	kyokumen_map:KyokumenMap<u64,u32>,
+	nna_filename:String,
+	nnb_filename:String,
+	learning_mode:bool,
+	evalutor:Option<Arc<Intelligence>>,
+	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
+	count_of_move_started:u32,
+	moved:bool,
+}
+impl fmt::Debug for NNShogiPlayer {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		write!(f, "NNShogiPlayer")
+	}
+}
+impl NNShogiPlayer {
+	pub fn new(nna_filename:String,nnb_filename:String,learning_mode:bool) -> NNShogiPlayer {
+		NNShogiPlayer {
+			search:Arc::new(Search::new()),
+			kyokumen:None,
+			mhash:0,
+			shash:0,
+			oute_kyokumen_map:KyokumenMap::new(),
+			kyokumen_map:KyokumenMap::new(),
+			nna_filename:nna_filename,
+			nnb_filename:nnb_filename,
+			learning_mode:learning_mode,
+			evalutor:None,
+			history:Vec::new(),
+			count_of_move_started:0,
+			moved:false,
+		}
+	}
+}
 impl USIPlayer<CommonError> for NNShogiPlayer {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
@@ -1296,58 +1404,64 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		match self.evalutor {
 			Some(_) => (),
 			None => {
-				self.evalutor = Some(Intelligence::new(
+				self.evalutor = Some(Arc::new(Intelligence::new(
 										String::from("data"),
 										self.nna_filename.clone(),
-										self.nnb_filename.clone(),self.learning_mode));
+										self.nnb_filename.clone(),self.learning_mode)));
 			}
 		}
 		Ok(())
 	}
 	fn set_option(&mut self,name:String,value:SysEventOption) -> Result<(),CommonError> {
-		match &*name {
-			"MaxDepth" => {
-				self.max_depth = match value {
-					SysEventOption::Num(depth) => {
-						depth as u32
+		match Arc::get_mut(&mut self.search) {
+			Some(search) => {
+				match &*name {
+					"MaxDepth" => {
+						search.max_depth = match value {
+							SysEventOption::Num(depth) => {
+								depth as u32
+							},
+							_ => MAX_DEPTH,
+						};
 					},
-					_ => MAX_DEPTH,
-				};
-			},
-			"BaseDepth" => {
-				self.base_depth = match value {
-					SysEventOption::Num(depth) => {
-						depth as u32
+					"BaseDepth" => {
+						search.base_depth = match value {
+							SysEventOption::Num(depth) => {
+								depth as u32
+							},
+							_ => BASE_DEPTH,
+						};
 					},
-					_ => BASE_DEPTH,
-				};
-			},
-			"NetworkDelay" => {
-				self.network_delay = match value {
-					SysEventOption::Num(n) => {
-						n as u32
+					"NetworkDelay" => {
+						search.network_delay = match value {
+							SysEventOption::Num(n) => {
+								n as u32
+							},
+							_ => NETWORK_DELAY,
+						}
 					},
-					_ => NETWORK_DELAY,
+					"DispEvaluteScore" => {
+						search.display_evalute_score =  match value {
+							SysEventOption::Bool(b) => {
+								b
+							},
+							_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
+						}
+					},
+					_ => (),
 				}
+				Ok(())
 			},
-			"DispEvaluteScore" => {
-				self.display_evalute_score =  match value {
-					SysEventOption::Bool(b) => {
-						b
-					},
-					_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
-				}
-			},
-			_ => (),
+			None => {
+				Err(CommonError::Fail(String::from(
+					"Could not get a mutable reference of evaluator."
+				)))
+			}
 		}
-		Ok(())
 	}
 	fn newgame(&mut self) -> Result<(),CommonError> {
 		self.kyokumen = None;
 		self.history.clear();
-		if !self.quited {
-			self.stop = false;
-		}
 		self.count_of_move_started = 0;
 		Ok(())
 	}
@@ -1358,7 +1472,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.kyokumen_map = KyokumenMap::new();
 
 		let kyokumen_map:KyokumenMap<u64,u32> = KyokumenMap::new();
-		let (mhash,shash) = self.calc_initial_hash(&banmen,&ms,&mg);
+		let (mhash,shash) = self.search.calc_initial_hash(&banmen,&ms,&mg);
 
 		let teban = teban;
 		let state = State::new(banmen);
@@ -1378,8 +1492,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 			let (mhash,shash) = match m {
 				&Some(ref m) => {
-					let mhash = s.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
-					let shash = s.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
+					let mhash = s.search.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
+					let shash = s.search.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
 
 					match kyokumen_map.get(t,&mhash,&shash) {
 						Some(&c) => {
@@ -1457,65 +1571,81 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_map = self.kyokumen_map.clone();
 		let oute_kyokumen_map = self.oute_kyokumen_map.clone();
-		let base_depth = self.base_depth;
+		let base_depth = self.search.base_depth;
 
 		let mut info_sender = info_sender;
 
-		let self_nn_snapshot = self.make_snapshot(teban,state,mc)?;
-		let opponent_nn_snapshot = self.make_snapshot(teban.opposite(),state,mc)?;
+		match self.evalutor {
+			Some(ref evalutor) => {
+				let self_nn_snapshot = self.search.make_snapshot(evalutor,teban,state,mc)?;
+				let opponent_nn_snapshot = self.search.make_snapshot(evalutor,teban.opposite(),state,mc)?;
 
-		let prev_state:Option<&State> = None;
-		let prev_mc:Option<&MochigomaCollections> = None;
+				let prev_state:Option<&State> = None;
+				let prev_mc:Option<&MochigomaCollections> = None;
 
-		let result = match self.alphabeta(&*event_queue,
-					&mut info_sender, &on_error_handler,
-					&self_nn_snapshot,&opponent_nn_snapshot,
-					teban, state, Score::NEGINFINITE,
-					Score::INFINITE, None, mc,
-					prev_state,
-					prev_mc,
-					None, &kyokumen_map,
-					&mut KyokumenMap::new(),
-					&oute_kyokumen_map,
-					mhash,shash,
-					limit, base_depth, 0, base_depth) {
-			Evaluation::Result(_,Some(m)) => {
-				BestMove::Move(m,None)
-			},
-			Evaluation::Result(_,None) => {
-				BestMove::Resign
-			},
-			Evaluation::Timeout(Some(m)) => {
-				BestMove::Move(m,None)
-			}
-			Evaluation::Timeout(None) if self.quited => {
-				BestMove::Abort
-			},
-			Evaluation::Timeout(None) => {
-				BestMove::Resign
-			},
-			Evaluation::Error => {
-				BestMove::Resign
-			}
-		};
+				let stop = Arc::new(AtomicBool::new(false));
+				let quited = Arc::new(AtomicBool::new(false));
 
-		if let BestMove::Move(m,_) = result {
-			let h = match self.history.last() {
-				Some(&(ref banmen,ref mc,mhash,shash)) => {
-					let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m.to_applied_move());
-					self.moved = true;
-					let mut mhash = self.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
-					let mut shash = self.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
-					(next.get_banmen().clone(),nmc.clone(),mhash,shash)
-				},
-				None => {
-					return Err(CommonError::Fail(String::from("The history of banmen has not been set yet.")));
+				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
+
+				let result = match self.search.alphabeta(&event_queue,
+							&mut event_dispatcher,
+							evalutor,
+							&mut info_sender, &on_error_handler,
+							&self_nn_snapshot,&opponent_nn_snapshot,
+							teban, state, Score::NEGINFINITE,
+							Score::INFINITE, None, mc,
+							prev_state,
+							prev_mc,
+							None, &kyokumen_map,
+							&Arc::new(RwLock::new(KyokumenMap::new())),
+							&oute_kyokumen_map,
+							mhash,shash,
+							limit, base_depth, 0, base_depth,
+							&stop,
+							Search::single_search) {
+					Evaluation::Result(_,Some(m)) => {
+						BestMove::Move(m,None)
+					},
+					Evaluation::Result(_,None) => {
+						BestMove::Resign
+					},
+					Evaluation::Timeout(Some(m)) => {
+						BestMove::Move(m,None)
+					}
+					Evaluation::Timeout(None) if quited.load(atomic::Ordering::Acquire) => {
+						BestMove::Abort
+					},
+					Evaluation::Timeout(None) => {
+						BestMove::Resign
+					},
+					Evaluation::Error => {
+						BestMove::Resign
+					}
+				};
+
+				if let BestMove::Move(m,_) = result {
+					let h = match self.history.last() {
+						Some(&(ref banmen,ref mc,mhash,shash)) => {
+							let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m.to_applied_move());
+							self.moved = true;
+							let mut mhash = self.search.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
+							let mut shash = self.search.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+							(next.get_banmen().clone(),nmc.clone(),mhash,shash)
+						},
+						None => {
+							return Err(CommonError::Fail(String::from("The history of banmen has not been set yet.")));
+						}
+					};
+					self.history.push(h);
 				}
-			};
-			self.history.push(h);
-		}
 
-		Ok(result)
+				Ok(result)
+			},
+			None =>  {
+				Err(CommonError::Fail(format!("evalutor is not initialized!")))
+			}
+		}
 	}
 	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
@@ -1525,7 +1655,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(CheckMate::NotiImplemented)
 	}
 	fn on_stop(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
-		self.stop = true;
 		Ok(())
 	}
 	fn gameover<L>(&mut self,s:&GameEndState,
@@ -1548,7 +1677,16 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 			match self.evalutor {
 				Some(ref mut evalutor) => {
-					evalutor.learning(true,teban,last_teban,self.history.clone(),s,&*event_queue)?;
+					match Arc::get_mut(evalutor) {
+						Some(evalutor)  => {
+							evalutor.learning(true,teban,last_teban,self.history.clone(),s,&*event_queue)?;
+						},
+						None => {
+							return Err(CommonError::Fail(String::from(
+								"Could not get a mutable reference of evaluator."
+							)));
+						}
+					}
 				},
 				None => (),
 			}
@@ -1556,9 +1694,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		}
 		Ok(())
 	}
+
 	fn on_quit(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
-		self.quited = true;
-		self.stop = true;
 		Ok(())
 	}
 

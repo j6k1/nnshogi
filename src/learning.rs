@@ -42,7 +42,7 @@ impl CsaLearnener {
 		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 
 		let mut system_event_dispatcher:USIEventDispatcher<SystemEventKind,
-														SystemEvent,(),FileLogger,CommonError> = USIEventDispatcher::new(&logger);
+														SystemEvent,(),FileLogger,CommonError> = USIEventDispatcher::new(&on_error_handler_arc);
 
 		let notify_quit_arc = Arc::new(Mutex::new(false));
 
