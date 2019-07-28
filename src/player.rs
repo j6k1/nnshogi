@@ -102,7 +102,7 @@ const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
 
 pub struct NNShogiPlayer {
 	stop:bool,
-	pub quited:bool,
+	quited:bool,
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
 	kyokumen:Option<Arc<Kyokumen>>,
