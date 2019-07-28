@@ -179,7 +179,7 @@ impl NNShogiPlayer {
 		})
 	}
 
-	fn send_message<L,S>(&mut self, info_sender:&mut S,
+	fn send_message<L,S>(&self, info_sender:&mut S,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, message:&str)
 		where L: Logger, S: InfoSender,
 			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
@@ -194,7 +194,7 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn send_seldepth<L,S>(&mut self, info_sender:&mut S,
+	fn send_seldepth<L,S>(&self, info_sender:&mut S,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32, seldepth:u32)
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -211,7 +211,7 @@ impl NNShogiPlayer {
 		}
 	}
 	/*
-	fn send_depth<L>(&mut self, info_sender:&USIInfoSender,
+	fn send_depth<L>(&self, info_sender:&USIInfoSender,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32)
 		where L: Logger {
 		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
@@ -226,11 +226,11 @@ impl NNShogiPlayer {
 	}
 	*/
 
-	fn make_snapshot(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections)
+	fn make_snapshot(&self,teban:Teban,state:&State,mc:&MochigomaCollections)
 		-> Result<(SnapShot,SnapShot),CommonError> {
 
 		match self.evalutor {
-			Some(ref mut evalutor) => {
+			Some(ref evalutor) => {
 				let ss = evalutor.make_snapshot(teban,state.get_banmen(),mc)?;
 				Ok(ss)
 			},
@@ -240,14 +240,14 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn evalute<L,S>(&mut self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
+	fn evalute<L,S>(&self,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let s = match self.evalutor {
-			Some(ref mut evalutor) => {
+			Some(ref evalutor) => {
 				match evalutor.evalute(teban,state.get_banmen(),mc) {
 					Ok(s) => Some(s),
-					Err(ref mut e) => {
+					Err(ref e) => {
 						on_error_handler.lock().map(|h| h.call(e)).is_err();
 						return Evaluation::Error;
 					}
@@ -270,7 +270,7 @@ impl NNShogiPlayer {
 		}
 	}
 
-	fn evalute_by_diff<L,S>(&mut self,snapshot:&(SnapShot,SnapShot),
+	fn evalute_by_diff<L,S>(&self,snapshot:&(SnapShot,SnapShot),
 								is_opposite:bool,teban:Teban,state:&Option<&State>,
 								mc:&Option<&MochigomaCollections>,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
@@ -302,7 +302,7 @@ impl NNShogiPlayer {
 		};
 
 		let (s,snapshot) = match self.evalutor {
-			Some(ref mut evalutor) => {
+			Some(ref evalutor) => {
 				let r = evalutor.evalute_by_diff(snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
 				r
 			},
