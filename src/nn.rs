@@ -4,9 +4,9 @@ use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use rand::distributions::Distribution;
 use statrs::distribution::Normal;
+use std;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::i32;
 use std::fs;
 
 use simplenn::function::activation::*;
@@ -38,6 +38,7 @@ pub struct Intelligence {
 	learning_mode:bool,
 	quited:bool,
 }
+const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
 impl Intelligence {
 	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
 		let mut rnd = rand::thread_rng();
@@ -94,7 +95,7 @@ impl Intelligence {
 	}
 
 	pub fn evalute(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> Result<f64,InvalidStateError> {
+		-> Result<i64,InvalidStateError> {
 		let input = self.make_input(t,b,mc);
 
 		let nnaanswera = self.nna.solve(&input)?;
@@ -115,13 +116,13 @@ impl Intelligence {
 		let nnaanswera = nnaanswera[0];
 		let nnbanswerb = nnbanswerb[0];
 
-		let answer = nnaanswera * a + nnbanswerb * b;
+		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
 
-		Ok(answer * i32::MAX as f64)
+		Ok((answer * F64_FRACTION_MAX as f64) as i64)
 	}
 
 	pub fn evalute_by_diff(&self,snapshot:&(SnapShot,SnapShot),is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move)
-		-> Result<(f64,(SnapShot,SnapShot)),CommonError> {
+		-> Result<(i64,(SnapShot,SnapShot)),CommonError> {
 		let input = self.make_diff_input(is_opposite,t,b,mc,m)?;
 
 		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
@@ -142,9 +143,9 @@ impl Intelligence {
 		let nnaanswera = ssa.r[0];
 		let nnbanswerb = ssb.r[0];
 
-		let answer = nnaanswera * a + nnbanswerb * b;
+		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
 
-		Ok((answer * i32::MAX as f64,(ssa,ssb)))
+		Ok(((answer * F64_FRACTION_MAX as f64) as i64,(ssa,ssb)))
 	}
 
 	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
