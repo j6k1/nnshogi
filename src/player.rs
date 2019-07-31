@@ -369,7 +369,15 @@ impl Search {
 				}
 			}
 
-			(Rule::respond_oute_only_moves_all(teban, &*state, &*mc),true)
+			let mvs = Rule::respond_oute_only_moves_all(teban, &*state, &*mc);
+
+			if mvs.len() == 0 {
+				return Evaluation::Result(Score::NEGINFINITE,None);
+			} else if depth == 0 || current_depth == self.max_depth {
+				return self.evalute(evalutor,teban,&*state,&*mc,&Some(mvs[0].to_move()),info_sender,on_error_handler);
+			} else {
+				(mvs,true)
+			}
 		} else {
 			let oute_mvs = Rule::oute_only_moves_all(teban,&*state,&*mc);
 
@@ -394,7 +402,7 @@ impl Search {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				} else {
-					return self.evalute(evalutor,teban,&*state,&*mc,&m,info_sender,on_error_handler);
+					return self.evalute(evalutor,teban,&*state,&*mc,&Some(oute_mvs[0].to_move()),info_sender,on_error_handler);
 				}
 			}
 
