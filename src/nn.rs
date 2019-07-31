@@ -148,6 +148,30 @@ impl Intelligence {
 		Ok(((answer * F64_FRACTION_MAX as f64) as i64,(ssa,ssb)))
 	}
 
+	pub fn evalute_by_snapshot(&self,snapshot:&(SnapShot,SnapShot)) -> i64 {
+		let ssa = &snapshot.0;
+		let ssb = &snapshot.1;
+
+		let (a,b) = if self.learning_mode {
+			let mut rnd = rand::thread_rng();
+			let mut rnd = XorShiftRng::from_seed(rnd.gen());
+
+			let a = rnd.gen();
+			let b = 1f64 - a;
+
+			(a,b)
+		} else {
+			(0.5f64,0.5f64)
+		};
+
+		let nnaanswera = ssa.r[0];
+		let nnbanswerb = ssb.r[0];
+
+		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
+
+		(answer * F64_FRACTION_MAX as f64) as i64
+	}
+
 	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
 		teban:Teban,last_teban:Teban,
 		history:Vec<(Banmen,MochigomaCollections,u64,u64)>,s:&GameEndState,

@@ -256,7 +256,7 @@ impl Search {
 
 		Ok(r)
 	}
-
+	/*
 	fn evalute<L,S>(&self,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
@@ -275,6 +275,7 @@ impl Search {
 
 		Evaluation::Result(Score::Value(s),m.clone())
 	}
+	*/
 
 	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,snapshot:&Arc<(SnapShot,SnapShot)>,
 								is_opposite:bool,teban:Teban,state:&Option<&Arc<State>>,
@@ -314,6 +315,14 @@ impl Search {
 		}
 
 		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
+	}
+
+	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,snapshot:&Arc<(SnapShot,SnapShot)>)
+		-> Evaluation {
+
+		let s = evalutor.evalute_by_snapshot(snapshot);
+
+		Evaluation::Result(Score::Value(s),None)
 	}
 
 	fn alphabeta<L,S>(&self,
@@ -374,7 +383,7 @@ impl Search {
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				return self.evalute(evalutor,teban,&*state,&*mc,&Some(mvs[0].to_move()),info_sender,on_error_handler);
+				return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
 			} else {
 				(mvs,true)
 			}
@@ -394,7 +403,7 @@ impl Search {
 
 			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(Some(oute_mvs[0].to_move()))
+				return Evaluation::Timeout(None)
 			}
 
 			if depth == 0 || current_depth == self.max_depth {
@@ -402,7 +411,7 @@ impl Search {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
 				} else {
-					return self.evalute(evalutor,teban,&*state,&*mc,&Some(oute_mvs[0].to_move()),info_sender,on_error_handler);
+					return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
 				}
 			}
 
