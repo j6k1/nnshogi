@@ -366,18 +366,6 @@ impl Search {
 				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None);
-				} else {
-					let r = match self.evalute_by_diff(evalutor,
-														&self_nn_snapshot,true,teban,
-														&prev_state.as_ref(), &prev_mc.as_ref(), &m, info_sender, on_error_handler) {
-						Ok((r,_)) => r,
-						Err(ref e) => {
-							on_error_handler.lock().map(|h| h.call(e)).is_err();
-							return Evaluation::Error;
-						}
-					};
-
-					return r;
 				}
 			}
 
