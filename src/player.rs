@@ -785,6 +785,8 @@ impl Search {
 										return Evaluation::Result(scoreval,best_move);
 									}
 								}
+
+								continue;
 							}
 
 							match search.alphabeta(
@@ -914,10 +916,12 @@ impl Search {
 										alpha = scoreval;
 									}
 									if scoreval >= beta {
-										search.termination(receiver, threads);
+										search.termination(receiver, threads, stop);
 										return Evaluation::Result(scoreval,best_move);
 									}
 								}
+
+								continue;
 							}
 
 							if threads == 0 {
@@ -925,7 +929,7 @@ impl Search {
 									Ok(r) => r,
 									Err(ref e) => {
 										on_error_handler.lock().map(|h| h.call(e)).is_err();
-										search.termination(receiver, threads);
+										search.termination(receiver, threads, stop);
 										return Evaluation::Error;
 									}
 								};
@@ -936,11 +940,11 @@ impl Search {
 									(Evaluation::Timeout(_),m) => {
 										match best_move {
 											Some(best_move) => {
-												search.termination(receiver, threads);
+												search.termination(receiver, threads, stop);
 												return Evaluation::Timeout(Some(best_move));
 											},
 											None => {
-												search.termination(receiver, threads);
+												search.termination(receiver, threads, stop);
 												return Evaluation::Timeout(Some(m.to_move()));
 											},
 										};
@@ -953,13 +957,13 @@ impl Search {
 												alpha = scoreval;
 											}
 											if scoreval >= beta {
-												search.termination(receiver, threads);
+												search.termination(receiver, threads, stop);
 												return Evaluation::Result(scoreval,best_move);
 											}
 										}
 									},
 									(Evaluation::Error,_) => {
-										search.termination(receiver, threads);
+										search.termination(receiver, threads, stop);
 										return Evaluation::Error;
 									}
 								}
@@ -985,7 +989,7 @@ impl Search {
 
 									let search = search.clone();
 
-									let f = move || {
+									let r = {
 										let evalutor = evalutor;
 
 										search.alphabeta(
@@ -1008,7 +1012,7 @@ impl Search {
 											&stop,&quited,Search::single_search)
 									};
 
-									let _ = sender.send((f(),m));
+									let _ = sender.send((r,m));
 								});
 
 								threads -= 1;
@@ -1020,7 +1024,7 @@ impl Search {
 
 					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 						search.send_message(info_sender, on_error_handler, "think timeout!");
-						search.termination(receiver, threads);
+						search.termination(receiver, threads, stop);
 
 						return match best_move {
 							Some(best_move) => Evaluation::Timeout(Some(best_move)),
@@ -1041,11 +1045,11 @@ impl Search {
 						(Evaluation::Timeout(_),m) => {
 							match best_move {
 								Some(best_move) => {
-									search.termination(receiver, threads);
+									search.termination(receiver, threads, stop);
 									return Evaluation::Timeout(Some(best_move));
 								},
 								None => {
-									search.termination(receiver, threads);
+									search.termination(receiver, threads, stop);
 									return Evaluation::Timeout(Some(m.to_move()));
 								},
 							};
@@ -1057,7 +1061,7 @@ impl Search {
 							}
 						},
 						(Evaluation::Error,_) => {
-							search.termination(receiver, threads);
+							search.termination(receiver, threads, stop);
 							return Evaluation::Error;
 						}
 					}
@@ -1065,7 +1069,7 @@ impl Search {
 				Err(ref e) => {
 					threads += 1;
 					on_error_handler.lock().map(|h| h.call(e)).is_err();
-					search.termination(receiver, threads);
+					search.termination(receiver, threads, stop);
 					return Evaluation::Error;
 				}
 			};
@@ -1074,7 +1078,9 @@ impl Search {
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,threads:u32) {
+	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,threads:u32,stop:&Arc<AtomicBool>) {
+		stop.store(true,atomic::Ordering::Release);
+
 		for _ in threads..self.max_threads {
 			let _ = r.recv();
 		}
