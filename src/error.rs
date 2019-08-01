@@ -57,13 +57,13 @@ impl<'a> From<CommonError> for USIAgentRunningError<'a,UserEventKind,CommonError
 	}
 }
 impl From<InvalidStateError> for CommonError {
-	fn from(_: InvalidStateError) -> CommonError {
-		CommonError::Fail(String::from("invalid state."))
+	fn from(err: InvalidStateError) -> CommonError {
+		CommonError::Fail(format!("invalid state. ({})",err))
 	}
 }
 impl From<TypeConvertError<String>> for CommonError {
-	fn from(_: TypeConvertError<String>) -> CommonError {
-		CommonError::Fail(String::from("An error occurred during type conversion."))
+	fn from(err: TypeConvertError<String>) -> CommonError {
+		CommonError::Fail(format!("An error occurred during type conversion. ({})",err))
 	}
 }
 impl From<io::Error> for CommonError {

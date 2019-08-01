@@ -1853,6 +1853,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					},
 					Evaluation::Error => {
+						self.search.send_message(&mut info_sender, &on_error_handler.clone(), "error!");
 						BestMove::Resign
 					}
 				};
