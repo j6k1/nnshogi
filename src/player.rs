@@ -646,8 +646,8 @@ impl Search {
 					obtained,current_kyokumen_map,
 					already_oute_map,
 					oute_kyokumen_map,
-					mhash,shash,limit,depth-1,
-					current_depth+1,base_depth,
+					mhash,shash,limit,depth,
+					current_depth,base_depth,
 					stop,quited,
 					&mvs,
 					responded_oute)
@@ -1063,6 +1063,13 @@ impl Search {
 							if -s > scoreval {
 								scoreval = -s;
 								best_move = Some(m.to_move());
+								if alpha < scoreval {
+									alpha = scoreval;
+								}
+								if scoreval >= beta {
+									search.termination(receiver, threads, stop);
+									return Evaluation::Result(scoreval,best_move);
+								}
 							}
 						},
 						(Evaluation::Error,_) => {
