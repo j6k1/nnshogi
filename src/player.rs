@@ -356,11 +356,8 @@ impl Search {
 			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 		}
 
-		match obtained {
-			Some(ObtainKind::Ou) => {
-				return Evaluation::Result(Score::NEGINFINITE,None);
-			},
-			_ => (),
+		if let Some(ObtainKind::Ou) = obtained {
+			return Evaluation::Result(Score::NEGINFINITE,None);
 		}
 
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
@@ -391,11 +388,10 @@ impl Search {
 			let oute_mvs = Rule::oute_only_moves_all(teban,&*state,&*mc);
 
 			if oute_mvs.len() > 0 {
-				match oute_mvs[0] {
-					LegalMove::To(ref m) if m.obtained() == Some(ObtainKind::Ou) => {
+				if let LegalMove::To(ref m) = oute_mvs[0] {
+					if m.obtained() == Some(ObtainKind::Ou) {
 						return Evaluation::Result(Score::INFINITE,Some(oute_mvs[0].to_move()));
-					},
-					_ => (),
+					}
 				}
 			}
 
@@ -424,11 +420,8 @@ impl Search {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
 
-				match oute_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(_) => {
-						continue;
-					},
-					None => (),
+				if let Some(_) =  oute_kyokumen_map.get(teban,&mhash,&shash) {
+					continue;
 				}
 
 				match already_oute_map.write() {
@@ -448,15 +441,12 @@ impl Search {
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(&c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
+					&c if c >= 3 => {
 						continue;
 					},
-					Some(&c) => {
+					&c => {
 						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					},
-					None => {
-						current_kyokumen_map.insert(teban,mhash,shash,1);
 					}
 				}
 
@@ -670,17 +660,7 @@ impl Search {
 		let mut current_kyokumen_map = current_kyokumen_map.clone();
 
 		let (mhash,shash) = {
-			let o = match obtained {
-				Some(o) => {
-					match MochigomaKind::try_from(o) {
-						Ok(o) => {
-							Some(o)
-						},
-						Err(_) => None,
-					}
-				},
-				None => None,
-			};
+			let o = obtained.and_then(|o| MochigomaKind::try_from(o).ok());
 
 			let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 			let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
@@ -705,20 +685,16 @@ impl Search {
 			_ => depth,
 		};
 
-		let is_sennichite = match current_kyokumen_map.get(teban,&mhash,&shash) {
-			Some(&c) if c >= 3 => {
+		let is_sennichite = match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
+			&c if c >= 3 => {
 				return None;
 			},
-			Some(&c) => {
+			&c if c > 0 => {
 				current_kyokumen_map.insert(teban,mhash,shash,c+1);
 
 				true
 			},
-			None => {
-				current_kyokumen_map.insert(teban,mhash,shash,1);
-
-				false
-			}
+			_ => false,
 		};
 
 		Some((depth,mhash,shash,oute_kyokumen_map,current_kyokumen_map,is_sennichite))
@@ -1133,15 +1109,7 @@ impl Search {
 			for m in &mvs {
 				let o = match m {
 					&LegalMove::To(ref m) => {
-						match m.obtained() {
-							Some(o) => {
-								match MochigomaKind::try_from(o) {
-									Ok(o) => Some(o),
-									Err(_) => None,
-								}
-							},
-							None => None,
-						}
+						m.obtained().and_then(|o| MochigomaKind::try_from(o).ok())
 					},
 					_ => None,
 				};
@@ -1150,15 +1118,12 @@ impl Search {
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(&c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
+					&c if c >= 3 => {
 						continue;
 					},
-					Some(&c) => {
+					&c => {
 						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					},
-					None => {
-						current_kyokumen_map.insert(teban,mhash,shash,1);
 					}
 				}
 
@@ -1185,7 +1150,7 @@ impl Search {
 							let ps = next.get_part();
 
 							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
-								Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
+							   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
 
 								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
 
@@ -1292,15 +1257,7 @@ impl Search {
 
 				let o = match m {
 					&LegalMove::To(ref m) => {
-						match m.obtained() {
-							Some(o) => {
-								match MochigomaKind::try_from(o) {
-									Ok(o) => Some(o),
-									Err(_) => None,
-								}
-							},
-							None => None,
-						}
+						m.obtained().and_then(|o| MochigomaKind::try_from(o).ok())
 					},
 					_ => None,
 				};
@@ -1336,15 +1293,12 @@ impl Search {
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
 
-				match current_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(&c) if c >= 3 => {
+				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
+					&c if c >= 3 => {
 						continue;
 					},
-					Some(&c) => {
+					&c => {
 						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					},
-					None => {
-						current_kyokumen_map.insert(teban,mhash,shash,1);
 					}
 				}
 
@@ -1769,12 +1723,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					let mhash = s.search.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
 					let shash = s.search.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
 
-					match kyokumen_map.get(t,&mhash,&shash) {
-						Some(&c) => {
+					match kyokumen_map.get(t,&mhash,&shash).unwrap_or(&0) {
+						&c => {
 							kyokumen_map.insert(t,mhash,shash,c+1);
-						},
-						None => {
-							kyokumen_map.insert(t,mhash,shash,1);
 						}
 					};
 					(mhash,shash)
