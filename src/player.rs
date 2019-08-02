@@ -426,11 +426,8 @@ impl Search {
 
 				match already_oute_map.write() {
 					Ok(mut already_oute_map) => {
-						match already_oute_map.get(teban,&mhash,&shash) {
-							None => {
-								already_oute_map.insert(teban,mhash,shash,false);
-							},
-							Some(_) => (),
+						if let None = already_oute_map.get(teban,&mhash,&shash) {
+							already_oute_map.insert(teban,mhash,shash,false);
 						}
 					},
 					Err(ref e) => {
@@ -629,10 +626,10 @@ impl Search {
 					evalutor,
 					info_sender,
 					on_error_handler,
-					&opponent_nn_snapshot,
 					&self_nn_snapshot,
-					teban.opposite(),state,
-					-beta,-alpha,mc,
+					&opponent_nn_snapshot,
+					teban,state,
+					alpha,beta,mc,
 					obtained,current_kyokumen_map,
 					already_oute_map,
 					oute_kyokumen_map,
