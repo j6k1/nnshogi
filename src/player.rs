@@ -360,6 +360,15 @@ impl Search {
 			return Evaluation::Result(Score::NEGINFINITE,None);
 		}
 
+		if depth == 0 || current_depth == self.max_depth {
+			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
+				self.send_message(info_sender, on_error_handler, "think timeout!");
+				return Evaluation::Timeout(None);
+			} else {
+				return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
+			}
+		}
+
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
 		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
@@ -400,15 +409,6 @@ impl Search {
 			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None)
-			}
-
-			if depth == 0 || current_depth == self.max_depth {
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return Evaluation::Timeout(None);
-				} else {
-					return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
-				}
 			}
 
 			for m in &oute_mvs {
@@ -1093,6 +1093,7 @@ impl Search {
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
+		//self.send_message(info_sender, on_error_handler,"respond_oute_only");
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
@@ -1227,6 +1228,7 @@ impl Search {
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
+		//self.send_message(info_sender, on_error_handler,"oute_only");
 		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
