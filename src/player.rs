@@ -1164,9 +1164,11 @@ impl Search {
 										oute_kyokumen_map.insert(teban,mhash,shash,());
 									},
 								}
-							}
 
-							oute_kyokumen_map
+								oute_kyokumen_map
+							} else {
+								oute_kyokumen_map.clone()
+							}
 						};
 
 						match self.oute_only(event_queue,
@@ -1176,7 +1178,7 @@ impl Search {
 												teban.opposite(),next,mc,
 												&current_kyokumen_map,
 												already_oute_map,
-												oute_kyokumen_map,
+												&oute_kyokumen_map,
 												mhash,shash,limit,
 												current_depth+1,base_depth,stop) {
 							OuteEvaluation::Result(-1) => {
