@@ -57,6 +57,7 @@ enum OuteEvaluation {
 enum Score {
 	NEGINFINITE,
 	Value(i64),
+	NegativeValue(i64),
 	INFINITE,
 }
 impl Neg for Score {
@@ -66,7 +67,8 @@ impl Neg for Score {
 		match self {
 			Score::INFINITE => Score::NEGINFINITE,
 			Score::NEGINFINITE => Score::INFINITE,
-			Score::Value(v) => Score::Value(-v),
+			Score::Value(v) => Score::NegativeValue(v),
+			Score::NegativeValue(v) => Score::Value(v),
 		}
 	}
 }
@@ -84,10 +86,19 @@ impl PartialOrd for Score {
 			Score::Value(l) => {
 				match *other {
 					Score::Value(r) => l.partial_cmp(&r)?,
+					Score::NegativeValue(r) => r.partial_cmp(&l)?,
 					Score::INFINITE => Ordering::Less,
 					Score::NEGINFINITE => Ordering::Greater,
 				}
 			},
+			Score::NegativeValue(l) => {
+				match *other {
+					Score::NegativeValue(r) => l.partial_cmp(&r)?,
+					Score::Value(r) => r.partial_cmp(&l)?,
+					Score::INFINITE => Ordering::Less,
+					Score::NEGINFINITE => Ordering::Greater,
+				}
+			}
 		})
 	}
 }
