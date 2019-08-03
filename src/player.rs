@@ -16,6 +16,7 @@ use std::num::Wrapping;
 use std::time::{Instant,Duration};
 use std::cmp::Ordering;
 use std::ops::Neg;
+use std::ops::Add;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
 
@@ -100,6 +101,18 @@ impl PartialOrd for Score {
 				}
 			}
 		})
+	}
+}
+impl Add<i64> for Score {
+	type Output = Self;
+
+	fn add(self, other:i64) -> Self::Output {
+		match self {
+			Score::NegativeValue(v) => Score::NegativeValue(v - other),
+			Score::Value(v) => Score::Value(v + other),
+			Score::INFINITE => Score::INFINITE,
+			Score::NEGINFINITE => Score::NEGINFINITE,
+		}
 	}
 }
 const BASE_DEPTH:u32 = 2;
