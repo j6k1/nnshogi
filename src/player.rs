@@ -107,7 +107,6 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
 						Teban,&Arc<State>,Score,Score,
 						&Arc<MochigomaCollections>,
-						Option<ObtainKind>,
 						&KyokumenMap<u64,u32>,
 						&Arc<RwLock<KyokumenMap<u64,bool>>>,
 						&KyokumenMap<u64,()>,
@@ -634,7 +633,7 @@ impl Search {
 					&opponent_nn_snapshot,
 					teban,state,
 					alpha,beta,mc,
-					obtained,current_kyokumen_map,
+					current_kyokumen_map,
 					already_oute_map,
 					oute_kyokumen_map,
 					mhash,shash,limit,depth,
@@ -650,7 +649,7 @@ impl Search {
 						oute_kyokumen_map:&KyokumenMap<u64,()>,
 						current_kyokumen_map:&KyokumenMap<u64,u32>,
 						depth:u32,responded_oute:bool)
-		-> Option<(u32,u64,u64,KyokumenMap<u64,()>,KyokumenMap<u64,u32>,bool)> {
+		-> Option<(u32,Option<ObtainKind>,u64,u64,KyokumenMap<u64,()>,KyokumenMap<u64,u32>,bool)> {
 
 		let obtained = match m {
 			LegalMove::To(ref m) => m.obtained(),
@@ -698,7 +697,7 @@ impl Search {
 			_ => false,
 		};
 
-		Some((depth,mhash,shash,oute_kyokumen_map,current_kyokumen_map,is_sennichite))
+		Some((depth,obtained,mhash,shash,oute_kyokumen_map,current_kyokumen_map,is_sennichite))
 	}
 
 	fn single_search<L,S>(search:&Arc<Search>,
@@ -713,7 +712,6 @@ impl Search {
 								teban:Teban,state:&Arc<State>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
-								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
 								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
@@ -737,7 +735,7 @@ impl Search {
 											current_kyokumen_map,
 											depth,responded_oute) {
 				Some(r) => {
-					let (depth,mut mhash,mut shash,
+					let (depth,obtained,mut mhash,mut shash,
 						 mut oute_kyokumen_map,
 						 mut current_kyokumen_map,
 						 is_sennichite) = r;
@@ -844,7 +842,6 @@ impl Search {
 								teban:Teban,state:&Arc<State>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
-								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
 								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
@@ -871,7 +868,7 @@ impl Search {
 											current_kyokumen_map,
 											depth,responded_oute) {
 				Some(r) => {
-					let (depth,mut mhash,mut shash,
+					let (depth,obtained,mut mhash,mut shash,
 						 mut oute_kyokumen_map,
 						 mut current_kyokumen_map,
 						 is_sennichite) = r;
@@ -1111,7 +1108,15 @@ impl Search {
 			for m in &mvs {
 				let o = match m {
 					&LegalMove::To(ref m) => {
-						m.obtained().and_then(|o| MochigomaKind::try_from(o).ok())
+						match m.obtained() {
+							Some(ObtainKind::Ou) => {
+								return OuteEvaluation::Result(-1);
+							},
+							Some(o) => {
+								MochigomaKind::try_from(o).ok()
+							},
+							None => None,
+						}
 					},
 					_ => None,
 				};
