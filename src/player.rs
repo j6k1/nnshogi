@@ -420,8 +420,12 @@ impl Search {
 				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
 				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
 
+				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+
 				if let Some(_) =  oute_kyokumen_map.get(teban,&mhash,&shash) {
 					continue;
+				} else {
+					oute_kyokumen_map.insert(teban,mhash,shash,());
 				}
 
 				match already_oute_map.write() {
@@ -470,7 +474,7 @@ impl Search {
 															teban.opposite(),next,mc,
 															&current_kyokumen_map,
 															already_oute_map,
-															oute_kyokumen_map,
+															&oute_kyokumen_map,
 															mhash,shash,limit,
 															current_depth+1,
 															base_depth,stop,
@@ -1299,6 +1303,17 @@ impl Search {
 					}
 				}
 
+				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+
+				match oute_kyokumen_map.get(teban,&mhash,&shash) {
+					Some(()) => {
+						continue;
+					},
+					None => {
+						oute_kyokumen_map.insert(teban,mhash,shash,());
+					}
+				}
+
 				match next {
 					(ref next,ref mc,_) => {
 						match self.respond_oute_only(event_queue,
@@ -1308,7 +1323,7 @@ impl Search {
 														teban.opposite(),next,mc,
 														&current_kyokumen_map,
 														already_oute_map,
-														oute_kyokumen_map,
+														&oute_kyokumen_map,
 														mhash,shash,limit,
 														current_depth+1,base_depth,stop) {
 							OuteEvaluation::Result(-1) => {
