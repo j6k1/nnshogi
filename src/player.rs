@@ -963,7 +963,8 @@ impl Search {
 
 								let sender = sender.clone();
 
-								let _ = thread::spawn(move || {
+								let mut b = thread::Builder::new();
+								let _ = b.stack_size(1024 * 1024 * 20).spawn(move || {
 									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
 									let search = search.clone();
