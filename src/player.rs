@@ -108,7 +108,7 @@ impl Add<i64> for Score {
 
 	fn add(self, other:i64) -> Self::Output {
 		match self {
-			Score::NegativeValue(v) => Score::NegativeValue(v - other),
+			Score::NegativeValue(v) => Score::NegativeValue(v + other),
 			Score::Value(v) => Score::Value(v + other),
 			Score::INFINITE => Score::INFINITE,
 			Score::NEGINFINITE => Score::NEGINFINITE,
