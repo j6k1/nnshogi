@@ -334,7 +334,11 @@ impl Search {
 		let (s,snapshot) = evalutor.evalute_by_diff(&snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
 
 		if self.display_evalute_score {
-			self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
+			let teban_str = match teban {
+				Teban::Sente => "sente",
+				Teban::Gote => "gote"
+			};
+			self.send_message(info_sender, on_error_handler, &format!("evalute score = {} ({})",s,teban_str));
 		}
 
 		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
