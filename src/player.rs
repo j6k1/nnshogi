@@ -137,7 +137,8 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						u64,u64,Option<Instant>,
 						u32,u32,u32,
 						&Arc<AtomicBool>,&Arc<AtomicBool>,
-						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
+						&Vec<(u32,LegalMove)>,bool,
+						&mut KyokumenMap<u64,i64>) -> Evaluation;
 
 struct Search {
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
@@ -336,9 +337,9 @@ impl Search {
 		if self.display_evalute_score {
 			let teban_str = match teban {
 				Teban::Sente => "sente",
-				Teban::Gote => "gote"
+				Teban::Gote =>  "gote"
 			};
-			self.send_message(info_sender, on_error_handler, &format!("evalute score = {} ({})",s,teban_str));
+			self.send_message(info_sender, on_error_handler, &format!("evalute score =  {0: >17} ({1})",s,teban_str));
 		}
 
 		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
@@ -352,7 +353,7 @@ impl Search {
 		Evaluation::Result(Score::Value(s),None)
 	}
 
-	fn alphabeta<L,S>(&self,
+	fn negascout<L,S>(&self,
 			this:&Arc<Search>,
 			event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -376,7 +377,8 @@ impl Search {
 								depth:u32,current_depth:u32,base_depth:u32,
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
-								strategy:Strategy<L,S>
+								strategy:Strategy<L,S>,
+								kyokumen_score_map:&mut KyokumenMap<u64,i64>
 	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		if current_depth > base_depth {
@@ -392,7 +394,17 @@ impl Search {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None);
 			} else {
-				return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
+				if let Some(&s) = kyokumen_score_map.get(teban,&mhash,&shash) {
+					return Evaluation::Result(Score::Value(s),None);
+				} else {
+					let r = self.evalute_by_snapshot(evalutor,self_nn_snapshot);
+
+					if let Evaluation::Result(Score::Value(s),_) = r {
+						kyokumen_score_map.insert(teban,mhash,shash,s);
+					}
+
+					return r;
+				}
 			}
 		}
 
@@ -668,7 +680,8 @@ impl Search {
 					current_depth,base_depth,
 					stop,quited,
 					&mvs,
-					responded_oute)
+					responded_oute,
+					kyokumen_score_map)
 	}
 
 	fn startup_strategy(&self,teban:Teban,state:&State,mc:&MochigomaCollections,
@@ -749,7 +762,8 @@ impl Search {
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
-								responded_oute:bool)
+								responded_oute:bool,
+								kyokumen_score_map:&mut KyokumenMap<u64,i64>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
@@ -797,45 +811,67 @@ impl Search {
 								continue;
 							}
 
-							match search.alphabeta(
-								search,
-								event_queue,
-								event_dispatcher,
-								evalutor,
-								info_sender,
-								on_error_handler,
-								opponent_nn_snapshot,
-								self_nn_snapshot,
-								teban.opposite(),&Arc::new(state),
-								-beta,-alpha,Some(m.to_move()),&Arc::new(mc),
-								&prev_state,&prev_mc,
-								obtained,&current_kyokumen_map,
-								already_oute_map,
-								&oute_kyokumen_map,
-								mhash,shash,limit,depth-1,
-								current_depth+1,base_depth,
-								stop,quited,Search::single_search) {
+							let repeat = match alpha {
+								Score::NEGINFINITE | Score::INFINITE => 1,
+								Score::Value(_) | Score::NegativeValue(_) => 2,
+							};
 
-								Evaluation::Timeout(_) => {
-									return match best_move {
-										Some(best_move) => Evaluation::Timeout(Some(best_move)),
-										None => Evaluation::Timeout(Some(m.to_move())),
-									};
-								},
-								Evaluation::Result(s,_) => {
-									if -s > scoreval {
-										scoreval = -s;
-										best_move = Some(m.to_move());
-										if alpha < scoreval {
-											alpha = scoreval;
-										}
-										if scoreval >= beta {
-											return Evaluation::Result(scoreval,best_move);
-										}
+							let state = Arc::new(state);
+							let mc = Arc::new(mc);
+
+							for i in 0..repeat {
+								let b = match (i,repeat) {
+									(0,2) => alpha + 1,
+									(1,2) | (0,1) => beta,
+									_ => {
+										return Evaluation::Error;
 									}
-								},
-								Evaluation::Error => {
-									return Evaluation::Error
+								};
+
+								match search.negascout(
+									search,
+									event_queue,
+									event_dispatcher,
+									evalutor,
+									info_sender,
+									on_error_handler,
+									opponent_nn_snapshot,
+									self_nn_snapshot,
+									teban.opposite(),&state,
+									-b,-alpha,Some(m.to_move()),&mc,
+									&prev_state,&prev_mc,
+									obtained,&current_kyokumen_map,
+									already_oute_map,
+									&oute_kyokumen_map,
+									mhash,shash,limit,depth-1,
+									current_depth+1,base_depth,
+									stop,quited,Search::single_search,
+									kyokumen_score_map) {
+
+									Evaluation::Timeout(_) => {
+										return match best_move {
+											Some(best_move) => Evaluation::Timeout(Some(best_move)),
+											None => Evaluation::Timeout(Some(m.to_move())),
+										};
+									},
+									Evaluation::Result(s,_) => {
+										if -s > scoreval {
+											scoreval = -s;
+											best_move = Some(m.to_move());
+											if alpha < scoreval {
+												alpha = scoreval;
+											}
+											if scoreval >= beta {
+												return Evaluation::Result(scoreval,best_move);
+											}
+										}
+										if -s < alpha {
+											break;
+										}
+									},
+									Evaluation::Error => {
+										return Evaluation::Error
+									}
 								}
 							}
 						}
@@ -879,7 +915,8 @@ impl Search {
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
-								responded_oute:bool)
+								responded_oute:bool,
+								kyokumen_score_map:&mut KyokumenMap<u64,i64>)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
@@ -988,19 +1025,38 @@ impl Search {
 								let limit = limit.clone();
 								let stop = stop.clone();
 								let quited = quited.clone();
+								let mut kyokumen_score_map = kyokumen_score_map.clone();
 
 								let sender = sender.clone();
 
 								let mut b = thread::Builder::new();
-								let _ = b.stack_size(1024 * 1024 * 20).spawn(move || {
+								let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
 									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
 									let search = search.clone();
 
-									let r = {
-										let evalutor = evalutor;
+									let mut r = Evaluation::Result(Score::NEGINFINITE,None);
 
-										search.alphabeta(
+									let evalutor = evalutor;
+
+									let repeat = match alpha {
+										Score::NEGINFINITE | Score::INFINITE => 1,
+										Score::Value(_) | Score::NegativeValue(_) => 2,
+									};
+
+									let mut a = alpha;
+
+									for i in 0..repeat {
+										let b = match (i,repeat) {
+											(0,2) => alpha + 1,
+											(1,2) | (0,1) => beta,
+											_ => {
+												let _ = sender.send((Evaluation::Error,m));
+												return;
+											}
+										};
+
+										r = search.negascout(
 											&search,
 											&event_queue,
 											&mut event_dispatcher,
@@ -1010,16 +1066,29 @@ impl Search {
 											&opponent_nn_snapshot,
 											&self_nn_snapshot,
 											teban.opposite(),&state,
-											-beta,-alpha,Some(m.to_move()),&mc,
+											-b,-a,Some(m.to_move()),&mc,
 											&prev_state,&prev_mc,
 											obtained,&current_kyokumen_map,
 											&already_oute_map,
 											&oute_kyokumen_map,
 											mhash,shash,limit,depth-1,
 											current_depth+1,base_depth,
-											&stop,&quited,Search::single_search)
-									};
+											&stop,&quited,Search::single_search,
+											&mut kyokumen_score_map);
 
+										match r {
+											Evaluation::Result(s,_) => {
+												if -s <= alpha || -s  >= beta {
+													break;
+												} else {
+													a = -s;
+												}
+											},
+											_ => {
+												break;
+											}
+										}
+									}
 									let _ = sender.send((r,m));
 								});
 
@@ -1878,7 +1947,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					Search::single_search
 				};
 
-				let result = match self.search.alphabeta(&self.search.clone(),
+				let result = match self.search.negascout(&self.search.clone(),
 							&event_queue,
 							&mut event_dispatcher,
 							evalutor,
@@ -1895,7 +1964,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							limit, base_depth, 0, base_depth,
 							&stop,
 							&quited,
-							strategy) {
+							strategy,
+							&mut KyokumenMap::new()) {
 					Evaluation::Result(_,Some(m)) => {
 						BestMove::Move(m,None)
 					},
