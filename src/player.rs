@@ -505,7 +505,7 @@ impl Search {
 															mhash,shash,limit,
 															current_depth+1,
 															base_depth,stop,
-															) {
+															false) {
 							OuteEvaluation::Result(d) if d >= 0 &&
 								!(is_put_fu && d - current_depth as i32 == 2) => {
 								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
@@ -1115,7 +1115,8 @@ impl Search {
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
 								current_depth:u32,
-								base_depth:u32,stop:&Arc<AtomicBool>)
+								base_depth:u32,stop:&Arc<AtomicBool>,
+								shortest_depth:bool)
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
 
@@ -1132,7 +1133,7 @@ impl Search {
 		if mvs.len() == 0 {
 			return OuteEvaluation::Result(current_depth as i32)
 		} else {
-			let mut maxdepth = -1;
+			let mut mindepth = None;
 
 			for m in &mvs {
 				let o = match m {
@@ -1219,8 +1220,15 @@ impl Search {
 								return OuteEvaluation::Result(-1);
 							},
 							OuteEvaluation::Result(d) => {
-								if d > maxdepth {
-									maxdepth = d;
+								if let None = mindepth {
+									mindepth = Some(d);
+								} else if let Some(min) = mindepth {
+									if d < min {
+										mindepth = Some(d);
+									}
+								}
+								if !shortest_depth {
+									break;
 								}
 							},
 							OuteEvaluation::Timeout => {
@@ -1241,7 +1249,7 @@ impl Search {
 				}
 			}
 
-			OuteEvaluation::Result(maxdepth)
+			OuteEvaluation::Result(mindepth.unwrap_or(-1))
 		}
 	}
 
@@ -1363,7 +1371,8 @@ impl Search {
 														already_oute_map,
 														&oute_kyokumen_map,
 														mhash,shash,limit,
-														current_depth+1,base_depth,stop) {
+														current_depth+1,
+														base_depth,stop,false) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							}
