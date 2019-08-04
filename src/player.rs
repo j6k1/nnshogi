@@ -941,7 +941,6 @@ impl Search {
 								} else {
 									Score::Value(0)
 								};
-
 								if s > scoreval {
 									scoreval = s;
 									best_move = Some(m.to_move());
@@ -953,7 +952,6 @@ impl Search {
 										return Evaluation::Result(scoreval,best_move);
 									}
 								}
-
 								continue;
 							}
 
@@ -966,7 +964,6 @@ impl Search {
 										return Evaluation::Error;
 									}
 								};
-
 								threads += 1;
 
 								match r {
@@ -1000,96 +997,95 @@ impl Search {
 										return Evaluation::Error;
 									}
 								}
-							} else {
+							}
+
+							let search = search.clone();
+							let event_queue = event_queue.clone();
+							let evalutor = evalutor.clone();
+							let mut info_sender = info_sender.clone();
+							let on_error_handler = on_error_handler.clone();
+							let opponent_nn_snapshot = opponent_nn_snapshot.clone();
+							let self_nn_snapshot = self_nn_snapshot.clone();
+							let state = Arc::new(state);
+							let mc = Arc::new(mc);
+							let already_oute_map = already_oute_map.clone();
+							let limit = limit.clone();
+							let stop = stop.clone();
+							let quited = quited.clone();
+							let mut kyokumen_score_map = kyokumen_score_map.clone();
+
+							let sender = sender.clone();
+
+							let mut b = thread::Builder::new();
+							let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
+								let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
+
 								let search = search.clone();
-								let event_queue = event_queue.clone();
-								let evalutor = evalutor.clone();
-								let mut info_sender = info_sender.clone();
-								let on_error_handler = on_error_handler.clone();
-								let opponent_nn_snapshot = opponent_nn_snapshot.clone();
-								let self_nn_snapshot = self_nn_snapshot.clone();
-								let state = Arc::new(state);
-								let mc = Arc::new(mc);
-								let already_oute_map = already_oute_map.clone();
-								let limit = limit.clone();
-								let stop = stop.clone();
-								let quited = quited.clone();
-								let mut kyokumen_score_map = kyokumen_score_map.clone();
 
-								let sender = sender.clone();
+								let mut r = Evaluation::Result(Score::NEGINFINITE,None);
 
-								let mut b = thread::Builder::new();
-								let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
-									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
+								let evalutor = evalutor;
 
-									let search = search.clone();
+								let repeat = match alpha {
+									Score::NEGINFINITE | Score::INFINITE => 1,
+									Score::Value(_) | Score::NegativeValue(_) => 2,
+								};
 
-									let mut r = Evaluation::Result(Score::NEGINFINITE,None);
+								let mut a = alpha;
 
-									let evalutor = evalutor;
-
-									let repeat = match alpha {
-										Score::NEGINFINITE | Score::INFINITE => 1,
-										Score::Value(_) | Score::NegativeValue(_) => 2,
+								for i in 0..repeat {
+									let b = match (i,repeat) {
+										(0,2) => alpha + 1,
+										(1,2) | (0,1) => beta,
+										_ => {
+											let _ = sender.send((Evaluation::Error,m));
+											return;
+										}
 									};
 
-									let mut a = alpha;
+									r = search.negascout(
+										&search,
+										&event_queue,
+										&mut event_dispatcher,
+										&evalutor,
+										&mut info_sender,
+										&on_error_handler,
+										&opponent_nn_snapshot,
+										&self_nn_snapshot,
+										teban.opposite(),&state,
+										-b,-a,Some(m.to_move()),&mc,
+										&prev_state,&prev_mc,
+										obtained,&current_kyokumen_map,
+										&already_oute_map,
+										&oute_kyokumen_map,
+										mhash,shash,limit,depth-1,
+										current_depth+1,base_depth,
+										&stop,&quited,Search::single_search,
+										&mut kyokumen_score_map);
 
-									for i in 0..repeat {
-										let b = match (i,repeat) {
-											(0,2) => alpha + 1,
-											(1,2) | (0,1) => beta,
-											_ => {
-												let _ = sender.send((Evaluation::Error,m));
-												return;
-											}
-										};
-
-										r = search.negascout(
-											&search,
-											&event_queue,
-											&mut event_dispatcher,
-											&evalutor,
-											&mut info_sender,
-											&on_error_handler,
-											&opponent_nn_snapshot,
-											&self_nn_snapshot,
-											teban.opposite(),&state,
-											-b,-a,Some(m.to_move()),&mc,
-											&prev_state,&prev_mc,
-											obtained,&current_kyokumen_map,
-											&already_oute_map,
-											&oute_kyokumen_map,
-											mhash,shash,limit,depth-1,
-											current_depth+1,base_depth,
-											&stop,&quited,Search::single_search,
-											&mut kyokumen_score_map);
-
-										match r {
-											Evaluation::Result(s,_) => {
-												if -s <= alpha || -s  >= beta {
-													break;
-												} else if -s > alpha {
-													a = -s;
-												}
-											},
-											_ => {
+									match r {
+										Evaluation::Result(s,_) => {
+											if -s <= alpha || -s  >= beta {
 												break;
+											} else {
+												a = -s;
 											}
+										},
+										_ => {
+											break;
 										}
 									}
-									let _ = sender.send((r,m));
-								});
+								}
+								let _ = sender.send((r,m));
+							});
 
-								threads -= 1;
-							}
+							threads -= 1;
 						}
 					}
 
 					let _ = event_dispatcher.dispatch_events(search,&*event_queue);
 
 					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-						search.send_message(info_sender, on_error_handler, "think timeout!");
 						search.termination(receiver, threads, stop);
 
 						return match best_move {
@@ -1961,7 +1957,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					},
 					Evaluation::Error => {
-						self.search.send_message(&mut info_sender, &on_error_handler.clone(), "error!");
 						BestMove::Resign
 					}
 				};
