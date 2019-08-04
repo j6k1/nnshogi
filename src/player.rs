@@ -914,187 +914,191 @@ impl Search {
 		let (sender,receiver):(_,Receiver<(Evaluation,AppliedMove)>) = mpsc::channel();
 		let mut threads = search.max_threads;
 
-		for (priority,m) in mvs {
-			match search.startup_strategy(teban,state,mc,m,
-											mhash,shash,
-										 	*priority,
-											oute_kyokumen_map,
-											current_kyokumen_map,
-											depth,responded_oute) {
-				Some(r) => {
-					let (depth,obtained,mut mhash,mut shash,
-						 mut oute_kyokumen_map,
-						 mut current_kyokumen_map,
-						 is_sennichite) = r;
+		let mut it = mvs.into_iter();
 
-					let m = m.to_applied_move();
-					let prev_state = Some(state.clone());
-					let prev_mc = Some(mc.clone());
+		loop {
+			if threads == 0 {
+				let r = match receiver.recv() {
+					Ok(r) => r,
+					Err(ref e) => {
+						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						search.termination(receiver, threads, stop);
+						return Evaluation::Error;
+					}
+				};
+				threads += 1;
 
-					let next = Rule::apply_move_none_check(&state,teban,mc,m);
-
-					match next {
-						(state,mc,_) => {
-							if is_sennichite {
-								let s = if Rule::is_mate(teban.opposite(),&state) {
-									Score::NEGINFINITE
-								} else {
-									Score::Value(0)
-								};
-								if s > scoreval {
-									scoreval = s;
-									best_move = Some(m.to_move());
-									if alpha < scoreval {
-										alpha = scoreval;
-									}
-									if scoreval >= beta {
-										search.termination(receiver, threads, stop);
-										return Evaluation::Result(scoreval,best_move);
-									}
-								}
-								continue;
+				match r {
+					(Evaluation::Timeout(_),m) => {
+						match best_move {
+							Some(best_move) => {
+								search.termination(receiver, threads, stop);
+								return Evaluation::Timeout(Some(best_move));
+							},
+							None => {
+								search.termination(receiver, threads, stop);
+								return Evaluation::Timeout(Some(m.to_move()));
+							},
+						};
+					},
+					(Evaluation::Result(s,_),m) => {
+						if -s > scoreval {
+							scoreval = -s;
+							best_move = Some(m.to_move());
+							if alpha < scoreval {
+								alpha = scoreval;
 							}
+							if scoreval >= beta {
+								search.termination(receiver, threads, stop);
+								return Evaluation::Result(scoreval,best_move);
+							}
+						}
+					},
+					(Evaluation::Error,_) => {
+						search.termination(receiver, threads, stop);
+						return Evaluation::Error;
+					}
+				}
+			} else if let Some((priority,m)) = it.next() {
+				match search.startup_strategy(teban,state,mc,m,
+												mhash,shash,
+											 	*priority,
+												oute_kyokumen_map,
+												current_kyokumen_map,
+												depth,responded_oute) {
+					Some(r) => {
+						let (depth,obtained,mut mhash,mut shash,
+							 mut oute_kyokumen_map,
+							 mut current_kyokumen_map,
+							 is_sennichite) = r;
 
-							if threads == 0 {
-								let r = match receiver.recv() {
-									Ok(r) => r,
-									Err(ref e) => {
-										on_error_handler.lock().map(|h| h.call(e)).is_err();
-										search.termination(receiver, threads, stop);
-										return Evaluation::Error;
-									}
-								};
-								threads += 1;
+						let m = m.to_applied_move();
+						let prev_state = Some(state.clone());
+						let prev_mc = Some(mc.clone());
 
-								match r {
-									(Evaluation::Timeout(_),m) => {
-										match best_move {
-											Some(best_move) => {
-												search.termination(receiver, threads, stop);
-												return Evaluation::Timeout(Some(best_move));
-											},
-											None => {
-												search.termination(receiver, threads, stop);
-												return Evaluation::Timeout(Some(m.to_move()));
-											},
-										};
-									},
-									(Evaluation::Result(s,_),m) => {
-										if -s > scoreval {
-											scoreval = -s;
-											best_move = Some(m.to_move());
-											if alpha < scoreval {
-												alpha = scoreval;
-											}
-											if scoreval >= beta {
-												search.termination(receiver, threads, stop);
-												return Evaluation::Result(scoreval,best_move);
-											}
+						let next = Rule::apply_move_none_check(&state,teban,mc,m);
+
+						match next {
+							(state,mc,_) => {
+								if is_sennichite {
+									let s = if Rule::is_mate(teban.opposite(),&state) {
+										Score::NEGINFINITE
+									} else {
+										Score::Value(0)
+									};
+									if s > scoreval {
+										scoreval = s;
+										best_move = Some(m.to_move());
+										if alpha < scoreval {
+											alpha = scoreval;
 										}
-									},
-									(Evaluation::Error,_) => {
-										search.termination(receiver, threads, stop);
-										return Evaluation::Error;
+										if scoreval >= beta {
+											search.termination(receiver, threads, stop);
+											return Evaluation::Result(scoreval,best_move);
+										}
 									}
+									continue;
 								}
-							}
-
-							let search = search.clone();
-							let event_queue = event_queue.clone();
-							let evalutor = evalutor.clone();
-							let mut info_sender = info_sender.clone();
-							let on_error_handler = on_error_handler.clone();
-							let opponent_nn_snapshot = opponent_nn_snapshot.clone();
-							let self_nn_snapshot = self_nn_snapshot.clone();
-							let state = Arc::new(state);
-							let mc = Arc::new(mc);
-							let already_oute_map = already_oute_map.clone();
-							let limit = limit.clone();
-							let stop = stop.clone();
-							let quited = quited.clone();
-							let mut kyokumen_score_map = kyokumen_score_map.clone();
-
-							let sender = sender.clone();
-
-							let mut b = thread::Builder::new();
-							let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
-								let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
 								let search = search.clone();
+								let event_queue = event_queue.clone();
+								let evalutor = evalutor.clone();
+								let mut info_sender = info_sender.clone();
+								let on_error_handler = on_error_handler.clone();
+								let opponent_nn_snapshot = opponent_nn_snapshot.clone();
+								let self_nn_snapshot = self_nn_snapshot.clone();
+								let state = Arc::new(state);
+								let mc = Arc::new(mc);
+								let already_oute_map = already_oute_map.clone();
+								let limit = limit.clone();
+								let stop = stop.clone();
+								let quited = quited.clone();
+								let mut kyokumen_score_map = kyokumen_score_map.clone();
 
-								let mut r = Evaluation::Result(Score::NEGINFINITE,None);
+								let sender = sender.clone();
 
-								let evalutor = evalutor;
+								let mut b = thread::Builder::new();
+								let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
+									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
-								let repeat = match alpha {
-									Score::NEGINFINITE | Score::INFINITE => 1,
-									Score::Value(_) | Score::NegativeValue(_) => 2,
-								};
+									let search = search.clone();
 
-								let mut a = alpha;
+									let mut r = Evaluation::Result(Score::NEGINFINITE,None);
 
-								for i in 0..repeat {
-									let b = match (i,repeat) {
-										(0,2) => alpha + 1,
-										(1,2) | (0,1) => beta,
-										_ => {
-											let _ = sender.send((Evaluation::Error,m));
-											return;
-										}
+									let evalutor = evalutor;
+
+									let repeat = match alpha {
+										Score::NEGINFINITE | Score::INFINITE => 1,
+										Score::Value(_) | Score::NegativeValue(_) => 2,
 									};
 
-									r = search.negascout(
-										&search,
-										&event_queue,
-										&mut event_dispatcher,
-										&evalutor,
-										&mut info_sender,
-										&on_error_handler,
-										&opponent_nn_snapshot,
-										&self_nn_snapshot,
-										teban.opposite(),&state,
-										-b,-a,Some(m.to_move()),&mc,
-										&prev_state,&prev_mc,
-										obtained,&current_kyokumen_map,
-										&already_oute_map,
-										&oute_kyokumen_map,
-										mhash,shash,limit,depth-1,
-										current_depth+1,base_depth,
-										&stop,&quited,Search::single_search,
-										&mut kyokumen_score_map);
+									let mut a = alpha;
 
-									match r {
-										Evaluation::Result(s,_) => {
-											if -s <= alpha || -s  >= beta {
-												break;
-											} else {
-												a = -s;
+									for i in 0..repeat {
+										let b = match (i,repeat) {
+											(0,2) => alpha + 1,
+											(1,2) | (0,1) => beta,
+											_ => {
+												let _ = sender.send((Evaluation::Error,m));
+												return;
 											}
-										},
-										_ => {
-											break;
+										};
+
+										r = search.negascout(
+											&search,
+											&event_queue,
+											&mut event_dispatcher,
+											&evalutor,
+											&mut info_sender,
+											&on_error_handler,
+											&opponent_nn_snapshot,
+											&self_nn_snapshot,
+											teban.opposite(),&state,
+											-b,-a,Some(m.to_move()),&mc,
+											&prev_state,&prev_mc,
+											obtained,&current_kyokumen_map,
+											&already_oute_map,
+											&oute_kyokumen_map,
+											mhash,shash,limit,depth-1,
+											current_depth+1,base_depth,
+											&stop,&quited,Search::single_search,
+											&mut kyokumen_score_map);
+
+										match r {
+											Evaluation::Result(s,_) => {
+												if -s <= alpha || -s  >= beta {
+													break;
+												} else {
+													a = -s;
+												}
+											},
+											_ => {
+												break;
+											}
 										}
 									}
-								}
-								let _ = sender.send((r,m));
-							});
+									let _ = sender.send((r,m));
+								});
 
-							threads -= 1;
+								threads -= 1;
+							}
 						}
-					}
 
-					let _ = event_dispatcher.dispatch_events(search,&*event_queue);
+						let _ = event_dispatcher.dispatch_events(search,&*event_queue);
 
-					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-						search.termination(receiver, threads, stop);
+						if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
+							search.termination(receiver, threads, stop);
 
-						return match best_move {
-							Some(best_move) => Evaluation::Timeout(Some(best_move)),
-							None => Evaluation::Timeout(Some(m.to_move())),
-						};
-					}
-				},
-				None => (),
+							return match best_move {
+								Some(best_move) => Evaluation::Timeout(Some(best_move)),
+								None => Evaluation::Timeout(Some(m.to_move())),
+							};
+						}
+					},
+					None => (),
+				}
+			} else {
+				break;
 			}
 		}
 
