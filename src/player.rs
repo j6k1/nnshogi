@@ -1392,7 +1392,7 @@ impl Search {
 				};
 
 				if completed {
-					return OuteEvaluation::Result(-1);
+					return OuteEvaluation::Result(current_depth as i32);
 				} else {
 					match already_oute_map.write() {
 						Ok(mut already_oute_map) => {
