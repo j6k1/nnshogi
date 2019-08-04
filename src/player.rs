@@ -1940,7 +1940,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&Arc::new(RwLock::new(KyokumenMap::new())),
 							&oute_kyokumen_map,
 							mhash,shash,
-							limit, base_depth, 0, base_depth,
+							limit, base_depth, 1, base_depth,
 							&stop,
 							&quited,
 							strategy,
