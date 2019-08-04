@@ -505,7 +505,7 @@ impl Search {
 															mhash,shash,limit,
 															current_depth+1,
 															base_depth,stop,
-															false) {
+															false,false) {
 							OuteEvaluation::Result(d) if d >= 0 &&
 								!(is_put_fu && d - current_depth as i32 == 2) => {
 								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
@@ -1173,6 +1173,7 @@ impl Search {
 								limit:Option<Instant>,
 								current_depth:u32,
 								base_depth:u32,stop:&Arc<AtomicBool>,
+								before_move_is_oute:bool,
 								shortest_depth:bool)
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
@@ -1225,7 +1226,7 @@ impl Search {
 
 				match next {
 					(ref next,ref mc,_) => {
-						let oute_kyokumen_map = {
+						let (before_move_is_oute,oute_kyokumen_map) = {
 							let (x,y,kind) = match m {
 								LegalMove::To(ref mv) => {
 									let (dx,dy) = mv.dst().square_to_point();
@@ -1243,7 +1244,8 @@ impl Search {
 
 							let ps = next.get_part();
 
-							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
+							if before_move_is_oute &&
+							   Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
 							   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
 
 								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
@@ -1257,9 +1259,9 @@ impl Search {
 									},
 								}
 
-								oute_kyokumen_map
+								(true,oute_kyokumen_map)
 							} else {
-								oute_kyokumen_map.clone()
+								(false,oute_kyokumen_map.clone())
 							}
 						};
 
@@ -1272,7 +1274,8 @@ impl Search {
 												already_oute_map,
 												&oute_kyokumen_map,
 												mhash,shash,limit,
-												current_depth+1,base_depth,stop) {
+												current_depth+1,base_depth,stop,
+												before_move_is_oute) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							},
@@ -1325,7 +1328,8 @@ impl Search {
 						limit:Option<Instant>,
 						current_depth:u32,
 						base_depth:u32,
-						stop:&Arc<AtomicBool>)
+						stop:&Arc<AtomicBool>,
+						opponent_before_move_is_oute:bool)
 		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
 
@@ -1417,7 +1421,9 @@ impl Search {
 														&oute_kyokumen_map,
 														mhash,shash,limit,
 														current_depth+1,
-														base_depth,stop,false) {
+														base_depth,stop,
+														opponent_before_move_is_oute,
+														false) {
 							OuteEvaluation::Result(-1) => {
 								return OuteEvaluation::Result(-1);
 							}
