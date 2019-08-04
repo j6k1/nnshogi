@@ -1260,7 +1260,9 @@ impl Search {
 
 								oute_kyokumen_map
 							} else {
-								oute_kyokumen_map.clone()
+								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+								oute_kyokumen_map.clear(teban);
+								oute_kyokumen_map
 							}
 						};
 
