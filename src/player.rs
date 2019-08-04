@@ -1447,6 +1447,17 @@ impl Search {
 							}
 							OuteEvaluation::Result(d) if d >= 0 &&
 														!(is_put_fu && d - current_depth as i32 == 2)=> {
+
+								match already_oute_map.write() {
+									Ok(mut already_oute_map) => {
+										already_oute_map.insert(teban,mhash,shash,true);
+									},
+									Err(ref e) => {
+										let _ = on_error_handler.lock().map(|h| h.call(e));
+										return OuteEvaluation::Error;
+									}
+								}
+
 								return OuteEvaluation::Result(d);
 							},
 							OuteEvaluation::Timeout => {
@@ -1454,16 +1465,6 @@ impl Search {
 							},
 							_ => (),
 						}
-					}
-				}
-
-				match already_oute_map.write() {
-					Ok(mut already_oute_map) => {
-						already_oute_map.insert(teban,mhash,shash,true);
-					},
-					Err(ref e) => {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-						return OuteEvaluation::Error;
 					}
 				}
 
