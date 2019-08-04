@@ -1422,9 +1422,7 @@ impl Search {
 														current_depth+1,
 														base_depth,stop,
 														false) {
-							OuteEvaluation::Result(-1) => {
-								return OuteEvaluation::Result(-1);
-							}
+							OuteEvaluation::Result(-1) => (),
 							OuteEvaluation::Result(d) if d >= 0 &&
 														!(is_put_fu && d - current_depth as i32 == 2)=> {
 
