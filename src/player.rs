@@ -854,7 +854,7 @@ impl Search {
 												return Evaluation::Result(scoreval,best_move);
 											}
 										}
-										if -s < alpha {
+										if -s < alpha && repeat == 2 && i == 0 {
 											break;
 										}
 									},
@@ -1067,7 +1067,7 @@ impl Search {
 
 										match r {
 											Evaluation::Result(s,_) => {
-												if -s <= alpha || -s  >= beta {
+												if -s <= a || -s  >= beta {
 													break;
 												} else {
 													a = -s;
