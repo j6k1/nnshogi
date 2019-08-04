@@ -1069,7 +1069,7 @@ impl Search {
 											Evaluation::Result(s,_) => {
 												if -s <= alpha || -s  >= beta {
 													break;
-												} else {
+												} else if -s > alpha {
 													a = -s;
 												}
 											},
