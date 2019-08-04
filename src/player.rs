@@ -636,7 +636,6 @@ impl Search {
 					(x,y,KomaKind::from((teban,kind)))
 				}
 			};
-
 			if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,kind) ||
 			   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
 				(10,m)
@@ -677,7 +676,7 @@ impl Search {
 						priority:u32,
 						oute_kyokumen_map:&KyokumenMap<u64,()>,
 						current_kyokumen_map:&KyokumenMap<u64,u32>,
-						depth:u32,responded_oute:bool)
+						depth:u32,_:bool)
 		-> Option<(u32,Option<ObtainKind>,u64,u64,KyokumenMap<u64,()>,KyokumenMap<u64,u32>,bool)> {
 
 		let obtained = match m {
@@ -708,9 +707,12 @@ impl Search {
 			(mhash,shash)
 		};
 
+		if priority < 10 {
+			oute_kyokumen_map.clear(teban);
+		}
+
 		let depth = match priority {
-			10 | 5 => depth + 1,
-			_ if responded_oute => depth + 1,
+			5 => depth + 1,
 			_ => depth,
 		};
 
@@ -1261,7 +1263,9 @@ impl Search {
 
 								(true,oute_kyokumen_map)
 							} else {
-								(false,oute_kyokumen_map.clone())
+								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
+								oute_kyokumen_map.clear(teban);
+								(false,oute_kyokumen_map)
 							}
 						};
 
