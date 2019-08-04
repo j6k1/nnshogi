@@ -132,7 +132,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						Teban,&Arc<State>,Score,Score,
 						&Arc<MochigomaCollections>,
 						&KyokumenMap<u64,u32>,
-						&Arc<RwLock<KyokumenMap<u64,bool>>>,
+						&Arc<RwLock<KyokumenMap<u64,()>>>,
 						&KyokumenMap<u64,()>,
 						u64,u64,Option<Instant>,
 						u32,u32,u32,
@@ -370,7 +370,7 @@ impl Search {
 								prev_mc:&Option<Arc<MochigomaCollections>>,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -465,18 +465,6 @@ impl Search {
 					continue;
 				} else {
 					oute_kyokumen_map.insert(teban,mhash,shash,());
-				}
-
-				match already_oute_map.write() {
-					Ok(mut already_oute_map) => {
-						if let None = already_oute_map.get(teban,&mhash,&shash) {
-							already_oute_map.insert(teban,mhash,shash,false);
-						}
-					},
-					Err(ref e) => {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-						return Evaluation::Error;
-					}
 				}
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
@@ -754,7 +742,7 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -907,7 +895,7 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -1179,7 +1167,7 @@ impl Search {
 								teban:Teban,state:&State,
 								mc:&MochigomaCollections,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -1331,7 +1319,7 @@ impl Search {
 						teban:Teban,state:&State,
 						mc:&MochigomaCollections,
 						current_kyokumen_map:&KyokumenMap<u64,u32>,
-						already_oute_map:&Arc<RwLock<KyokumenMap<u64,bool>>>,
+						already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
 						oute_kyokumen_map:&KyokumenMap<u64,()>,
 						mhash:u64,shash:u64,
 						limit:Option<Instant>,
@@ -1383,7 +1371,7 @@ impl Search {
 
 				let completed = match already_oute_map.read() {
 					Ok(already_oute_map) => {
-						already_oute_map.get(teban,&mhash,&shash).map(|&b| b).unwrap_or(false)
+						already_oute_map.get(teban,&mhash,&shash).is_some()
 					},
 					Err(ref e) => {
 						let _ = on_error_handler.lock().map(|h| h.call(e));
@@ -1393,18 +1381,6 @@ impl Search {
 
 				if completed {
 					return OuteEvaluation::Result(current_depth as i32);
-				} else {
-					match already_oute_map.write() {
-						Ok(mut already_oute_map) => {
-							if let None = already_oute_map.get(teban,&mhash,&shash) {
-								already_oute_map.insert(teban,mhash,shash,false);
-							}
-						},
-						Err(ref e) => {
-							let _ = on_error_handler.lock().map(|h| h.call(e));
-							return OuteEvaluation::Error;
-						}
-					}
 				}
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
@@ -1450,7 +1426,7 @@ impl Search {
 
 								match already_oute_map.write() {
 									Ok(mut already_oute_map) => {
-										already_oute_map.insert(teban,mhash,shash,true);
+										already_oute_map.insert(teban,mhash,shash,());
 									},
 									Err(ref e) => {
 										let _ = on_error_handler.lock().map(|h| h.call(e));
