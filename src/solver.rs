@@ -116,6 +116,7 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 
 		if mvs.len() == 0 {
+			already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 			MaybeMate::Mate(current_depth)
 		} else {
 			let mut pmvs = Vec::with_capacity(mvs.len());
@@ -125,6 +126,7 @@ impl<E> Solver<E> where E: PlayerError {
 					LegalMove::To(ref m) => {
 						match m.obtained() {
 							Some(ObtainKind::Ou) => {
+								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 								return MaybeMate::Nomate
 							},
 							Some(o) => {
@@ -138,6 +140,15 @@ impl<E> Solver<E> where E: PlayerError {
 
 				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+
+				let completed = already_oute_kyokumen_map.get(teban,&mhash,&shash);
+
+				if let Some(true) = completed {
+					continue;
+				} else if let Some(false) = completed {
+					return MaybeMate::Nomate;
+				}
+
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
 					continue;
@@ -181,17 +192,12 @@ impl<E> Solver<E> where E: PlayerError {
 				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
 				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
-
 				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
 				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 				match next {
 					(ref next,ref mc,_) => {
-						if let Some(true) = already_oute_kyokumen_map.get(teban,&mhash,&shash) {
-							continue;
-						}
-
 						let mut oute_kyokumen_map = {
 							let (x,y,kind) = match m {
 								LegalMove::To(ref mv) => {
@@ -247,6 +253,7 @@ impl<E> Solver<E> where E: PlayerError {
 													event_dispatcher) {
 							MaybeMate::Mate(_) => (),
 							MaybeMate::Nomate => {
+								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 								return MaybeMate::Nomate;
 							},
 							r @ _ => {
@@ -262,6 +269,8 @@ impl<E> Solver<E> where E: PlayerError {
 					return MaybeMate::Timeout;
 				}
 			}
+
+			already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 
 			MaybeMate::Mate(current_depth)
 		}
@@ -296,6 +305,7 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 
 		if mvs.len() == 0 {
+			already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 			return MaybeMate::Nomate;
 		} else {
 			let mut pmvs = Vec::with_capacity(mvs.len());
@@ -304,6 +314,7 @@ impl<E> Solver<E> where E: PlayerError {
 				match m {
 					LegalMove::To(ref m) => {
 						if let Some(ObtainKind::Ou) = m.obtained() {
+							already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 							return MaybeMate::Mate(current_depth);
 						}
 					},
@@ -326,6 +337,8 @@ impl<E> Solver<E> where E: PlayerError {
 
 				if let Some(true) = completed {
 					return MaybeMate::Mate(current_depth);
+				} else if let Some(false) = completed {
+					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -406,7 +419,9 @@ impl<E> Solver<E> where E: PlayerError {
 													on_searchstart,
 													event_queue,
 													event_dispatcher) {
-							MaybeMate::Nomate => (),
+							MaybeMate::Nomate => {
+								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
+							},
 							MaybeMate::Mate(d) if !(is_put_fu && d - current_depth == 2)=> {
 								already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 								return MaybeMate::Mate(d);
