@@ -232,7 +232,7 @@ impl<E> Solver<E> where E: PlayerError {
 							}
 						};
 
-						match self.oute_only(teban,next,
+						match self.oute_only(teban.opposite(),next,
 													mc,m,&ignore_kyokumen_map,
 													&mut oute_kyokumen_map,
 													already_oute_kyokumen_map,
@@ -393,7 +393,7 @@ impl<E> Solver<E> where E: PlayerError {
 
 				match next {
 					(ref next,ref mc,_) => {
-						match self.response_oute(teban,next,
+						match self.response_oute(teban.opposite(),next,
 													mc,m,&ignore_kyokumen_map,
 													oute_kyokumen_map,
 													already_oute_kyokumen_map,
