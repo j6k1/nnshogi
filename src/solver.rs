@@ -139,12 +139,8 @@ impl<E> Solver<E> where E: PlayerError {
 				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 
-				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
-
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
 					continue;
-				} else {
-					ignore_kyokumen_map.insert(teban,mhash,shash,());
 				}
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
@@ -183,6 +179,10 @@ impl<E> Solver<E> where E: PlayerError {
 
 				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+
+				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
+
+				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
 				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
@@ -328,12 +328,8 @@ impl<E> Solver<E> where E: PlayerError {
 					return MaybeMate::Mate(current_depth);
 				}
 
-				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
-
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
 					continue;
-				} else {
-					ignore_kyokumen_map.insert(teban,mhash,shash,());
 				}
 
 				let mut current_kyokumen_map = current_kyokumen_map.clone();
@@ -390,6 +386,10 @@ impl<E> Solver<E> where E: PlayerError {
 
 				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
 				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+
+				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
+
+				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
 				match next {
 					(ref next,ref mc,_) => {
