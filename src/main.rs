@@ -11,6 +11,7 @@ extern crate simplenn;
 extern crate csaparser;
 
 pub mod player;
+pub mod solver;
 pub mod error;
 pub mod nn;
 pub mod learning;

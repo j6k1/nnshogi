@@ -35,6 +35,7 @@ use usiagent::TryFrom;
 use simplenn::SnapShot;
 
 use nn::Intelligence;
+use solver::*;
 
 const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
 const MOCHIGOMA_KIND_MAX:usize = MochigomaKind::Hisha as usize;
@@ -123,9 +124,12 @@ const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
 const MAX_THREADS:u32 = 1;
 
 type Strategy<L,S> = fn (&Arc<Search>,
+						&mut Solver<CommonError>,
 						&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 						&mut USIEventDispatcher<UserEventKind,
 										UserEvent,Search,L,CommonError>,
+						&mut USIEventDispatcher<UserEventKind,
+											UserEvent,Solver<CommonError>,L,CommonError>,
 						&Arc<Intelligence>,&mut S,
 						&Arc<Mutex<OnErrorHandler<L>>>,
 						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
@@ -140,7 +144,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&Vec<(u32,LegalMove)>,bool,
 						&mut KyokumenMap<u64,i64>) -> Evaluation;
 
-struct Search {
+pub struct Search {
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
 	base_depth:u32,
@@ -181,8 +185,8 @@ impl Search {
 		}
 	}
 
-	fn create_event_dispatcher<L>(&self,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
-		-> USIEventDispatcher<UserEventKind,UserEvent,Search,L,CommonError> where L: Logger {
+	fn create_event_dispatcher<T,L>(&self,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
+		-> USIEventDispatcher<UserEventKind,UserEvent,T,L,CommonError> where L: Logger {
 
 		let mut event_dispatcher = USIEventDispatcher::new(&on_error_handler.clone());
 
@@ -355,9 +359,12 @@ impl Search {
 
 	fn negascout<L,S>(&self,
 			this:&Arc<Search>,
+			solver:&mut Solver<CommonError>,
 			event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 													UserEvent,Search,L,CommonError>,
+								solver_event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Solver<CommonError>,L,CommonError>,
 								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
@@ -482,34 +489,34 @@ impl Search {
 
 				match next {
 					(ref next,ref mc,_) if !Rule::is_mate(teban.opposite(),next) => {
-						let is_put_fu = match m {
-							LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
-							_ => false,
-						};
-
 						let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
 						if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 							self.send_message(info_sender, on_error_handler, "think timeout!");
 							return Evaluation::Timeout(Some(m.to_move()));
 						}
+						let mut already_oute_kyokumen_map = KyokumenMap::new();
+						let network_delay = self.network_delay;
+						let limit = limit.clone();
+						let mut check_timelimit = move || {
+							limit.map_or(false,|l| {
+								l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
+							})
+						};
 
-						match self.respond_oute_only(event_queue,
-															event_dispatcher,
-															info_sender,
-															on_error_handler,
-															teban.opposite(),next,mc,
-															&current_kyokumen_map,
-															already_oute_map,
-															&oute_kyokumen_map,
-															mhash,shash,limit,
-															current_depth+1,
-															base_depth,stop,false) {
-							OuteEvaluation::Result(d) if d >= 0 &&
-								!(is_put_fu && d - current_depth as i32 == 2) => {
+						match solver.checkmate(teban, next, mc, *m,
+													&mut oute_kyokumen_map,
+													&mut already_oute_kyokumen_map,
+													&mut current_kyokumen_map, &*this.clone(),
+													mhash, shash, 0,
+													&mut check_timelimit,
+													stop,
+													event_queue,
+													solver_event_dispatcher) {
+							MaybeMate::Mate(_) => {
 								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
 							},
-							OuteEvaluation::Timeout => {
+							MaybeMate::Timeout => {
 								return Evaluation::Timeout(Some(m.to_move()));
 							},
 							_ => (),
@@ -650,8 +657,10 @@ impl Search {
 
 		mvs.sort_by(|a,b| b.0.cmp(&a.0));
 
-		strategy(this,event_queue,
+		strategy(this,solver,
+					event_queue,
 					event_dispatcher,
+					solver_event_dispatcher,
 					evalutor,
 					info_sender,
 					on_error_handler,
@@ -731,9 +740,12 @@ impl Search {
 	}
 
 	fn single_search<L,S>(search:&Arc<Search>,
+								solver:&mut Solver<CommonError>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 													UserEvent,Search,L,CommonError>,
+								solver_event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Solver<CommonError>,L,CommonError>,
 								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
@@ -819,8 +831,10 @@ impl Search {
 
 								match search.negascout(
 									search,
+									solver,
 									event_queue,
 									event_dispatcher,
+									solver_event_dispatcher,
 									evalutor,
 									info_sender,
 									on_error_handler,
@@ -884,9 +898,12 @@ impl Search {
 	}
 
 	fn parallel_search<L,S>(search:&Arc<Search>,
+								_:& mut Solver<CommonError>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 													UserEvent,Search,L,CommonError>,
+								_:&mut USIEventDispatcher<UserEventKind,
+													UserEvent,Solver<CommonError>,L,CommonError>,
 								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
@@ -1020,7 +1037,7 @@ impl Search {
 								let mut b = thread::Builder::new();
 								let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
 									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
-
+									let mut solver_event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 									let search = search.clone();
 
 									let mut r = Evaluation::Result(Score::NEGINFINITE,None);
@@ -1046,8 +1063,10 @@ impl Search {
 
 										r = search.negascout(
 											&search,
+											&mut Solver::new(),
 											&event_queue,
 											&mut event_dispatcher,
+											&mut solver_event_dispatcher,
 											&evalutor,
 											&mut info_sender,
 											&on_error_handler,
@@ -1608,11 +1627,11 @@ impl Search {
 		}
 	}
 
-	fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.calc_hash(h,t,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
 	}
 
-	fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.calc_hash(h,t,b,mc,m,obtained,|h,v| {
 			let h = Wrapping(h);
 			let v = Wrapping(v);
@@ -1919,16 +1938,19 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				let quited = Arc::new(AtomicBool::new(false));
 
 				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
-
+				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 				let strategy = if self.search.max_threads > 1 {
 					Search::parallel_search
 				} else {
 					Search::single_search
 				};
 
-				let result = match self.search.negascout(&self.search.clone(),
+				let result = match self.search.negascout(
+							&self.search.clone(),
+							&mut Solver::new(),
 							&event_queue,
 							&mut event_dispatcher,
+							&mut solver_event_dispatcher,
 							evalutor,
 							&mut info_sender, &on_error_handler,
 							&Arc::new(self_nn_snapshot),&Arc::new(opponent_nn_snapshot),
