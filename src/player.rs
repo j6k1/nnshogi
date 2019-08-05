@@ -1041,7 +1041,7 @@ impl Search {
 								let sender = sender.clone();
 
 								let mut b = thread::Builder::new();
-								let _ = b.stack_size(1024 * 1024 * 50).spawn(move || {
+								let _ = b.stack_size(1024 * 1024 * 200).spawn(move || {
 									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 									let mut solver_event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 									let search = search.clone();
