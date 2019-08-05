@@ -415,7 +415,7 @@ impl<E> Solver<E> where E: PlayerError {
 				}
 			}
 
-			MaybeMate::Mate(current_depth)
+			MaybeMate::Nomate
 		}
 	}
 }
