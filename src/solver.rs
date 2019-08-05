@@ -54,7 +54,7 @@ impl<E> Solver<E> where E: PlayerError {
 			error_type:PhantomData::<E>
 		}
 	}
-	pub fn checkmate<L,F>(& mut self,
+	pub fn checkmate<L,F,S>(& mut self,
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
@@ -66,10 +66,11 @@ impl<E> Solver<E> where E: PlayerError {
 							current_depth:u32,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>,)
-	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool {
+	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
 
 		self.response_oute(teban,state,
 							mc,m,&KyokumenMap::new(),
@@ -81,11 +82,12 @@ impl<E> Solver<E> where E: PlayerError {
 							current_depth+1,
 							check_timelimit,
 							stop,
+							on_searchstart,
 							event_queue,
 							event_dispatcher)
 	}
 
-	fn response_oute<L,F>(&mut self,
+	fn response_oute<L,F,S>(&mut self,
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
@@ -98,10 +100,13 @@ impl<E> Solver<E> where E: PlayerError {
 							current_depth:u32,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool {
+	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
+		on_searchstart(current_depth);
+
 		let mvs = Rule::legal_moves_all(teban, state, mc);
 
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
@@ -237,6 +242,7 @@ impl<E> Solver<E> where E: PlayerError {
 													current_depth+1,
 													check_timelimit,
 													stop,
+													on_searchstart,
 													event_queue,
 													event_dispatcher) {
 							MaybeMate::Mate(_) => (),
@@ -261,7 +267,7 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 	}
 
-	fn oute_only<L,F>(&mut self,
+	fn oute_only<L,F,S>(&mut self,
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
@@ -274,10 +280,13 @@ impl<E> Solver<E> where E: PlayerError {
 							current_depth:u32,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool {
+	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
+		on_searchstart(current_depth);
+
 		let mvs = Rule::oute_only_moves_all(teban, state, mc);
 
 		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
@@ -394,6 +403,7 @@ impl<E> Solver<E> where E: PlayerError {
 													current_depth+1,
 													check_timelimit,
 													stop,
+													on_searchstart,
 													event_queue,
 													event_dispatcher) {
 							MaybeMate::Nomate => (),

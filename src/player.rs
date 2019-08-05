@@ -503,6 +503,11 @@ impl Search {
 								l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
 							})
 						};
+						let this = this.clone();
+
+						let mut on_startsearch = |depth| {
+							this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+						};
 
 						match solver.checkmate(teban, next, mc, *m,
 													&mut oute_kyokumen_map,
@@ -511,6 +516,7 @@ impl Search {
 													mhash, shash, 0,
 													&mut check_timelimit,
 													stop,
+													&mut on_startsearch,
 													event_queue,
 													solver_event_dispatcher) {
 							MaybeMate::Mate(_) => {
