@@ -509,7 +509,7 @@ impl Search {
 							this.send_seldepth(info_sender, on_error_handler, base_depth, depth);
 						};
 
-						match solver.checkmate(teban, next, mc, *m,
+						match solver.checkmate(teban.opposite(), next, mc, *m,
 													&mut oute_kyokumen_map,
 													&mut already_oute_kyokumen_map,
 													&mut current_kyokumen_map, &*this.clone(),
