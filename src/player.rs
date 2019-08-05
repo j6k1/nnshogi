@@ -513,7 +513,7 @@ impl Search {
 													&mut oute_kyokumen_map,
 													&mut already_oute_kyokumen_map,
 													&mut current_kyokumen_map, &*this.clone(),
-													mhash, shash, 0,
+													mhash, shash, current_depth+1,
 													&mut check_timelimit,
 													stop,
 													&mut on_startsearch,
