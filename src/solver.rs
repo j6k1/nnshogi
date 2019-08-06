@@ -149,7 +149,6 @@ impl<E> Solver<E> where E: PlayerError {
 					return MaybeMate::Nomate;
 				}
 
-
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
 					continue;
 				}
@@ -338,7 +337,7 @@ impl<E> Solver<E> where E: PlayerError {
 				if let Some(true) = completed {
 					return MaybeMate::Mate(current_depth);
 				} else if let Some(false) = completed {
-					return MaybeMate::Nomate;
+					continue;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -440,6 +439,7 @@ impl<E> Solver<E> where E: PlayerError {
 				}
 			}
 
+			already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 			MaybeMate::Nomate
 		}
 	}
