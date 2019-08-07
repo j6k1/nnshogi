@@ -457,6 +457,8 @@ impl Search {
 				return Evaluation::Timeout(None)
 			}
 
+			let mut already_oute_kyokumen_map = KyokumenMap::new();
+
 			for m in &oute_mvs {
 				let o = match m {
 					LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
@@ -495,7 +497,6 @@ impl Search {
 							self.send_message(info_sender, on_error_handler, "think timeout!");
 							return Evaluation::Timeout(Some(m.to_move()));
 						}
-						let mut already_oute_kyokumen_map = KyokumenMap::new();
 						let network_delay = self.network_delay;
 						let limit = limit.clone();
 						let mut check_timelimit = move || {

@@ -59,7 +59,7 @@ impl<E> Solver<E> where E: PlayerError {
 	pub fn checkmate<L,F,S>(& mut self,
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
-							m:LegalMove,
+							_:LegalMove,
 							max_depth:Option<u32>,
 							max_nodes:Option<u64>,
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
@@ -137,7 +137,6 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 
 		if mvs.len() == 0 {
-			//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 			MaybeMate::Mate(current_depth)
 		} else {
 			let mut pmvs = Vec::with_capacity(mvs.len());
@@ -165,6 +164,8 @@ impl<E> Solver<E> where E: PlayerError {
 
 				if let Some(true) = completed {
 					continue;
+				} else if let Some(false) = completed {
+					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -278,8 +279,11 @@ impl<E> Solver<E> where E: PlayerError {
 													on_searchstart,
 													event_queue,
 													event_dispatcher) {
-							MaybeMate::Mate(_) => (),
+							MaybeMate::Mate(_) => {
+								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, true);
+							},
 							MaybeMate::Nomate => {
+								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, false);
 								return MaybeMate::Nomate;
 							},
 							r @ _ => {
@@ -296,7 +300,7 @@ impl<E> Solver<E> where E: PlayerError {
 				}
 			}
 
-			//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
+			already_oute_kyokumen_map.insert(teban, mhash, shash, true);
 
 			MaybeMate::Mate(current_depth)
 		}
@@ -375,6 +379,8 @@ impl<E> Solver<E> where E: PlayerError {
 
 				if let Some(true) = completed {
 					return MaybeMate::Mate(current_depth);
+				} else if let Some(false) = completed {
+					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -466,9 +472,11 @@ impl<E> Solver<E> where E: PlayerError {
 													on_searchstart,
 													event_queue,
 													event_dispatcher) {
-							MaybeMate::Nomate => (),
+							MaybeMate::Nomate => {
+								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, false);
+							},
 							MaybeMate::Mate(d) if !(is_put_fu && d - current_depth == 2)=> {
-								//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
+								already_oute_kyokumen_map.insert(teban.opposite(),mhash,shash,true);
 								return MaybeMate::Mate(d);
 							},
 							r @ _ => {
@@ -484,6 +492,8 @@ impl<E> Solver<E> where E: PlayerError {
 					return MaybeMate::Timeout;
 				}
 			}
+
+			already_oute_kyokumen_map.insert(teban, mhash, shash, false);
 
 			MaybeMate::Nomate
 		}
