@@ -505,15 +505,17 @@ impl Search {
 						};
 						let this = this.clone();
 
-						let mut on_startsearch = |depth| {
-							this.send_seldepth(info_sender, on_error_handler, base_depth, depth);
+						let mut on_startsearch = |depth,_| {
+							this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
 						};
 
 						match solver.checkmate(teban.opposite(), next, mc, *m,
+													Some(256),
+													None,
 													&mut oute_kyokumen_map,
 													&mut already_oute_kyokumen_map,
 													&mut current_kyokumen_map, &*this.clone(),
-													mhash, shash, current_depth+1,
+													mhash, shash,
 													&mut check_timelimit,
 													stop,
 													&mut on_startsearch,

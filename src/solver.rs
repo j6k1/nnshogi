@@ -42,6 +42,8 @@ impl error::Error for SolveError {
 pub enum MaybeMate {
 	Mate(u32),
 	Nomate,
+	MaxDepth,
+	MaxNodes,
 	Timeout,
 }
 pub struct Solver<E> where E: PlayerError {
@@ -58,28 +60,34 @@ impl<E> Solver<E> where E: PlayerError {
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
+							max_depth:Option<u32>,
+							max_nodes:Option<u64>,
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
 							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
 							current_kyokumen_map:&mut KyokumenMap<u64,u32>,
 							hasher:&Search,
 							mhash:u64,shash:u64,
-							current_depth:u32,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>,)
-	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
+	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
+		let mut nodes = 0;
 
 		self.response_oute(teban,state,
-							mc,m,&KyokumenMap::new(),
+							mc,m,
+							max_depth.unwrap_or(0),
+							max_nodes.unwrap_or(0),
+							&KyokumenMap::new(),
 							oute_kyokumen_map,
 							already_oute_kyokumen_map,
 							current_kyokumen_map,
 							hasher,
 							mhash,shash,
-							current_depth+1,
+							1,
+							&mut nodes,
 							check_timelimit,
 							stop,
 							on_searchstart,
@@ -91,6 +99,8 @@ impl<E> Solver<E> where E: PlayerError {
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
+							max_depth:u32,
+							max_nodes:u64,
 							ignore_kyokumen_map:&KyokumenMap<u64,()>,
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
 							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
@@ -98,14 +108,25 @@ impl<E> Solver<E> where E: PlayerError {
 							hasher:&Search,
 							mhash:u64,shash:u64,
 							current_depth:u32,
+							nodes:&mut u64,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
-		on_searchstart(current_depth);
+	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
+		*nodes += 1;
+
+		on_searchstart(current_depth,*nodes);
+
+		if current_depth == max_depth {
+			return MaybeMate::MaxDepth;
+		}
+
+		if *nodes == max_nodes {
+			return MaybeMate::MaxNodes;
+		}
 
 		let mvs = Rule::legal_moves_all(teban, state, mc);
 
@@ -116,7 +137,7 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 
 		if mvs.len() == 0 {
-			already_oute_kyokumen_map.insert(teban,mhash,shash,true);
+			//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 			MaybeMate::Mate(current_depth)
 		} else {
 			let mut pmvs = Vec::with_capacity(mvs.len());
@@ -126,7 +147,6 @@ impl<E> Solver<E> where E: PlayerError {
 					LegalMove::To(ref m) => {
 						match m.obtained() {
 							Some(ObtainKind::Ou) => {
-								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 								return MaybeMate::Nomate
 							},
 							Some(o) => {
@@ -145,8 +165,6 @@ impl<E> Solver<E> where E: PlayerError {
 
 				if let Some(true) = completed {
 					continue;
-				} else if let Some(false) = completed {
-					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -168,7 +186,13 @@ impl<E> Solver<E> where E: PlayerError {
 
 				match next {
 					(ref next,ref mc,_) => {
-						pmvs.push((m,Rule::oute_only_moves_all(teban.opposite(), next, mc).len()));
+						let len = Rule::oute_only_moves_all(teban.opposite(), next, mc).len();
+
+						if len == 0 {
+							return MaybeMate::Nomate;
+						}
+
+						pmvs.push((m,len));
 					}
 				}
 
@@ -238,13 +262,17 @@ impl<E> Solver<E> where E: PlayerError {
 						};
 
 						match self.oute_only(teban.opposite(),next,
-													mc,m,&ignore_kyokumen_map,
+													mc,m,
+													max_depth,
+													max_nodes,
+													&ignore_kyokumen_map,
 													&mut oute_kyokumen_map,
 													already_oute_kyokumen_map,
 													current_kyokumen_map,
 													hasher,
 													mhash,shash,
 													current_depth+1,
+													nodes,
 													check_timelimit,
 													stop,
 													on_searchstart,
@@ -252,7 +280,6 @@ impl<E> Solver<E> where E: PlayerError {
 													event_dispatcher) {
 							MaybeMate::Mate(_) => (),
 							MaybeMate::Nomate => {
-								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 								return MaybeMate::Nomate;
 							},
 							r @ _ => {
@@ -269,7 +296,7 @@ impl<E> Solver<E> where E: PlayerError {
 				}
 			}
 
-			already_oute_kyokumen_map.insert(teban,mhash,shash,true);
+			//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 
 			MaybeMate::Mate(current_depth)
 		}
@@ -279,6 +306,8 @@ impl<E> Solver<E> where E: PlayerError {
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
 							m:LegalMove,
+							max_depth:u32,
+							max_nodes:u64,
 							ignore_kyokumen_map:&KyokumenMap<u64,()>,
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
 							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
@@ -286,14 +315,25 @@ impl<E> Solver<E> where E: PlayerError {
 							hasher:&Search,
 							mhash:u64,shash:u64,
 							current_depth:u32,
+							nodes:&mut u64,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32) {
-		on_searchstart(current_depth);
+	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
+		*nodes += 1;
+
+		on_searchstart(current_depth,*nodes);
+
+		if current_depth == max_depth {
+			return MaybeMate::MaxDepth;
+		}
+
+		if *nodes == max_nodes {
+			return MaybeMate::MaxNodes;
+		}
 
 		let mvs = Rule::oute_only_moves_all(teban, state, mc);
 
@@ -304,7 +344,6 @@ impl<E> Solver<E> where E: PlayerError {
 		}
 
 		if mvs.len() == 0 {
-			already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 			return MaybeMate::Nomate;
 		} else {
 			let mut pmvs = Vec::with_capacity(mvs.len());
@@ -336,8 +375,6 @@ impl<E> Solver<E> where E: PlayerError {
 
 				if let Some(true) = completed {
 					return MaybeMate::Mate(current_depth);
-				} else if let Some(false) = completed {
-					continue;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
@@ -368,7 +405,14 @@ impl<E> Solver<E> where E: PlayerError {
 
 				match next {
 					(ref next,ref mc,_) => {
-						pmvs.push((m,Rule::legal_moves_all(teban.opposite(), next, mc).len()));
+						let len = Rule::legal_moves_all(teban.opposite(), next, mc).len();
+
+
+						if len == 0 {
+							return MaybeMate::Mate(current_depth);
+						}
+
+						pmvs.push((m,len));
 					}
 				}
 
@@ -406,23 +450,25 @@ impl<E> Solver<E> where E: PlayerError {
 				match next {
 					(ref next,ref mc,_) => {
 						match self.response_oute(teban.opposite(),next,
-													mc,m,&ignore_kyokumen_map,
+													mc,m,
+													max_depth,
+													max_nodes,
+													&ignore_kyokumen_map,
 													oute_kyokumen_map,
 													already_oute_kyokumen_map,
 													current_kyokumen_map,
 													hasher,
 													mhash,shash,
 													current_depth+1,
+													nodes,
 													check_timelimit,
 													stop,
 													on_searchstart,
 													event_queue,
 													event_dispatcher) {
-							MaybeMate::Nomate => {
-								already_oute_kyokumen_map.insert(teban,mhash,shash,false);
-							},
+							MaybeMate::Nomate => (),
 							MaybeMate::Mate(d) if !(is_put_fu && d - current_depth == 2)=> {
-								already_oute_kyokumen_map.insert(teban,mhash,shash,true);
+								//already_oute_kyokumen_map.insert(teban,mhash,shash,true);
 								return MaybeMate::Mate(d);
 							},
 							r @ _ => {
@@ -439,7 +485,6 @@ impl<E> Solver<E> where E: PlayerError {
 				}
 			}
 
-			already_oute_kyokumen_map.insert(teban,mhash,shash,false);
 			MaybeMate::Nomate
 		}
 	}
