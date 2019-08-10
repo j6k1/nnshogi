@@ -93,9 +93,6 @@ impl<E> Solver<E> where E: PlayerError {
 															KyokumenMap::new(),
 															oute_kyokumen_map.clone(),
 															current_kyokumen_map.clone());
-		let max_depth = max_depth.unwrap_or(0);
-		let max_nodes = max_nodes.unwrap_or(0);
-
 		loop {
 			match mate_strategy.exec(self,max_depth,
 										max_nodes,
@@ -235,8 +232,8 @@ mod checkmate {
 
 		pub fn exec<L,F,S>(&mut self,
 							solver:&mut Solver<E>,
-							max_depth:u32,
-							max_nodes:u64,
+							max_depth:Option<u32>,
+							max_nodes:Option<u64>,
 							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
 							hasher:&Search,
 							check_timelimit:&mut F,
@@ -474,8 +471,8 @@ mod checkmate {
 
 		fn response_oute<L,F,S>(&mut self,
 								solver:&mut Solver<E>,
-								max_depth:u32,
-								max_nodes:u64,
+								max_depth:Option<u32>,
+								max_nodes:Option<u64>,
 								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
 								hasher:&Search,
 								current_depth:u32,
@@ -500,11 +497,11 @@ mod checkmate {
 
 			on_searchstart(current_depth,self.nodes);
 
-			if current_depth == max_depth {
+			if max_depth.map(|d| current_depth >= d).unwrap_or(false) {
 				return MaybeMate::MaxDepth;
 			}
 
-			if self.nodes == max_nodes {
+			if max_nodes.map(|n| self.nodes >= n).unwrap_or(false) {
 				return MaybeMate::MaxNodes;
 			}
 
@@ -727,8 +724,8 @@ mod checkmate {
 
 		fn oute_only<L,F,S>(&mut self,
 								solver:&mut Solver<E>,
-								max_depth:u32,
-								max_nodes:u64,
+								max_depth:Option<u32>,
+								max_nodes:Option<u64>,
 								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
 								hasher:&Search,
 								current_depth:u32,
@@ -753,11 +750,11 @@ mod checkmate {
 
 			on_searchstart(current_depth,self.nodes);
 
-			if current_depth == max_depth {
+			if max_depth.map(|d| current_depth >= d).unwrap_or(false) {
 				return MaybeMate::MaxDepth;
 			}
 
-			if self.nodes == max_nodes {
+			if max_nodes.map(|n| self.nodes >= n).unwrap_or(false) {
 				return MaybeMate::MaxNodes;
 			}
 
