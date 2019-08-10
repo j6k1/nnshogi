@@ -49,12 +49,6 @@ enum Evaluation {
 	Timeout(Option<Move>),
 	Error,
 }
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
-enum OuteEvaluation {
-	Result(i32),
-	Timeout,
-	Error,
-}
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Score {
 	NEGINFINITE,
@@ -440,120 +434,48 @@ impl Search {
 				(mvs,true)
 			}
 		} else {
-			let oute_mvs = Rule::oute_only_moves_all(teban,&*state,&*mc);
+			let network_delay = self.network_delay;
+			let limit = limit.clone();
+			let mut check_timelimit = move || {
+				limit.map_or(false,|l| {
+					l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
+				})
+			};
+			let this = this.clone();
+			{
+				let mut on_startsearch = |depth,_| {
+					this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
+				};
 
-			if oute_mvs.len() > 0 {
-				if let LegalMove::To(ref m) = oute_mvs[0] {
-					if m.obtained() == Some(ObtainKind::Ou) {
-						return Evaluation::Result(Score::INFINITE,Some(oute_mvs[0].to_move()));
-					}
+				match solver.checkmate(teban, state, mc,
+											Some(256),
+											None,
+											&mut oute_kyokumen_map.clone(),
+											&mut KyokumenMap::new(),
+											&mut current_kyokumen_map.clone(),
+											&*this.clone(),
+											mhash, shash,
+											&mut check_timelimit,
+											stop,
+											&mut on_startsearch,
+											event_queue,
+											solver_event_dispatcher) {
+					MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
+						return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_move()));
+					},
+					MaybeMate::MateMoves(_,_) => {
+						return Evaluation::Result(Score::INFINITE,None);
+					},
+					MaybeMate::Timeout => {
+						return Evaluation::Timeout(None);
+					},
+					_ => ()
 				}
 			}
-
-			let _ = event_dispatcher.dispatch_events(self,&*event_queue);
 
 			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(None)
-			}
-
-			let mut already_oute_kyokumen_map = KyokumenMap::new();
-
-			for m in &oute_mvs {
-				let o = match m {
-					LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
-					_ => None,
-				};
-
-				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),&*mc,&m.to_move(),&o);
-
-				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-
-				if let Some(_) =  oute_kyokumen_map.get(teban,&mhash,&shash) {
-					continue;
-				} else {
-					oute_kyokumen_map.insert(teban,mhash,shash,());
-				}
-
-				let mut current_kyokumen_map = current_kyokumen_map.clone();
-
-				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
-					&c if c >= 3 => {
-						continue;
-					},
-					&c => {
-						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					}
-				}
-
-				let next = Rule::apply_move_none_check(&*state,teban,&*mc,m.to_applied_move());
-
-				match next {
-					(ref next,ref mc,_) if !Rule::is_mate(teban.opposite(),next) => {
-						let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-						if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-							self.send_message(info_sender, on_error_handler, "think timeout!");
-							return Evaluation::Timeout(Some(m.to_move()));
-						}
-						let network_delay = self.network_delay;
-						let limit = limit.clone();
-						let mut check_timelimit = move || {
-							limit.map_or(false,|l| {
-								l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
-							})
-						};
-						let this = this.clone();
-
-						let mut on_startsearch = |depth,_| {
-							this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
-						};
-
-						match solver.checkmate(teban.opposite(), next, mc, *m,
-													Some(256),
-													None,
-													&mut oute_kyokumen_map,
-													&mut already_oute_kyokumen_map,
-													&mut current_kyokumen_map, &*this.clone(),
-													mhash, shash,
-													&mut check_timelimit,
-													stop,
-													&mut on_startsearch,
-													event_queue,
-													solver_event_dispatcher) {
-							MaybeMate::Mate(_) => {
-								return Evaluation::Result(Score::INFINITE,Some(m.to_move()));
-							},
-							MaybeMate::Timeout => {
-								return Evaluation::Timeout(Some(m.to_move()));
-							},
-							_ => (),
-						}
-					},
-					_ => (),
-				}
-
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return Evaluation::Timeout(Some(m.to_move()));
-				}
-			}
-
-			if oute_mvs.len() == 0 {
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return Evaluation::Timeout(None);
-				}
-			} else {
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return Evaluation::Timeout(Some(oute_mvs[0].to_move()));
-				}
+				return Evaluation::Timeout(None);
 			}
 
 			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &*state, &*mc);
@@ -1184,304 +1106,6 @@ impl Search {
 
 		for _ in threads..self.max_threads {
 			let _ = r.recv();
-		}
-	}
-
-	fn respond_oute_only<L,S>(&self,
-								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Search,L,CommonError>,
-								info_sender:&mut S,
-								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-								teban:Teban,state:&State,
-								mc:&MochigomaCollections,
-								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
-								oute_kyokumen_map:&KyokumenMap<u64,()>,
-								mhash:u64,shash:u64,
-								limit:Option<Instant>,
-								current_depth:u32,
-								base_depth:u32,stop:&Arc<AtomicBool>,
-								shortest_depth:bool)
-		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		let mvs = Rule::respond_oute_only_moves_all(teban,&state, mc);
-
-		//self.send_message(info_sender, on_error_handler,"respond_oute_only");
-		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
-
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return OuteEvaluation::Timeout;
-		}
-
-		if mvs.len() == 0 {
-			return OuteEvaluation::Result(current_depth as i32)
-		} else {
-			let mut mindepth = None;
-
-			for m in &mvs {
-				let o = match m {
-					&LegalMove::To(ref m) => {
-						match m.obtained() {
-							Some(ObtainKind::Ou) => {
-								return OuteEvaluation::Result(-1);
-							},
-							Some(o) => {
-								MochigomaKind::try_from(o).ok()
-							},
-							None => None,
-						}
-					},
-					_ => None,
-				};
-				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-				let mut current_kyokumen_map = current_kyokumen_map.clone();
-
-				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
-					&c if c >= 3 => {
-						continue;
-					},
-					&c => {
-						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					}
-				}
-
-				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
-
-				match next {
-					(ref next,ref mc,_) => {
-						let oute_kyokumen_map = {
-							let (x,y,kind) = match m {
-								LegalMove::To(ref mv) => {
-									let (dx,dy) = mv.dst().square_to_point();
-									let kind = next.get_banmen().0[dy as usize][dx as usize];
-
-									(dx,dy,kind)
-								},
-								LegalMove::Put(ref mv) => {
-									let kind = KomaKind::from((teban,mv.kind()));
-									let (dx,dy) = mv.dst().square_to_point();
-
-									(dx,dy,kind)
-								}
-							};
-
-							let ps = next.get_part();
-
-							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
-							   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
-
-								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-
-								match oute_kyokumen_map.get(teban,&mhash,&shash) {
-									Some(_) => {
-										continue;
-									},
-									None => {
-										oute_kyokumen_map.insert(teban,mhash,shash,());
-									},
-								}
-
-								oute_kyokumen_map
-							} else {
-								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-								oute_kyokumen_map.clear(teban);
-								oute_kyokumen_map
-							}
-						};
-
-						match self.oute_only(event_queue,
-												event_dispatcher,
-												info_sender,
-												on_error_handler,
-												teban.opposite(),next,mc,
-												&current_kyokumen_map,
-												already_oute_map,
-												&oute_kyokumen_map,
-												mhash,shash,limit,
-												current_depth+1,base_depth,stop) {
-							OuteEvaluation::Result(-1) => {
-								return OuteEvaluation::Result(-1);
-							},
-							OuteEvaluation::Result(d) => {
-								if let None = mindepth {
-									mindepth = Some(d);
-								} else if let Some(min) = mindepth {
-									if d < min {
-										mindepth = Some(d);
-									}
-								}
-								if !shortest_depth {
-									break;
-								}
-							},
-							OuteEvaluation::Timeout => {
-								return OuteEvaluation::Timeout;
-							},
-							OuteEvaluation::Error => {
-								return OuteEvaluation::Error;
-							}
-						}
-					}
-				}
-
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return OuteEvaluation::Timeout;
-				}
-			}
-
-			OuteEvaluation::Result(mindepth.unwrap_or(-1))
-		}
-	}
-
-	fn oute_only<L,S>(&self,
-						event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-						event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Search,L,CommonError>,
-						info_sender:&mut S,
-						on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-						teban:Teban,state:&State,
-						mc:&MochigomaCollections,
-						current_kyokumen_map:&KyokumenMap<u64,u32>,
-						already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
-						oute_kyokumen_map:&KyokumenMap<u64,()>,
-						mhash:u64,shash:u64,
-						limit:Option<Instant>,
-						current_depth:u32,
-						base_depth:u32,
-						stop:&Arc<AtomicBool>)
-		-> OuteEvaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		let mvs = Rule::oute_only_moves_all(teban, &state, mc);
-
-		//self.send_message(info_sender, on_error_handler,"oute_only");
-		//self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
-
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return OuteEvaluation::Timeout;
-		}
-
-		if mvs.len() == 0 {
-			OuteEvaluation::Result(-1)
-		} else {
-			for m in &mvs {
-				match m {
-					&LegalMove::To(ref m) => {
-						if let Some(ObtainKind::Ou) = m.obtained() {
-							return OuteEvaluation::Result(current_depth as i32);
-						}
-					},
-					_ => ()
-				}
-
-				let is_put_fu = match m {
-					&LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
-					_ => false,
-				};
-
-				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
-
-				let o = match m {
-					&LegalMove::To(ref m) => {
-						m.obtained().and_then(|o| MochigomaKind::try_from(o).ok())
-					},
-					_ => None,
-				};
-
-				let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-				let completed = match already_oute_map.read() {
-					Ok(already_oute_map) => {
-						already_oute_map.get(teban,&mhash,&shash).is_some()
-					},
-					Err(ref e) => {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-						return OuteEvaluation::Error;
-					}
-				};
-
-				if completed {
-					return OuteEvaluation::Result(current_depth as i32);
-				}
-
-				let mut current_kyokumen_map = current_kyokumen_map.clone();
-
-				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
-					&c if c >= 3 => {
-						continue;
-					},
-					&c => {
-						current_kyokumen_map.insert(teban,mhash,shash,c+1);
-					}
-				}
-
-				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-
-				match oute_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(()) => {
-						continue;
-					},
-					None => {
-						oute_kyokumen_map.insert(teban,mhash,shash,());
-					}
-				}
-
-				match next {
-					(ref next,ref mc,_) => {
-						match self.respond_oute_only(event_queue,
-														event_dispatcher,
-														info_sender,
-														on_error_handler,
-														teban.opposite(),next,mc,
-														&current_kyokumen_map,
-														already_oute_map,
-														&oute_kyokumen_map,
-														mhash,shash,limit,
-														current_depth+1,
-														base_depth,stop,
-														false) {
-							OuteEvaluation::Result(-1) => (),
-							OuteEvaluation::Result(d) if d >= 0 &&
-														!(is_put_fu && d - current_depth as i32 == 2)=> {
-
-								match already_oute_map.write() {
-									Ok(mut already_oute_map) => {
-										already_oute_map.insert(teban,mhash,shash,());
-									},
-									Err(ref e) => {
-										let _ = on_error_handler.lock().map(|h| h.call(e));
-										return OuteEvaluation::Error;
-									}
-								}
-
-								return OuteEvaluation::Result(d);
-							},
-							OuteEvaluation::Timeout => {
-								return OuteEvaluation::Timeout;
-							},
-							_ => (),
-						}
-					}
-				}
-
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return OuteEvaluation::Timeout;
-				}
-			}
-			OuteEvaluation::Result(-1)
 		}
 	}
 

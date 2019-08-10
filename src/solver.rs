@@ -1,5 +1,7 @@
 use std::error;
 use std::fmt;
+use std::mem;
+use std::cmp::Ordering;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -12,7 +14,6 @@ use usiagent::hash::*;
 use usiagent::logger::*;
 use usiagent::event::*;
 use usiagent::error::PlayerError;
-use usiagent::TryFrom;
 use player::Search;
 
 #[derive(Debug)]
@@ -42,9 +43,12 @@ impl error::Error for SolveError {
 pub enum MaybeMate {
 	Mate(u32),
 	Nomate,
+	MateMoves(u32,Vec<LegalMove>),
 	MaxDepth,
 	MaxNodes,
 	Timeout,
+	Unknown,
+	Ignore,
 }
 pub struct Solver<E> where E: PlayerError {
 	error_type:PhantomData<E>
@@ -56,10 +60,9 @@ impl<E> Solver<E> where E: PlayerError {
 			error_type:PhantomData::<E>
 		}
 	}
-	pub fn checkmate<L,F,S>(& mut self,
+	pub fn checkmate<L,F,S>(&mut self,
 							teban:Teban,state:&State,
 							mc:&MochigomaCollections,
-							_:LegalMove,
 							max_depth:Option<u32>,
 							max_nodes:Option<u64>,
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
@@ -74,79 +77,340 @@ impl<E> Solver<E> where E: PlayerError {
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>,)
 	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
-		let mut nodes = 0;
+		let mvs = Rule::legal_moves_all(teban, state, mc);
 
-		self.response_oute(teban,state,
-							mc,m,
-							max_depth.unwrap_or(0),
-							max_nodes.unwrap_or(0),
-							&KyokumenMap::new(),
-							oute_kyokumen_map,
-							already_oute_kyokumen_map,
-							current_kyokumen_map,
-							hasher,
-							mhash,shash,
-							1,
-							&mut nodes,
-							check_timelimit,
-							stop,
-							on_searchstart,
-							event_queue,
-							event_dispatcher)
+		let mut mate_strategy = checkmate::MateStrategy::of_mate(teban,state.clone(),
+															mc.clone(),mvs.clone(),
+															mhash,shash,
+															KyokumenMap::new(),
+															oute_kyokumen_map.clone(),
+															current_kyokumen_map.clone());
+
+
+		let mut nomate_strategy = checkmate::NomateStrategy::of_nomate(teban,state.clone(),
+															mc.clone(),mvs.clone(),
+															mhash,shash,
+															KyokumenMap::new(),
+															oute_kyokumen_map.clone(),
+															current_kyokumen_map.clone());
+		let max_depth = max_depth.unwrap_or(0);
+		let max_nodes = max_nodes.unwrap_or(0);
+
+		loop {
+			match mate_strategy.exec(self,max_depth,
+										max_nodes,
+										already_oute_kyokumen_map,
+										hasher,
+										check_timelimit,
+										stop,
+										on_searchstart,
+										event_queue,
+										event_dispatcher) {
+				MaybeMate::Ignore | MaybeMate::Unknown => (),
+				r => {
+					return r;
+				}
+			}
+
+			match nomate_strategy.exec(self,max_depth,
+										max_nodes,
+										already_oute_kyokumen_map,
+										hasher,
+										check_timelimit,
+										stop,
+										on_searchstart,
+										event_queue,
+										event_dispatcher) {
+				MaybeMate::Ignore | MaybeMate::Unknown => (),
+				r => {
+					return r;
+				}
+			}
+		}
+	}
+}
+pub trait Comparator<T>: Clone {
+	fn cmp(&mut self,&T,&T) -> Ordering;
+}
+mod checkmate {
+	use usiagent::TryFrom;
+	use super::*;
+
+	#[derive(Clone)]
+	pub struct AscComparator;
+
+	impl Comparator<(LegalMove,usize)> for AscComparator {
+		fn cmp(&mut self,l:&(LegalMove,usize),r:&(LegalMove,usize)) -> Ordering {
+			l.1.cmp(&r.1)
+		}
 	}
 
-	fn response_oute<L,F,S>(&mut self,
-							teban:Teban,state:&State,
-							mc:&MochigomaCollections,
-							m:LegalMove,
+	#[derive(Clone)]
+	pub struct DescComparator;
+
+	impl Comparator<(LegalMove,usize)> for DescComparator {
+		fn cmp(&mut self,l:&(LegalMove,usize),r:&(LegalMove,usize)) -> Ordering {
+			r.1.cmp(&l.1)
+		}
+	}
+
+	pub struct CheckmateStrategy<E,O,R>
+			where E: PlayerError,
+					O: Comparator<(LegalMove,usize)>,
+					R: Comparator<(LegalMove,usize)> {
+		error_type:PhantomData<E>,
+		oute_comparator:O,
+		response_oute_comparator:R,
+		nodes:u64,
+		current_frame:CheckmateStackFrame,
+		stack:Vec<CheckmateStackFrame>,
+	}
+
+	pub type MateStrategy<E> = CheckmateStrategy<E,DescComparator,AscComparator>;
+	pub type NomateStrategy<E> = CheckmateStrategy<E,AscComparator,DescComparator>;
+
+	impl<E,O,R> CheckmateStrategy<E,O,R>
+			where E: PlayerError,
+					O: Comparator<(LegalMove,usize)>,
+					R: Comparator<(LegalMove,usize)> {
+		fn new(current_frame:CheckmateStackFrame,
+				oute_comparator:O,
+				response_oute_comparator:R,
+		) -> CheckmateStrategy<E,O,R> {
+			CheckmateStrategy {
+				error_type:PhantomData::<E>,
+				oute_comparator:oute_comparator,
+				response_oute_comparator:response_oute_comparator,
+				nodes:0,
+				stack:Vec::new(),
+				current_frame:current_frame,
+			}
+		}
+
+		pub fn of_mate(teban:Teban,state:State,mc:MochigomaCollections,
+						mvs:Vec<LegalMove>,mhash:u64,shash:u64,
+						ignore_kyokumen_map:KyokumenMap<u64,()>,
+						oute_kyokumen_map:KyokumenMap<u64,()>,
+						current_kyokumen_map:KyokumenMap<u64,u32>)
+		-> CheckmateStrategy<E,DescComparator,AscComparator> {
+			CheckmateStrategy::new(CheckmateStackFrame {
+				teban:teban,
+				state:state,
+				mc:mc,
+				mvs:mvs,
+				m:None,
+				mhash:mhash,
+				shash:shash,
+				ignore_kyokumen_map:ignore_kyokumen_map,
+				oute_kyokumen_map:oute_kyokumen_map,
+				current_kyokumen_map:current_kyokumen_map,
+			},  DescComparator,
+				AscComparator)
+		}
+
+		pub fn of_nomate(teban:Teban,state:State,mc:MochigomaCollections,
+						mvs:Vec<LegalMove>,mhash:u64,shash:u64,
+						ignore_kyokumen_map:KyokumenMap<u64,()>,
+						oute_kyokumen_map:KyokumenMap<u64,()>,
+						current_kyokumen_map:KyokumenMap<u64,u32>)
+		-> CheckmateStrategy<E,AscComparator,DescComparator> {
+			CheckmateStrategy::new(CheckmateStackFrame {
+				teban:teban,
+				state:state,
+				mc:mc,
+				mvs:mvs,
+				m:None,
+				mhash:mhash,
+				shash:shash,
+				ignore_kyokumen_map:ignore_kyokumen_map,
+				oute_kyokumen_map:oute_kyokumen_map,
+				current_kyokumen_map:current_kyokumen_map,
+			},  AscComparator,
+				DescComparator)
+		}
+
+		fn pop_stack(&mut self) {
+			self.current_frame = self.stack.pop().expect("current stack is empty.");
+		}
+
+		pub fn exec<L,F,S>(&mut self,
+							solver:&mut Solver<E>,
 							max_depth:u32,
 							max_nodes:u64,
-							ignore_kyokumen_map:&KyokumenMap<u64,()>,
-							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
 							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
-							current_kyokumen_map:&mut KyokumenMap<u64,u32>,
 							hasher:&Search,
-							mhash:u64,shash:u64,
-							current_depth:u32,
-							nodes:&mut u64,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
-		*nodes += 1;
+											UserEvent,Solver<E>,L,E>
+		)  -> MaybeMate where E: PlayerError,
+								L: Logger,
+								F: FnMut() -> bool,
+								S: FnMut(u32,u64) {
+			let current_depth = self.stack.len();
+			if current_depth % 2 == 0 {
+				let r = self.oute_only(solver,max_depth, max_nodes,
+											already_oute_kyokumen_map,
+											hasher, current_depth as u32 +1,
+											check_timelimit, stop,
+											on_searchstart,
+											event_queue, event_dispatcher);
+				match r {
+					MaybeMate::Mate(depth) => {
+						let m = self.current_frame.m;
 
-		on_searchstart(current_depth,*nodes);
+						let is_put_fu = match m {
+							Some(LegalMove::Put(ref m)) if m.kind() == MochigomaKind::Fu => true,
+							_ => false,
+						};
 
-		if current_depth == max_depth {
-			return MaybeMate::MaxDepth;
+						if self.stack.len() == 0 {
+							MaybeMate::MateMoves(depth,vec![])
+						} else if !is_put_fu {
+							let mut mvs = Vec::new();
+
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+
+							self.pop_stack();
+
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+
+							while self.current_frame.mvs.len() == 0 {
+								if self.stack.len() < 2 {
+									if self.stack.len() == 1 {
+										self.pop_stack();
+									}
+									return MaybeMate::MateMoves(depth,mvs);
+								}
+								self.pop_stack();
+								mvs.insert(0, self.current_frame.m.expect("current move is none."));
+								self.pop_stack();
+								mvs.insert(0, self.current_frame.m.expect("current move is none."));
+							}
+							MaybeMate::Unknown
+						} else {
+							MaybeMate::Unknown
+						}
+					},
+					MaybeMate::Nomate => {
+						if self.stack.len() == 0 && self.current_frame.mvs.len() == 0 {
+							MaybeMate::Nomate
+						} else if self.current_frame.mvs.len() == 0 {
+							while self.current_frame.mvs.len() == 0 {
+								if self.stack.len() < 2 {
+									return MaybeMate::Nomate;
+								} else {
+									self.pop_stack();
+									self.pop_stack();
+								}
+							}
+							MaybeMate::Unknown
+						} else {
+							MaybeMate::Unknown
+						}
+					},
+					r => {
+						r
+					}
+				}
+			} else {
+				let r = self.response_oute(solver,max_depth, max_nodes,
+											already_oute_kyokumen_map,
+											hasher, current_depth as u32 +1,
+											check_timelimit, stop,
+											on_searchstart,
+											event_queue, event_dispatcher);
+				match r {
+					MaybeMate::Nomate => {
+						self.pop_stack();
+
+						while self.current_frame.mvs.len() == 0 {
+							if self.stack.len() < 2 {
+								return MaybeMate::Nomate;
+							}
+							self.pop_stack();
+							self.pop_stack();
+						}
+						MaybeMate::Unknown
+					},
+					MaybeMate::Mate(depth) => {
+						let mut mvs = Vec::new();
+						mvs.insert(0, self.current_frame.m.expect("current move is none."));
+
+						if self.current_frame.mvs.len() == 0 {
+							self.pop_stack();
+
+							let m = self.current_frame.m;
+
+							let is_put_fu = match m {
+								Some(LegalMove::Put(ref m)) if m.kind() == MochigomaKind::Fu => true,
+								_ => false,
+							};
+
+							if is_put_fu {
+								return MaybeMate::Unknown;
+							}
+
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+
+							if self.stack.len() == 0 {
+								return MaybeMate::MateMoves(depth,mvs);
+							}
+
+							self.pop_stack();
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+						}
+
+						while self.current_frame.mvs.len() == 0 {
+							if self.stack.len() < 2 {
+								return MaybeMate::MateMoves(depth,mvs);
+							}
+							self.pop_stack();
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+							self.pop_stack();
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+						}
+						MaybeMate::Unknown
+					},
+					r => {
+						r
+					}
+				}
+			}
 		}
 
-		if *nodes == max_nodes {
-			return MaybeMate::MaxNodes;
-		}
+		fn response_oute_preprocess<L,F>(&mut self,
+								solver:&mut Solver<E>,
+								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
+								hasher:&Search,
+								current_depth:u32,
+								check_timelimit:&mut F,
+								stop:&Arc<AtomicBool>,
+								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+																	UserEvent,Solver<E>,L,E>
+		)  -> MaybeMate where E: PlayerError,
+								L: Logger,
+								F: FnMut() -> bool {
 
-		let mvs = Rule::legal_moves_all(teban, state, mc);
-
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-		if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
-			return MaybeMate::Timeout;
-		}
-
-		if mvs.len() == 0 {
-			MaybeMate::Mate(current_depth)
-		} else {
-			let mut pmvs = Vec::with_capacity(mvs.len());
+			let teban = self.current_frame.teban;
+			let state = &self.current_frame.state;
+			let mc = &self.current_frame.mc;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let ignore_kyokumen_map = &self.current_frame.ignore_kyokumen_map;
+			let current_kyokumen_map = &self.current_frame.current_kyokumen_map;
+			let mut pmvs = Vec::with_capacity(self.current_frame.mvs.len());
+			let mvs = mem::replace(&mut self.current_frame.mvs, Vec::new());
 
 			for m in mvs.into_iter() {
 				let o = match m {
 					LegalMove::To(ref m) => {
 						match m.obtained() {
 							Some(ObtainKind::Ou) => {
-								return MaybeMate::Nomate
+								return MaybeMate::Nomate;
 							},
 							Some(o) => {
 								MochigomaKind::try_from(o).ok()
@@ -163,23 +427,18 @@ impl<E> Solver<E> where E: PlayerError {
 				let completed = already_oute_kyokumen_map.get(teban,&mhash,&shash);
 
 				if let Some(true) = completed {
-					continue;
+					return MaybeMate::Mate(current_depth+1);
 				} else if let Some(false) = completed {
 					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
-					continue;
+					return MaybeMate::Ignore;
 				}
 
-				let mut current_kyokumen_map = current_kyokumen_map.clone();
-
-				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
-					&c if c >= 3 => {
-						continue;
-					},
-					&c => {
-						current_kyokumen_map.insert(teban,mhash,shash,c+1);
+				if let Some(&c) = current_kyokumen_map.get(teban,&mhash,&shash) {
+					if c >= 3 {
+						return MaybeMate::Nomate;
 					}
 				}
 
@@ -197,31 +456,109 @@ impl<E> Solver<E> where E: PlayerError {
 					}
 				}
 
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+				let _ = event_dispatcher.dispatch_events(solver,&*event_queue);
 
 				if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
 					return MaybeMate::Timeout;
 				}
 			}
 
-			pmvs.sort_by(|a,b| b.1.cmp(&a.1));
+			let mut comparator = self.response_oute_comparator.clone();
 
-			for (m,_) in pmvs.into_iter() {
+			pmvs.sort_by(|a,b| comparator.cmp(a,b));
+
+			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+
+			MaybeMate::Unknown
+		}
+
+		fn response_oute<L,F,S>(&mut self,
+								solver:&mut Solver<E>,
+								max_depth:u32,
+								max_nodes:u64,
+								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
+								hasher:&Search,
+								current_depth:u32,
+								check_timelimit:&mut F,
+								stop:&Arc<AtomicBool>,
+								on_searchstart:&mut S,
+								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+																	UserEvent,Solver<E>,L,E>
+		)  -> MaybeMate where E: PlayerError,
+								L: Logger,
+								F: FnMut() -> bool,
+								S: FnMut(u32,u64) {
+			self.nodes += 1;
+
+			let teban = self.current_frame.teban;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let mut ignore_kyokumen_map = self.current_frame.ignore_kyokumen_map.clone();
+			let mut oute_kyokumen_map = self.current_frame.oute_kyokumen_map.clone();
+			let mut current_kyokumen_map = self.current_frame.current_kyokumen_map.clone();
+
+			on_searchstart(current_depth,self.nodes);
+
+			if current_depth == max_depth {
+				return MaybeMate::MaxDepth;
+			}
+
+			if self.nodes == max_nodes {
+				return MaybeMate::MaxNodes;
+			}
+
+			let _ = event_dispatcher.dispatch_events(solver,&*event_queue);
+
+			if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
+				return MaybeMate::Timeout;
+			}
+
+			if self.current_frame.mvs.len() == 0 {
+				return MaybeMate::Mate(current_depth);
+			} else {
+				if self.current_frame.mvs.len() ==0 {
+					return MaybeMate::Nomate;
+				}
+
+				let m = self.current_frame.mvs.remove(0);
+
 				let o = match m {
 					LegalMove::To(ref m) => m.obtained().and_then(|o| MochigomaKind::try_from(o).ok()),
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let before_move_is_oute = if let Some(()) = oute_kyokumen_map.get(teban, &mhash, &shash) {
+					true
+				} else {
+					false
+				};
 
-				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
+				let mhash = hasher.calc_main_hash(mhash,&teban,
+													self.current_frame.state.get_banmen(),
+													& self.current_frame.mc,&m.to_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,&teban,
+													self.current_frame.state.get_banmen(),
+													& self.current_frame.mc,&m.to_move(),&o);
+
 				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
-				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+				match current_kyokumen_map.get(teban, &mhash, &shash).unwrap_or(&0) {
+					&c => {
+						current_kyokumen_map.insert(teban, mhash, shash, c+1);
+					}
+				}
+
+				if before_move_is_oute {
+					oute_kyokumen_map.insert(teban, mhash, shash, ());
+				} else {
+					oute_kyokumen_map.clear(teban);
+				}
+
+				let next = Rule::apply_move_none_check(& self.current_frame.state,teban,& self.current_frame.mc,m.to_applied_move());
 
 				match next {
-					(ref next,ref mc,_) => {
+					(next,nmc,_) => {
 						let mut oute_kyokumen_map = {
 							let (x,y,kind) = match m {
 								LegalMove::To(ref mv) => {
@@ -247,7 +584,7 @@ impl<E> Solver<E> where E: PlayerError {
 
 								match oute_kyokumen_map.get(teban,&mhash,&shash) {
 									Some(_) => {
-										continue;
+										return MaybeMate::Nomate;
 									},
 									None => {
 										oute_kyokumen_map.insert(teban,mhash,shash,());
@@ -262,102 +599,64 @@ impl<E> Solver<E> where E: PlayerError {
 							}
 						};
 
-						match self.oute_only(teban.opposite(),next,
-													mc,m,
-													max_depth,
-													max_nodes,
-													&ignore_kyokumen_map,
-													&mut oute_kyokumen_map,
-													already_oute_kyokumen_map,
-													current_kyokumen_map,
-													hasher,
-													mhash,shash,
-													current_depth+1,
-													nodes,
-													check_timelimit,
-													stop,
-													on_searchstart,
-													event_queue,
-													event_dispatcher) {
-							MaybeMate::Mate(_) => {
-								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, true);
-							},
-							MaybeMate::Nomate => {
-								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, false);
-								return MaybeMate::Nomate;
-							},
-							r @ _ => {
-								return r;
-							}
-						}
+						let mvs = Rule::legal_moves_all(teban.opposite(), &next, &nmc);
+
+						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
+							teban:teban.opposite(),
+							state:next,
+							mc:nmc,
+							mvs:mvs,
+							m:Some(m),
+							mhash:mhash,
+							shash:shash,
+							ignore_kyokumen_map:ignore_kyokumen_map,
+							oute_kyokumen_map:oute_kyokumen_map,
+							current_kyokumen_map:current_kyokumen_map,
+						}));
+
+						self.oute_only_preprocess(solver,already_oute_kyokumen_map,
+														hasher,
+														current_depth+1,
+														check_timelimit,
+														stop,
+														event_queue,
+														event_dispatcher)
 					}
 				}
-
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-				if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
-					return MaybeMate::Timeout;
-				}
 			}
-
-			already_oute_kyokumen_map.insert(teban, mhash, shash, true);
-
-			MaybeMate::Mate(current_depth)
-		}
-	}
-
-	fn oute_only<L,F,S>(&mut self,
-							teban:Teban,state:&State,
-							mc:&MochigomaCollections,
-							m:LegalMove,
-							max_depth:u32,
-							max_nodes:u64,
-							ignore_kyokumen_map:&KyokumenMap<u64,()>,
-							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
-							already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
-							current_kyokumen_map:&mut KyokumenMap<u64,u32>,
-							hasher:&Search,
-							mhash:u64,shash:u64,
-							current_depth:u32,
-							nodes:&mut u64,
-							check_timelimit:&mut F,
-							stop:&Arc<AtomicBool>,
-							on_searchstart:&mut S,
-							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																UserEvent,Solver<E>,L,E>
-	) -> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
-		*nodes += 1;
-
-		on_searchstart(current_depth,*nodes);
-
-		if current_depth == max_depth {
-			return MaybeMate::MaxDepth;
 		}
 
-		if *nodes == max_nodes {
-			return MaybeMate::MaxNodes;
-		}
+		fn oute_only_preprocess<L,F>(&mut self,
+								solver:&mut Solver<E>,
+								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
+								hasher:&Search,
+								current_depth:u32,
+								check_timelimit:&mut F,
+								stop:&Arc<AtomicBool>,
+								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+																	UserEvent,Solver<E>,L,E>
+		)  -> MaybeMate where E: PlayerError,
+								L: Logger,
+								F: FnMut() -> bool {
 
-		let mvs = Rule::oute_only_moves_all(teban, state, mc);
-
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
-
-		if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
-			return MaybeMate::Timeout;
-		}
-
-		if mvs.len() == 0 {
-			return MaybeMate::Nomate;
-		} else {
-			let mut pmvs = Vec::with_capacity(mvs.len());
+			let teban = self.current_frame.teban;
+			let state = &self.current_frame.state;
+			let mc = &self.current_frame.mc;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let ignore_kyokumen_map = &self.current_frame.ignore_kyokumen_map;
+			let current_kyokumen_map = &self.current_frame.current_kyokumen_map;
+			let mut pmvs = Vec::with_capacity(self.current_frame.mvs.len());
+			let oute_kyokumen_map = &self.current_frame.oute_kyokumen_map;
+			let mvs = mem::replace(&mut self.current_frame.mvs, Vec::new());
 
 			for m in mvs.into_iter() {
 				match m {
 					LegalMove::To(ref m) => {
 						if let Some(ObtainKind::Ou) = m.obtained() {
 							already_oute_kyokumen_map.insert(teban,mhash,shash,true);
-							return MaybeMate::Mate(current_depth);
+							return MaybeMate::Mate(current_depth+1);
 						}
 					},
 					_ => ()
@@ -378,35 +677,23 @@ impl<E> Solver<E> where E: PlayerError {
 				let completed = already_oute_kyokumen_map.get(teban,&mhash,&shash);
 
 				if let Some(true) = completed {
-					return MaybeMate::Mate(current_depth);
+					return MaybeMate::Mate(current_depth+1);
 				} else if let Some(false) = completed {
 					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
-					continue;
+					return MaybeMate::Ignore;
 				}
 
-				let mut current_kyokumen_map = current_kyokumen_map.clone();
-
-				match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
-					&c if c >= 3 => {
-						continue;
-					},
-					&c => {
-						current_kyokumen_map.insert(teban,mhash,shash,c+1);
+				if let Some(&c) = current_kyokumen_map.get(teban,&mhash,&shash) {
+					if c >= 3 {
+						return MaybeMate::Nomate;
 					}
 				}
 
-				let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-
-				match oute_kyokumen_map.get(teban,&mhash,&shash) {
-					Some(()) => {
-						continue;
-					},
-					None => {
-						oute_kyokumen_map.insert(teban,mhash,shash,());
-					}
+				if let Some(()) = oute_kyokumen_map.get(teban,&mhash,&shash) {
+					return MaybeMate::Nomate;
 				}
 
 				match next {
@@ -422,22 +709,74 @@ impl<E> Solver<E> where E: PlayerError {
 					}
 				}
 
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+				let _ = event_dispatcher.dispatch_events(solver,&*event_queue);
 
 				if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
 					return MaybeMate::Timeout;
 				}
 			}
 
-			pmvs.sort_by(|a,b| a.1.cmp(&b.1));
+			let mut comparator = self.oute_comparator.clone();
 
-			for (m,_) in pmvs.into_iter() {
-				let is_put_fu = match m {
-					LegalMove::Put(ref m) if m.kind() == MochigomaKind::Fu => true,
-					_ => false,
-				};
+			pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
-				let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
+			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+
+			MaybeMate::Unknown
+		}
+
+		fn oute_only<L,F,S>(&mut self,
+								solver:&mut Solver<E>,
+								max_depth:u32,
+								max_nodes:u64,
+								already_oute_kyokumen_map:&mut KyokumenMap<u64,bool>,
+								hasher:&Search,
+								current_depth:u32,
+								check_timelimit:&mut F,
+								stop:&Arc<AtomicBool>,
+								on_searchstart:&mut S,
+								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
+																	UserEvent,Solver<E>,L,E>,
+		) -> MaybeMate where E: PlayerError,
+								L: Logger,
+								F: FnMut() -> bool,
+								S: FnMut(u32,u64) {
+			self.nodes += 1;
+
+			let teban = self.current_frame.teban;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let mut ignore_kyokumen_map = self.current_frame.ignore_kyokumen_map.clone();
+			let mut oute_kyokumen_map = self.current_frame.oute_kyokumen_map.clone();
+			let mut current_kyokumen_map = self.current_frame.current_kyokumen_map.clone();
+
+			on_searchstart(current_depth,self.nodes);
+
+			if current_depth == max_depth {
+				return MaybeMate::MaxDepth;
+			}
+
+			if self.nodes == max_nodes {
+				return MaybeMate::MaxNodes;
+			}
+
+			let _ = event_dispatcher.dispatch_events(solver,&*event_queue);
+
+			if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
+				return MaybeMate::Timeout;
+			}
+
+			if self.current_frame.mvs.len() == 0 {
+				return MaybeMate::Nomate;
+			} else {
+				if self.current_frame.mvs.len() == 0 {
+					return MaybeMate::Nomate;
+				}
+
+				let m = self.current_frame.mvs.remove(0);
+
+				let next = Rule::apply_move_none_check(&self.current_frame.state,teban,&self.current_frame.mc,m.to_applied_move());
 
 				let o = match m {
 					LegalMove::To(ref m) => {
@@ -446,56 +785,61 @@ impl<E> Solver<E> where E: PlayerError {
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-
-				let mut ignore_kyokumen_map = ignore_kyokumen_map.clone();
+				let mhash = hasher.calc_main_hash(mhash,&teban,
+													self.current_frame.state.get_banmen(),
+													&self.current_frame.mc,&m.to_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,&teban,
+													self.current_frame.state.get_banmen(),
+													&self.current_frame.mc,&m.to_move(),&o);
 
 				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
-				match next {
-					(ref next,ref mc,_) => {
-						match self.response_oute(teban.opposite(),next,
-													mc,m,
-													max_depth,
-													max_nodes,
-													&ignore_kyokumen_map,
-													oute_kyokumen_map,
-													already_oute_kyokumen_map,
-													current_kyokumen_map,
-													hasher,
-													mhash,shash,
-													current_depth+1,
-													nodes,
-													check_timelimit,
-													stop,
-													on_searchstart,
-													event_queue,
-													event_dispatcher) {
-							MaybeMate::Nomate => {
-								already_oute_kyokumen_map.insert(teban.opposite(), mhash, shash, false);
-							},
-							MaybeMate::Mate(d) if !(is_put_fu && d - current_depth == 2)=> {
-								already_oute_kyokumen_map.insert(teban.opposite(),mhash,shash,true);
-								return MaybeMate::Mate(d);
-							},
-							r @ _ => {
-								return r;
-							},
-						}
+				match current_kyokumen_map.get(teban, &mhash, &shash).unwrap_or(&0) {
+					&c => {
+						current_kyokumen_map.insert(teban, mhash, shash, c+1);
 					}
 				}
 
-				let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+				oute_kyokumen_map.insert(teban, mhash, shash, ());
 
-				if check_timelimit() || stop.load(atomic::Ordering::Acquire) {
-					return MaybeMate::Timeout;
+				match next {
+					(next, nmc,_) => {
+						let mvs = Rule::oute_only_moves_all(teban.opposite(), &next, &nmc);
+
+						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
+							teban:teban.opposite(),
+							state:next,
+							mc:nmc,
+							mvs:mvs,
+							m:Some(m),
+							mhash:mhash,
+							shash:shash,
+							ignore_kyokumen_map:ignore_kyokumen_map,
+							oute_kyokumen_map:oute_kyokumen_map,
+							current_kyokumen_map:current_kyokumen_map,
+						}));
+
+						self.response_oute_preprocess(solver,already_oute_kyokumen_map,
+														hasher,
+														current_depth+1,
+														check_timelimit,
+														stop,
+														event_queue,
+														event_dispatcher)
+					}
 				}
 			}
-
-			already_oute_kyokumen_map.insert(teban, mhash, shash, false);
-
-			MaybeMate::Nomate
 		}
+	}
+	#[derive(Clone)]
+	struct CheckmateStackFrame {
+		teban:Teban,state:State,
+		mc:MochigomaCollections,
+		mvs:Vec<LegalMove>,
+		m:Option<LegalMove>,
+		mhash:u64,shash:u64,
+		ignore_kyokumen_map:KyokumenMap<u64,()>,
+		oute_kyokumen_map:KyokumenMap<u64,()>,
+		current_kyokumen_map:KyokumenMap<u64,u32>,
 	}
 }
