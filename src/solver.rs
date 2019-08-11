@@ -795,7 +795,7 @@ mod checkmate {
 
 				match next {
 					(next, nmc,_) => {
-						let mvs = Rule::oute_only_moves_all(teban.opposite(), &next, &nmc);
+						let mvs = Rule::legal_moves_all(teban.opposite(), &next, &nmc);
 
 						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
