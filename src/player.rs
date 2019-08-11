@@ -447,7 +447,7 @@ impl Search {
 				};
 
 				match solver.checkmate(teban, state, mc,
-											Some(256),
+											Some(128),
 											None,
 											&mut oute_kyokumen_map.clone(),
 											&mut Some(KyokumenMap::new()),

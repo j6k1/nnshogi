@@ -382,6 +382,7 @@ mod checkmate {
 
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							self.pop_stack();
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						} else {
 							return MaybeMate::Unknown;
 						}
