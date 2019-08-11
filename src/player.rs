@@ -451,7 +451,7 @@ impl Search {
 											Some(256),
 											None,
 											&mut oute_kyokumen_map.clone(),
-											&mut KyokumenMap::new(),
+											&mut Some(KyokumenMap::new()),
 											&mut current_kyokumen_map.clone(),
 											&*this.clone(),
 											mhash, shash,
