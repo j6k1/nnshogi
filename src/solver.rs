@@ -563,46 +563,6 @@ mod checkmate {
 
 				match next {
 					(next,nmc,_) => {
-						let mut oute_kyokumen_map = {
-							let (x,y,kind) = match m {
-								LegalMove::To(ref mv) => {
-									let (dx,dy) = mv.dst().square_to_point();
-									let kind = next.get_banmen().0[dy as usize][dx as usize];
-
-									(dx,dy,kind)
-								},
-								LegalMove::Put(ref mv) => {
-									let kind = KomaKind::from((teban,mv.kind()));
-									let (dx,dy) = mv.dst().square_to_point();
-
-									(dx,dy,kind)
-								}
-							};
-
-							let ps = next.get_part();
-
-							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
-							   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
-
-								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-
-								match oute_kyokumen_map.get(teban,&mhash,&shash) {
-									Some(_) => {
-										return MaybeMate::Nomate;
-									},
-									None => {
-										oute_kyokumen_map.insert(teban,mhash,shash,());
-									},
-								}
-
-								oute_kyokumen_map
-							} else {
-								let mut oute_kyokumen_map = oute_kyokumen_map.clone();
-								oute_kyokumen_map.clear(teban);
-								oute_kyokumen_map
-							}
-						};
-
 						let mvs = Rule::legal_moves_all(teban.opposite(), &next, &nmc);
 
 						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
