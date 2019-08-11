@@ -435,9 +435,14 @@ impl Search {
 		} else {
 			let network_delay = self.network_delay;
 			let limit = limit.clone();
+			let checkmate_limit = Instant::now() + Duration::from_millis(10);
+
 			let mut check_timelimit = move || {
 				limit.map_or(false,|l| {
-					l < Instant::now() || l - Instant::now() <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
+					let now = Instant::now();
+						l < now ||
+						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
+						checkmate_limit < now
 				})
 			};
 			let this = this.clone();
@@ -447,7 +452,7 @@ impl Search {
 				};
 
 				match solver.checkmate(teban, state, mc,
-											Some(128),
+											Some(256),
 											None,
 											&mut oute_kyokumen_map.clone(),
 											&mut Some(KyokumenMap::new()),
@@ -465,9 +470,9 @@ impl Search {
 					MaybeMate::MateMoves(_,_) => {
 						return Evaluation::Result(Score::INFINITE,None);
 					},
-					MaybeMate::Timeout => {
-						return Evaluation::Timeout(None);
-					},
+					//MaybeMate::Timeout => {
+					//	return Evaluation::Timeout(None);
+					//},
 					_ => ()
 				}
 			}
