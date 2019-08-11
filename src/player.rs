@@ -435,7 +435,7 @@ impl Search {
 		} else {
 			let network_delay = self.network_delay;
 			let limit = limit.clone();
-			let checkmate_limit = Instant::now() + Duration::from_millis(50);
+			let checkmate_limit = Instant::now() + Duration::from_millis(300);
 
 			let mut check_timelimit = move || {
 				limit.map_or(false,|l| {
