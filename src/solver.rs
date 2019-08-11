@@ -276,6 +276,10 @@ mod checkmate {
 
 							self.pop_stack();
 
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
+
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 							while self.current_frame.mvs.len() == 0 {
@@ -288,6 +292,9 @@ mod checkmate {
 								});
 								mvs.insert(0, self.current_frame.m.expect("current move is none."));
 								self.pop_stack();
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+								});
 								mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							}
 							MaybeMate::Unknown
@@ -311,7 +318,13 @@ mod checkmate {
 									return MaybeMate::Nomate;
 								} else {
 									self.pop_stack();
+									already_oute_kyokumen_map.as_mut().map(|m| {
+										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+									});
 									self.pop_stack();
+									already_oute_kyokumen_map.as_mut().map(|m| {
+										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+									});
 								}
 							}
 
@@ -345,7 +358,13 @@ mod checkmate {
 								return MaybeMate::Nomate;
 							}
 							self.pop_stack();
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+							});
 							self.pop_stack();
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+							});
 						}
 
 						if self.stack.len() == 0 {
@@ -382,6 +401,9 @@ mod checkmate {
 
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							self.pop_stack();
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						} else {
 							return MaybeMate::Unknown;
@@ -398,6 +420,9 @@ mod checkmate {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
 							self.pop_stack();
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						}
 						MaybeMate::Unknown
@@ -468,7 +493,7 @@ mod checkmate {
 
 				if let Some(&c) = current_kyokumen_map.get(teban,&mhash,&shash) {
 					if c >= 3 {
-						return MaybeMate::Nomate;
+						return MaybeMate::Mate(current_depth);
 					}
 				}
 
