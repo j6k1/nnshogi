@@ -600,13 +600,22 @@ mod checkmate {
 							current_kyokumen_map:current_kyokumen_map,
 						}));
 
-						self.oute_only_preprocess(solver,already_oute_kyokumen_map,
+						let r = self.oute_only_preprocess(solver,already_oute_kyokumen_map,
 														hasher,
 														current_depth+1,
 														check_timelimit,
 														stop,
 														event_queue,
-														event_dispatcher)
+														event_dispatcher);
+						match r {
+							MaybeMate::Unknown | MaybeMate::Ignore => {
+								r
+							},
+							_ => {
+								self.pop_stack();
+								r
+							}
+						}
 					}
 				}
 			}
@@ -801,13 +810,23 @@ mod checkmate {
 							current_kyokumen_map:current_kyokumen_map,
 						}));
 
-						self.response_oute_preprocess(solver,already_oute_kyokumen_map,
+						let r = self.response_oute_preprocess(solver,already_oute_kyokumen_map,
 														hasher,
 														current_depth+1,
 														check_timelimit,
 														stop,
 														event_queue,
-														event_dispatcher)
+														event_dispatcher);
+
+						match r {
+							MaybeMate::Unknown | MaybeMate::Ignore => {
+								r
+							},
+							_ => {
+								self.pop_stack();
+								r
+							}
+						}
 					}
 				}
 			}
