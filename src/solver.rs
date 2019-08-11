@@ -276,14 +276,17 @@ mod checkmate {
 
 							self.pop_stack();
 
-							already_oute_kyokumen_map.as_mut().map(|m| {
-								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
-							});
-
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 							while self.current_frame.mvs.len() == 0 {
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+								});
 								if self.stack.len() < 2 {
+									self.pop_stack();
+									already_oute_kyokumen_map.as_mut().map(|m| {
+										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+									});
 									return MaybeMate::MateMoves(depth,mvs);
 								}
 								self.pop_stack();
@@ -292,9 +295,6 @@ mod checkmate {
 								});
 								mvs.insert(0, self.current_frame.m.expect("current move is none."));
 								self.pop_stack();
-								already_oute_kyokumen_map.as_mut().map(|m| {
-									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
-								});
 								mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							}
 							MaybeMate::Unknown
@@ -322,9 +322,6 @@ mod checkmate {
 										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
 									});
 									self.pop_stack();
-									already_oute_kyokumen_map.as_mut().map(|m| {
-										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
-									});
 								}
 							}
 
@@ -348,6 +345,9 @@ mod checkmate {
 											event_queue, event_dispatcher);
 				match r {
 					MaybeMate::Nomate => {
+						already_oute_kyokumen_map.as_mut().map(|m| {
+							m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+						});
 						self.pop_stack();
 
 						while self.current_frame.mvs.len() == 0 {
@@ -362,9 +362,6 @@ mod checkmate {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
 							});
 							self.pop_stack();
-							already_oute_kyokumen_map.as_mut().map(|m| {
-								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
-							});
 						}
 
 						if self.stack.len() == 0 {
@@ -378,6 +375,10 @@ mod checkmate {
 						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 						if self.current_frame.mvs.len() == 0 {
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
+
 							self.pop_stack();
 
 							let m = self.current_frame.m;
@@ -401,16 +402,20 @@ mod checkmate {
 
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							self.pop_stack();
-							already_oute_kyokumen_map.as_mut().map(|m| {
-								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
-							});
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						} else {
 							return MaybeMate::Unknown;
 						}
 
 						while self.current_frame.mvs.len() == 0 {
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
 							if self.stack.len() < 2 {
+								self.pop_stack();
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+								});
 								return MaybeMate::MateMoves(depth,mvs);
 							}
 
@@ -420,9 +425,6 @@ mod checkmate {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
 							self.pop_stack();
-							already_oute_kyokumen_map.as_mut().map(|m| {
-								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
-							});
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						}
 						MaybeMate::Unknown
