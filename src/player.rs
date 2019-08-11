@@ -8,7 +8,6 @@ use rand_xorshift::XorShiftRng;
 use std::thread;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::RwLock;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use error::*;
@@ -130,7 +129,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						Teban,&Arc<State>,Score,Score,
 						&Arc<MochigomaCollections>,
 						&KyokumenMap<u64,u32>,
-						&Arc<RwLock<KyokumenMap<u64,()>>>,
+						&mut Option<KyokumenMap<u64,bool>>,
 						&KyokumenMap<u64,()>,
 						u64,u64,Option<Instant>,
 						u32,u32,u32,
@@ -371,7 +370,7 @@ impl Search {
 								prev_mc:&Option<Arc<MochigomaCollections>>,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
+								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -686,7 +685,7 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
+								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -844,7 +843,7 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&Arc<RwLock<KyokumenMap<u64,()>>>,
+								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -957,7 +956,7 @@ impl Search {
 								let self_nn_snapshot = self_nn_snapshot.clone();
 								let state = Arc::new(state);
 								let mc = Arc::new(mc);
-								let already_oute_map = already_oute_map.clone();
+								let mut already_oute_map = already_oute_map.clone();
 								let limit = limit.clone();
 								let stop = stop.clone();
 								let quited = quited.clone();
@@ -1007,7 +1006,7 @@ impl Search {
 											-b,-a,Some(m.to_move()),&mc,
 											&prev_state,&prev_mc,
 											obtained,&current_kyokumen_map,
-											&already_oute_map,
+											&mut already_oute_map,
 											&oute_kyokumen_map,
 											mhash,shash,limit,depth-1,
 											current_depth+1,base_depth,
@@ -1592,7 +1591,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&prev_state,
 							&prev_mc,
 							None, &kyokumen_map,
-							&Arc::new(RwLock::new(KyokumenMap::new())),
+							&mut Some(KyokumenMap::new()),
 							&oute_kyokumen_map,
 							mhash,shash,
 							limit, base_depth, 1, base_depth,
