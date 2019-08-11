@@ -532,12 +532,6 @@ mod checkmate {
 					_ => None,
 				};
 
-				let before_move_is_oute = if let Some(()) = oute_kyokumen_map.get(teban, &mhash, &shash) {
-					true
-				} else {
-					false
-				};
-
 				let mhash = hasher.calc_main_hash(mhash,&teban,
 													self.current_frame.state.get_banmen(),
 													& self.current_frame.mc,&m.to_move(),&o);
@@ -553,16 +547,44 @@ mod checkmate {
 					}
 				}
 
-				if before_move_is_oute {
-					oute_kyokumen_map.insert(teban, mhash, shash, ());
-				} else {
-					oute_kyokumen_map.clear(teban);
-				}
-
 				let next = Rule::apply_move_none_check(& self.current_frame.state,teban,& self.current_frame.mc,m.to_applied_move());
 
 				match next {
 					(next,nmc,_) => {
+						{
+							let (x,y,kind) = match m {
+								LegalMove::To(ref mv) => {
+									let (dx,dy) = mv.dst().square_to_point();
+									let kind = next.get_banmen().0[dy as usize][dx as usize];
+
+									(dx,dy,kind)
+								},
+								LegalMove::Put(ref mv) => {
+									let kind = KomaKind::from((teban,mv.kind()));
+									let (dx,dy) = mv.dst().square_to_point();
+
+									(dx,dy,kind)
+								}
+							};
+
+							let ps = next.get_part();
+
+							if Rule::is_mate_with_partial_state_and_point_and_kind(teban,ps,x,y,kind) ||
+							   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,ps) {
+
+								match oute_kyokumen_map.get(teban,&mhash,&shash) {
+									Some(_) => {
+										return MaybeMate::Nomate;
+									},
+									None => {
+										oute_kyokumen_map.insert(teban,mhash,shash,());
+									},
+								}
+							} else {
+								oute_kyokumen_map.clear(teban);
+							}
+						}
+
 						let mvs = Rule::legal_moves_all(teban.opposite(), &next, &nmc);
 
 						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
