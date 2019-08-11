@@ -77,7 +77,7 @@ impl<E> Solver<E> where E: PlayerError {
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 																UserEvent,Solver<E>,L,E>,)
 	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
-		let mvs = Rule::legal_moves_all(teban, state, mc);
+		let mvs = Rule::oute_only_moves_all(teban, state, mc);
 
 		let mut mate_strategy = checkmate::MateStrategy::of_mate(teban,state.clone(),
 															mc.clone(),mvs.clone(),
@@ -247,6 +247,7 @@ mod checkmate {
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
 			let current_depth = self.stack.len();
+
 			if current_depth % 2 == 0 {
 				let r = self.oute_only(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
@@ -276,9 +277,6 @@ mod checkmate {
 
 							while self.current_frame.mvs.len() == 0 {
 								if self.stack.len() < 2 {
-									if self.stack.len() == 1 {
-										self.pop_stack();
-									}
 									return MaybeMate::MateMoves(depth,mvs);
 								}
 								self.pop_stack();
@@ -292,9 +290,13 @@ mod checkmate {
 						}
 					},
 					MaybeMate::Nomate => {
-						if self.stack.len() == 0 && self.current_frame.mvs.len() == 0 {
-							MaybeMate::Nomate
-						} else if self.current_frame.mvs.len() == 0 {
+						if self.stack.len() == 0 {
+							if self.current_frame.mvs.len() == 0 {
+								MaybeMate::Nomate
+							} else {
+								MaybeMate::Unknown
+							}
+						} else {
 							while self.current_frame.mvs.len() == 0 {
 								if self.stack.len() < 2 {
 									return MaybeMate::Nomate;
@@ -303,9 +305,12 @@ mod checkmate {
 									self.pop_stack();
 								}
 							}
-							MaybeMate::Unknown
-						} else {
-							MaybeMate::Unknown
+
+							if self.stack.len() == 0 {
+								MaybeMate::Nomate
+							}  else {
+								MaybeMate::Unknown
+							}
 						}
 					},
 					r => {
@@ -330,7 +335,12 @@ mod checkmate {
 							self.pop_stack();
 							self.pop_stack();
 						}
-						MaybeMate::Unknown
+
+						if self.stack.len() == 0 {
+							MaybeMate::Nomate
+						}  else {
+							MaybeMate::Unknown
+						}
 					},
 					MaybeMate::Mate(depth) => {
 						let mut mvs = Vec::new();
@@ -350,20 +360,21 @@ mod checkmate {
 								return MaybeMate::Unknown;
 							}
 
-							mvs.insert(0, self.current_frame.m.expect("current move is none."));
-
 							if self.stack.len() == 0 {
 								return MaybeMate::MateMoves(depth,mvs);
 							}
 
-							self.pop_stack();
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+							self.pop_stack();
+						} else {
+							return MaybeMate::Unknown;
 						}
 
 						while self.current_frame.mvs.len() == 0 {
 							if self.stack.len() < 2 {
 								return MaybeMate::MateMoves(depth,mvs);
 							}
+
 							self.pop_stack();
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							self.pop_stack();
@@ -514,10 +525,6 @@ mod checkmate {
 			if self.current_frame.mvs.len() == 0 {
 				return MaybeMate::Mate(current_depth);
 			} else {
-				if self.current_frame.mvs.len() ==0 {
-					return MaybeMate::Nomate;
-				}
-
 				let m = self.current_frame.mvs.remove(0);
 
 				let o = match m {
@@ -767,10 +774,6 @@ mod checkmate {
 			if self.current_frame.mvs.len() == 0 {
 				return MaybeMate::Nomate;
 			} else {
-				if self.current_frame.mvs.len() == 0 {
-					return MaybeMate::Nomate;
-				}
-
 				let m = self.current_frame.mvs.remove(0);
 
 				let next = Rule::apply_move_none_check(&self.current_frame.state,teban,&self.current_frame.mc,m.to_applied_move());
