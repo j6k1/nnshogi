@@ -391,7 +391,6 @@ impl Search {
 								strategy:Strategy<L,S>,
 								kyokumen_score_map:&mut KyokumenMap<u64,i64>
 	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-
 		if current_depth > base_depth {
 			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 		}
@@ -481,9 +480,6 @@ impl Search {
 					MaybeMate::MateMoves(_,_) => {
 						return Evaluation::Result(Score::INFINITE,None);
 					},
-					//MaybeMate::Timeout => {
-					//	return Evaluation::Timeout(None);
-					//},
 					_ => ()
 				}
 			}

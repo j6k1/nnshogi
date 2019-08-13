@@ -269,7 +269,7 @@ mod checkmate {
 
 				let r = self.oute_only(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
-											hasher, current_depth as u32 +1,
+											hasher, current_depth as u32 + 1,
 											check_timelimit, stop,
 											on_searchstart,
 											event_queue, event_dispatcher);
@@ -290,6 +290,7 @@ mod checkmate {
 
 							if depth % 2 == 0 {
 								self.pop_stack();
+								depth -= 1;
 							}
 
 							while depth > current_depth {
@@ -402,7 +403,7 @@ mod checkmate {
 			} else {
 				let r = self.response_oute(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
-											hasher, current_depth as u32 +1,
+											hasher, current_depth as u32 + 1,
 											check_timelimit, stop,
 											on_searchstart,
 											event_queue, event_dispatcher);
@@ -437,6 +438,7 @@ mod checkmate {
 
 							if depth % 2 == 0 {
 								self.pop_stack();
+								depth -= 1;
 							}
 
 							while depth > current_depth {
