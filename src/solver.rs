@@ -246,7 +246,7 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
-			let current_depth = self.stack.len();
+			let current_depth = self.stack.len() as u32;
 
 			if current_depth % 2 == 0 {
 				let r = self.oute_only(solver,max_depth, max_nodes,
@@ -257,7 +257,53 @@ mod checkmate {
 											event_queue, event_dispatcher);
 				match r {
 					MaybeMate::Mate(depth) => {
-						let m = self.current_frame.m;
+						already_oute_kyokumen_map.as_mut().map(|m| {
+							m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+						});
+
+						let mut mvs = Vec::new();
+
+						let m = if depth > current_depth {
+							let mut depth = depth;
+
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
+
+							if depth % 2 == 0 {
+								self.pop_stack();
+							}
+
+							while depth > current_depth {
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+								});
+
+								mvs.insert(0, self.current_frame.m.expect("current move is none."));
+								self.pop_stack();
+								depth -= 1;
+							}
+
+							let m = self.current_frame.m;
+
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
+
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+							self.pop_stack();
+
+							m
+						} else {
+							let m = self.current_frame.m;
+
+							already_oute_kyokumen_map.as_mut().map(|m| {
+								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+							});
+
+							self.pop_stack();
+							m
+						};
 
 						let is_put_fu = match m {
 							Some(LegalMove::Put(ref m)) if m.kind() == MochigomaKind::Fu => true,
@@ -267,23 +313,13 @@ mod checkmate {
 						if self.stack.len() == 0 {
 							MaybeMate::MateMoves(depth,vec![])
 						} else if !is_put_fu {
-							already_oute_kyokumen_map.as_mut().map(|m| {
-								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
-							});
-							let mut mvs = Vec::new();
-
-							mvs.insert(0, self.current_frame.m.expect("current move is none."));
-
-							self.pop_stack();
-
-							mvs.insert(0, self.current_frame.m.expect("current move is none."));
-
 							while self.current_frame.mvs.len() == 0 {
 								already_oute_kyokumen_map.as_mut().map(|m| {
 									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 								});
 								if self.stack.len() < 2 {
 									self.pop_stack();
+									mvs.insert(0, self.current_frame.m.expect("current move is none."));
 									already_oute_kyokumen_map.as_mut().map(|m| {
 										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 									});
@@ -364,14 +400,25 @@ mod checkmate {
 							self.pop_stack();
 						}
 
-						if self.stack.len() == 0 {
-							MaybeMate::Nomate
-						}  else {
-							MaybeMate::Unknown
-						}
+						MaybeMate::Unknown
 					},
 					MaybeMate::Mate(depth) => {
 						let mut mvs = Vec::new();
+
+						if depth > current_depth {
+							let mut depth = depth;
+
+							if depth % 2 == 0 {
+								self.pop_stack();
+							}
+
+							while depth > current_depth {
+								mvs.insert(0, self.current_frame.m.expect("current move is none."));
+								self.pop_stack();
+								depth -= 1;
+							}
+						}
+
 						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 						if self.current_frame.mvs.len() == 0 {
@@ -572,7 +619,7 @@ mod checkmate {
 			}
 
 			if self.current_frame.mvs.len() == 0 {
-				return MaybeMate::Mate(current_depth-1);
+				return MaybeMate::Mate(current_depth);
 			} else {
 				let m = self.current_frame.mvs.remove(0);
 
@@ -657,11 +704,11 @@ mod checkmate {
 														event_queue,
 														event_dispatcher);
 						match r {
-							MaybeMate::Unknown | MaybeMate::Ignore => {
+							MaybeMate::Nomate => {
+								self.pop_stack();
 								r
 							},
-							_ => {
-								self.pop_stack();
+							r => {
 								r
 							}
 						}
@@ -870,11 +917,11 @@ mod checkmate {
 														event_dispatcher);
 
 						match r {
-							MaybeMate::Unknown | MaybeMate::Ignore => {
+							MaybeMate::Nomate => {
+								self.pop_stack();
 								r
 							},
-							_ => {
-								self.pop_stack();
+							r => {
 								r
 							}
 						}
