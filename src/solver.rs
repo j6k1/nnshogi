@@ -371,8 +371,8 @@ mod checkmate {
 						}
 					},
 					MaybeMate::Mate(depth) => {
-						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						let mut mvs = Vec::new();
+						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 						if self.current_frame.mvs.len() == 0 {
 							already_oute_kyokumen_map.as_mut().map(|m| {
