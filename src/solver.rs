@@ -151,6 +151,7 @@ mod checkmate {
 	pub struct AscComparator;
 
 	impl Comparator<(LegalMove,usize)> for AscComparator {
+		#[inline]
 		fn cmp(&mut self,l:&(LegalMove,usize),r:&(LegalMove,usize)) -> Ordering {
 			l.1.cmp(&r.1)
 		}
@@ -160,6 +161,7 @@ mod checkmate {
 	pub struct DescComparator;
 
 	impl Comparator<(LegalMove,usize)> for DescComparator {
+		#[inline]
 		fn cmp(&mut self,l:&(LegalMove,usize),r:&(LegalMove,usize)) -> Ordering {
 			r.1.cmp(&l.1)
 		}
@@ -240,6 +242,7 @@ mod checkmate {
 				DescComparator)
 		}
 
+		#[inline]
 		fn pop_stack(&mut self) {
 			self.current_frame = self.stack.pop().expect("current stack is empty.");
 		}
