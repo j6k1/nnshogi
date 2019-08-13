@@ -699,7 +699,7 @@ mod checkmate {
 					LegalMove::To(ref m) => {
 						if let Some(ObtainKind::Ou) = m.obtained() {
 							already_oute_kyokumen_map.as_mut().map(|m| m.insert(teban,mhash,shash,true));
-							return MaybeMate::Mate(current_depth+1);
+							return MaybeMate::Mate(current_depth);
 						}
 					},
 					_ => ()
