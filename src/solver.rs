@@ -372,7 +372,6 @@ mod checkmate {
 					},
 					MaybeMate::Mate(depth) => {
 						let mut mvs = Vec::new();
-						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 						if self.current_frame.mvs.len() == 0 {
 							already_oute_kyokumen_map.as_mut().map(|m| {
@@ -440,7 +439,7 @@ mod checkmate {
 								solver:&mut Solver<E>,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 								hasher:&Search,
-								current_depth:u32,
+								_:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -484,18 +483,18 @@ mod checkmate {
 				});
 
 				if let Some(true) = completed {
-					return MaybeMate::Mate(current_depth+1);
+					continue;
 				} else if let Some(false) = completed {
 					return MaybeMate::Nomate;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
-					return MaybeMate::Ignore;
+					continue;
 				}
 
 				if let Some(&c) = current_kyokumen_map.get(teban,&mhash,&shash) {
 					if c >= 3 {
-						return MaybeMate::Mate(current_depth);
+						continue;
 					}
 				}
 
@@ -572,7 +571,7 @@ mod checkmate {
 			}
 
 			if self.current_frame.mvs.len() == 0 {
-				return MaybeMate::Mate(current_depth);
+				return MaybeMate::Mate(current_depth-1);
 			} else {
 				let m = self.current_frame.mvs.remove(0);
 
@@ -723,23 +722,23 @@ mod checkmate {
 				});
 
 				if let Some(true) = completed {
-					return MaybeMate::Mate(current_depth+1);
+					return MaybeMate::Mate(current_depth);
 				} else if let Some(false) = completed {
-					return MaybeMate::Nomate;
+					continue;
 				}
 
 				if let Some(()) = ignore_kyokumen_map.get(teban,&mhash,&shash) {
-					return MaybeMate::Ignore;
+					continue;
 				}
 
 				if let Some(&c) = current_kyokumen_map.get(teban,&mhash,&shash) {
 					if c >= 3 {
-						return MaybeMate::Nomate;
+						continue;
 					}
 				}
 
 				if let Some(()) = oute_kyokumen_map.get(teban,&mhash,&shash) {
-					return MaybeMate::Nomate;
+					continue;
 				}
 
 				match next {
@@ -846,7 +845,7 @@ mod checkmate {
 
 				match next {
 					(next, nmc,_) => {
-						let mvs = Rule::legal_moves_all(teban.opposite(), &next, &nmc);
+						let mvs = Rule::respond_oute_only_moves_all(teban.opposite(), &next, &nmc);
 
 						self.stack.push(mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),

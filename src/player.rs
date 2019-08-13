@@ -115,7 +115,8 @@ const TIMELIMIT_MARGIN:u64 = 50;
 const NETWORK_DELAY:u32 = 1100;
 const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
 const MAX_THREADS:u32 = 1;
-
+const MAX_PLY:u32 = 200;
+const MAX_PLY_TIMELIMIT:u64 = 0;
 type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Solver<CommonError>,
 						&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -143,6 +144,8 @@ pub struct Search {
 	base_depth:u32,
 	max_depth:u32,
 	max_threads:u32,
+	max_ply:Option<u32>,
+	max_ply_timelimit:Option<Duration>,
 	network_delay:u32,
 	display_evalute_score:bool,
 }
@@ -167,12 +170,20 @@ impl Search {
 			}
 		}
 
+		let max_ply_timelimit = if MAX_PLY_TIMELIMIT >  0 {
+			Some(Duration::from_millis(MAX_PLY_TIMELIMIT))
+		} else {
+			None
+		};
+
 		Search {
 			kyokumen_hash_seeds:kyokumen_hash_seeds,
 			mochigoma_hash_seeds:mochigoma_hash_seeds,
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
 			max_threads:MAX_THREADS,
+			max_ply:Some(MAX_PLY),
+			max_ply_timelimit:max_ply_timelimit,
 			network_delay:NETWORK_DELAY,
 			display_evalute_score:DEFALUT_DISPLAY_EVALUTE_SCORE,
 		}
@@ -435,14 +446,14 @@ impl Search {
 		} else {
 			let network_delay = self.network_delay;
 			let limit = limit.clone();
-			let checkmate_limit = Instant::now() + Duration::from_millis(300);
+			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
 
 			let mut check_timelimit = move || {
 				limit.map_or(false,|l| {
 					let now = Instant::now();
 						l < now ||
 						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
-						checkmate_limit < now
+						checkmate_limit.map(|l| l < now).unwrap_or(false)
 				})
 			};
 			let this = this.clone();
@@ -452,7 +463,7 @@ impl Search {
 				};
 
 				match solver.checkmate(teban, state, mc,
-											Some(256),
+											self.max_ply,
 											None,
 											&mut oute_kyokumen_map.clone(),
 											&mut Some(KyokumenMap::new()),
@@ -1367,6 +1378,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		kinds.insert(String::from("USI_Hash"),SysEventOptionKind::Num);
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
 		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
+		kinds.insert(String::from("MAX_PLY"),SysEventOptionKind::Num);
+		kinds.insert(String::from("MAX_PLY_TIMELIMIT"),SysEventOptionKind::Num);
 		kinds.insert(String::from("Threads"),SysEventOptionKind::Num);
 		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
 		kinds.insert(String::from("NetworkDelay"),SysEventOptionKind::Num);
@@ -1378,6 +1391,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mut options:HashMap<String,UsiOptType> = HashMap::new();
 		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH as i64)));
 		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH as i64)));
+		options.insert(String::from("MAX_PLY"),UsiOptType::Spin(0,1000,Some(MAX_PLY as i64)));
+		options.insert(String::from("MAX_PLY_TIMELIMIT"),UsiOptType::Spin(0,300000,Some(MAX_PLY_TIMELIMIT as i64)));
 		options.insert(String::from("Threads"),UsiOptType::Spin(1,100,Some(MAX_THREADS as i64)));
 		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY as i64)));
 		options.insert(String::from("DispEvaluteScore"),UsiOptType::Check(Some(DEFALUT_DISPLAY_EVALUTE_SCORE)));
@@ -1438,6 +1453,29 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							},
 							_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
 						}
+					},
+					"MAX_PLY" => {
+						search.max_ply = match value {
+							SysEventOption::Num(0) => {
+								None
+							},
+							SysEventOption::Num(depth) => {
+								Some(depth as u32)
+							},
+							_ => Some(MAX_PLY),
+						};
+					},
+					"MAX_PLY_TIMELIMIT" => {
+						search.max_ply_timelimit = match value {
+							SysEventOption::Num(0) => {
+								None
+							},
+							SysEventOption::Num(limit) => {
+								Some(Duration::from_millis(limit as u64))
+							},
+							_ if MAX_PLY_TIMELIMIT > 0 => Some(Duration::from_millis(MAX_PLY_TIMELIMIT)),
+							_ => None,
+						};
 					},
 					_ => (),
 				}
