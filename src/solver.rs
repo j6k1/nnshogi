@@ -744,7 +744,7 @@ mod checkmate {
 
 				match next {
 					(ref next,ref mc,_) => {
-						let len = Rule::legal_moves_all(teban.opposite(), next, mc).len();
+						let len = Rule::respond_oute_only_moves_all(teban.opposite(), next, mc).len();
 
 
 						if len == 0 {
