@@ -34,6 +34,7 @@ use usiagent::TryFrom;
 use simplenn::SnapShot;
 
 use nn::Intelligence;
+use nn::F64_FRACTION_MAX;
 use solver::*;
 
 const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
@@ -391,6 +392,8 @@ impl Search {
 								strategy:Strategy<L,S>,
 								kyokumen_score_map:&mut KyokumenMap<u64,i64>
 	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		let mut bonus = 0;
+
 		if current_depth > base_depth {
 			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
 		}
@@ -479,6 +482,9 @@ impl Search {
 					},
 					MaybeMate::MateMoves(_,_) => {
 						return Evaluation::Result(Score::INFINITE,None);
+					},
+					MaybeMate::Unknown => {
+						bonus = F64_FRACTION_MAX as i64;
 					},
 					_ => ()
 				}
@@ -599,7 +605,7 @@ impl Search {
 
 		mvs.sort_by(|a,b| b.0.cmp(&a.0));
 
-		strategy(this,solver,
+		match strategy(this,solver,
 					event_queue,
 					event_dispatcher,
 					solver_event_dispatcher,
@@ -618,7 +624,10 @@ impl Search {
 					stop,quited,
 					&mvs,
 					responded_oute,
-					kyokumen_score_map)
+					kyokumen_score_map) {
+			Evaluation::Result(s,m) => Evaluation::Result(s + bonus,m),
+			r => r
+		}
 	}
 
 	fn startup_strategy(&self,teban:Teban,state:&State,mc:&MochigomaCollections,

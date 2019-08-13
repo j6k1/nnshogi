@@ -391,7 +391,9 @@ mod checkmate {
 						}
 					},
 					MaybeMate::MaxDepth => {
-						self.pop_stack();
+						if self.stack.len() > 0 {
+							self.pop_stack();
+						}
 
 						while self.stack.len() > 0 && self.current_frame.mvs.len() == 0 {
 							self.pop_stack();
@@ -509,7 +511,9 @@ mod checkmate {
 						MaybeMate::Continuation
 					},
 					MaybeMate::MaxDepth => {
-						self.pop_stack();
+						if self.stack.len() > 0 {
+							self.pop_stack();
+						}
 
 						while self.stack.len() > 0 && self.current_frame.mvs.len() == 0 {
 							self.pop_stack();

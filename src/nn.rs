@@ -38,7 +38,7 @@ pub struct Intelligence {
 	learning_mode:bool,
 	quited:bool,
 }
-const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
+pub const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
 impl Intelligence {
 	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
 		let mut rnd = rand::thread_rng();
