@@ -16,6 +16,7 @@ use std::time::{Instant,Duration};
 use std::cmp::Ordering;
 use std::ops::Neg;
 use std::ops::Add;
+use std::ops::Sub;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
 
@@ -105,6 +106,18 @@ impl Add<i64> for Score {
 		match self {
 			Score::NegativeValue(v) => Score::NegativeValue(v + other),
 			Score::Value(v) => Score::Value(v + other),
+			Score::INFINITE => Score::INFINITE,
+			Score::NEGINFINITE => Score::NEGINFINITE,
+		}
+	}
+}
+impl Sub<i64> for Score {
+	type Output = Self;
+
+	fn sub(self, other:i64) -> Self::Output {
+		match self {
+			Score::NegativeValue(v) => Score::NegativeValue(v - other),
+			Score::Value(v) => Score::Value(v - other),
 			Score::INFINITE => Score::INFINITE,
 			Score::NEGINFINITE => Score::NEGINFINITE,
 		}
@@ -625,7 +638,8 @@ impl Search {
 					&mvs,
 					responded_oute,
 					kyokumen_score_map) {
-			Evaluation::Result(s,m) => Evaluation::Result(s + bonus,m),
+			Evaluation::Result(Score::Value(s),m) => Evaluation::Result(Score::Value(s) + bonus,m),
+			Evaluation::Result(Score::NegativeValue(s),m) => Evaluation::Result(Score::NegativeValue(s) - bonus,m),
 			r => r
 		}
 	}
