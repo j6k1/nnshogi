@@ -263,37 +263,35 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
-			let current_depth = self.stack.len() as u32;
+			let current_depth = self.stack.len() as u32 + 1;
 
-			if current_depth % 2 == 0 {
+			if current_depth % 2 == 1 {
 				if self.stack.len() == 0 && self.current_frame.mvs.len() ==0 {
 					return MaybeMate::Unknown;
 				}
 
 				let r = self.oute_only(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
-											hasher, current_depth as u32 + 1,
+											hasher, current_depth as u32,
 											check_timelimit, stop,
 											on_searchstart,
 											event_queue, event_dispatcher);
 				match r {
 					MaybeMate::Mate(depth) => {
-						let depth = depth - 1;
-
 						already_oute_kyokumen_map.as_mut().map(|m| {
 							m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 						});
 
 						let mut mvs = Vec::new();
 
-						let m = if depth > current_depth && current_depth >= 2 {
+						let m = if depth > current_depth && current_depth > 2 {
 							let mut depth = depth;
 
 							already_oute_kyokumen_map.as_mut().map(|m| {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
 
-							if depth % 2 == 0 {
+							if depth % 2 == 1 {
 								self.pop_stack();
 								depth -= 1;
 							}
@@ -318,7 +316,7 @@ mod checkmate {
 							self.pop_stack();
 
 							m
-						} else if current_depth == 0 {
+						} else if current_depth == 1 {
 							return MaybeMate::MateMoves(depth,vec![]);
 						} else {
 							let m = self.current_frame.m;
@@ -413,7 +411,7 @@ mod checkmate {
 			} else {
 				let r = self.response_oute(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
-											hasher, current_depth as u32 + 1,
+											hasher, current_depth as u32,
 											check_timelimit, stop,
 											on_searchstart,
 											event_queue, event_dispatcher);
@@ -441,14 +439,12 @@ mod checkmate {
 						MaybeMate::Continuation
 					},
 					MaybeMate::Mate(depth) => {
-						let depth = depth - 1;
-
 						let mut mvs = Vec::new();
 
 						if depth > current_depth {
 							let mut depth = depth;
 
-							if depth % 2 == 0 {
+							if depth % 2 == 1 {
 								self.pop_stack();
 								depth -= 1;
 							}
