@@ -280,8 +280,6 @@ mod checkmate {
 								depth -= 1;
 							}
 
-							let m = self.current_frame.m;
-
 							already_oute_kyokumen_map.as_mut().map(|m| {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
@@ -289,30 +287,35 @@ mod checkmate {
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 							self.pop_stack();
 
+							let m = self.current_frame.m;
+
 							m
 						} else if current_depth == 1 {
 							return MaybeMate::MateMoves(depth,vec![]);
 						} else {
+							self.pop_stack();
+
 							let m = self.current_frame.m;
 
 							already_oute_kyokumen_map.as_mut().map(|m| {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
 
-							self.pop_stack();
 							m
 						};
+
+						if self.stack.len() == 0 {
+							return MaybeMate::MateMoves(depth,mvs);
+						}
+
+						mvs.insert(0, self.current_frame.m.expect("current move is none."));
 
 						let is_put_fu = match m {
 							Some(LegalMove::Put(ref m)) if m.kind() == MochigomaKind::Fu => true,
 							_ => false,
 						};
 
-						if self.stack.len() == 0 {
-							MaybeMate::MateMoves(depth,mvs)
-						} else if !is_put_fu {
-							mvs.insert(0, self.current_frame.m.expect("current move is none."));
-
+						if !is_put_fu {
 							while self.current_frame.mvs.len() == 0 {
 								already_oute_kyokumen_map.as_mut().map(|m| {
 									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
@@ -351,20 +354,15 @@ mod checkmate {
 								});
 								if self.stack.len() < 2 {
 									return MaybeMate::Nomate;
-								} else {
-									self.pop_stack();
-									already_oute_kyokumen_map.as_mut().map(|m| {
-										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
-									});
-									self.pop_stack();
 								}
+								self.pop_stack();
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,false)
+								});
+								self.pop_stack();
 							}
 
-							if self.stack.len() == 0 {
-								MaybeMate::Nomate
-							}  else {
-								MaybeMate::Continuation
-							}
+							MaybeMate::Continuation
 						}
 					},
 					MaybeMate::MaxDepth => {
@@ -444,9 +442,9 @@ mod checkmate {
 								});
 								return MaybeMate::MateMoves(depth,mvs);
 							}
-							self.pop_stack();
-
 							let m = self.current_frame.m;
+
+							self.pop_stack();
 
 							let is_put_fu = match m {
 								Some(LegalMove::Put(ref m)) if m.kind() == MochigomaKind::Fu => true,
