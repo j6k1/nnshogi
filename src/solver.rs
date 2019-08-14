@@ -1,5 +1,3 @@
-use std::error;
-use std::fmt;
 use std::mem;
 use std::cmp::Ordering;
 use std::marker::PhantomData;
@@ -16,30 +14,6 @@ use usiagent::event::*;
 use usiagent::error::PlayerError;
 use player::Search;
 
-#[derive(Debug)]
-pub enum SolveError {
-	Timeout(String),
-}
-impl fmt::Display for SolveError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match *self {
-			SolveError::Timeout(ref s) => write!(f, "{}",s),
-		}
-	}
-}
-impl error::Error for SolveError {
-	fn description(&self) -> &str {
-		match *self {
-			SolveError::Timeout(_) => "Time limit reached while checking if checkmate",
-		}
-	}
-
-	fn cause(&self) -> Option<&error::Error> {
-		match *self {
-			SolveError::Timeout(_) => None,
-		}
-	}
-}
 pub enum MaybeMate {
 	Mate(u32),
 	Nomate,
