@@ -22,7 +22,6 @@ pub enum MaybeMate {
 	MaxNodes,
 	Timeout,
 	Continuation,
-	Unknown,
 }
 pub struct Solver<E> where E: PlayerError {
 	error_type:PhantomData<E>
@@ -240,10 +239,6 @@ mod checkmate {
 			let current_depth = self.stack.len() as u32 + 1;
 
 			if current_depth % 2 == 1 {
-				if self.stack.len() == 0 && self.current_frame.mvs.len() ==0 {
-					return MaybeMate::Unknown;
-				}
-
 				let r = self.oute_only(solver,max_depth, max_nodes,
 											already_oute_kyokumen_map,
 											hasher, current_depth as u32,
@@ -365,17 +360,6 @@ mod checkmate {
 							MaybeMate::Continuation
 						}
 					},
-					MaybeMate::MaxDepth => {
-						if self.stack.len() > 0 {
-							self.pop_stack();
-						}
-
-						while self.stack.len() > 0 && self.current_frame.mvs.len() == 0 {
-							self.pop_stack();
-						}
-
-						MaybeMate::MaxDepth
-					},
 					r => {
 						r
 					}
@@ -491,17 +475,6 @@ mod checkmate {
 							mvs.insert(0, self.current_frame.m.expect("current move is none."));
 						}
 						MaybeMate::Continuation
-					},
-					MaybeMate::MaxDepth => {
-						if self.stack.len() > 0 {
-							self.pop_stack();
-						}
-
-						while self.stack.len() > 0 && self.current_frame.mvs.len() == 0 {
-							self.pop_stack();
-						}
-
-						MaybeMate::MaxDepth
 					},
 					r => {
 						r
