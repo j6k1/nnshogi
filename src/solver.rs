@@ -278,13 +278,15 @@ mod checkmate {
 											event_queue, event_dispatcher);
 				match r {
 					MaybeMate::Mate(depth) => {
+						let depth = depth - 1;
+
 						already_oute_kyokumen_map.as_mut().map(|m| {
 							m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 						});
 
 						let mut mvs = Vec::new();
 
-						let m = if depth > current_depth {
+						let m = if depth > current_depth && current_depth >= 2 {
 							let mut depth = depth;
 
 							already_oute_kyokumen_map.as_mut().map(|m| {
@@ -296,7 +298,7 @@ mod checkmate {
 								depth -= 1;
 							}
 
-							while depth > current_depth && depth > 2 {
+							while depth > current_depth {
 								already_oute_kyokumen_map.as_mut().map(|m| {
 									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 								});
@@ -316,7 +318,7 @@ mod checkmate {
 							self.pop_stack();
 
 							m
-						} else if self.stack.len() == 0 {
+						} else if current_depth == 0 {
 							return MaybeMate::MateMoves(depth,vec![]);
 						} else {
 							let m = self.current_frame.m;
@@ -337,13 +339,14 @@ mod checkmate {
 						if self.stack.len() == 0 {
 							MaybeMate::MateMoves(depth,mvs)
 						} else if !is_put_fu {
+							mvs.insert(0, self.current_frame.m.expect("current move is none."));
+
 							while self.current_frame.mvs.len() == 0 {
 								already_oute_kyokumen_map.as_mut().map(|m| {
 									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 								});
 								if self.stack.len() < 2 {
 									self.pop_stack();
-									mvs.insert(0, self.current_frame.m.expect("current move is none."));
 									already_oute_kyokumen_map.as_mut().map(|m| {
 										m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 									});
@@ -438,6 +441,8 @@ mod checkmate {
 						MaybeMate::Continuation
 					},
 					MaybeMate::Mate(depth) => {
+						let depth = depth - 1;
+
 						let mut mvs = Vec::new();
 
 						if depth > current_depth {
@@ -448,7 +453,7 @@ mod checkmate {
 								depth -= 1;
 							}
 
-							while depth > current_depth && depth > 1 {
+							while depth > current_depth {
 								mvs.insert(0, self.current_frame.m.expect("current move is none."));
 								self.pop_stack();
 								depth -= 1;
@@ -462,6 +467,13 @@ mod checkmate {
 								m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
 							});
 
+							if self.stack.len() < 2 {
+								self.pop_stack();
+								already_oute_kyokumen_map.as_mut().map(|m| {
+									m.insert(self.current_frame.teban,self.current_frame.mhash,self.current_frame.shash,true)
+								});
+								return MaybeMate::MateMoves(depth,mvs);
+							}
 							self.pop_stack();
 
 							let m = self.current_frame.m;
