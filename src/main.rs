@@ -48,7 +48,7 @@ pub struct Config {
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	time_limit:Option<u32>,
-	running_time:Option<String>,
+	uptime:Option<String>,
 	number_of_games:Option<u32>,
 	silent:bool,
 	initial_position:Option<InitialPositionKifu>,
@@ -188,7 +188,7 @@ fn run() -> Result<(),ApplicationError> {
 			None => time_limit,
 		};
 
-		let running_time = config.running_time.map_or(None,|t| {
+		let uptime = config.uptime.map_or(None,|t| {
 			if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
 				None
 			} else {
@@ -196,7 +196,7 @@ fn run() -> Result<(),ApplicationError> {
 			}
 		});
 
-		let running_time:Option<String> = match matches.opt_str("t") {
+		let uptime:Option<String> = match matches.opt_str("t") {
 			Some(t) => {
 				if t == "" || t == "0" || t == "0s" || t == "0m" || t == "0h" || t == "0d" {
 					None
@@ -204,38 +204,38 @@ fn run() -> Result<(),ApplicationError> {
 					Some(t)
 				}
 			},
-			None => running_time,
+			None => uptime,
 		};
 
-		let running_time_none_parsed = match running_time {
+		let uptime_none_parsed = match uptime {
 			None => String::from("0s"),
-			Some(ref running_time) => running_time.clone(),
+			Some(ref uptime) => uptime.clone(),
 		};
 
-		let running_time = match running_time {
+		let uptime = match uptime {
 			None => None,
-			Some(ref running_time) if running_time.ends_with("s") => {
-				let len = running_time.chars().count();
-				let s = running_time.chars().take(len-1).collect::<String>();
+			Some(ref uptime) if uptime.ends_with("s") => {
+				let len = uptime.chars().count();
+				let s = uptime.chars().take(len-1).collect::<String>();
 				Some(Duration::from_secs(s.parse::<u64>()?))
 			},
-			Some(ref running_time) if running_time.ends_with("m") => {
-				let len = running_time.chars().count();
-				let s = running_time.chars().take(len-1).collect::<String>();
+			Some(ref uptime) if uptime.ends_with("m") => {
+				let len = uptime.chars().count();
+				let s = uptime.chars().take(len-1).collect::<String>();
 				Some(Duration::from_secs(60 * s.parse::<u64>()?))
 			},
-			Some(ref running_time) if running_time.ends_with("h") => {
-				let len = running_time.chars().count();
-				let s = running_time.chars().take(len-1).collect::<String>();
+			Some(ref uptime) if uptime.ends_with("h") => {
+				let len = uptime.chars().count();
+				let s = uptime.chars().take(len-1).collect::<String>();
 				Some(Duration::from_secs(60 * 60 * s.parse::<u64>()?))
 			},
-			Some(ref running_time) if running_time.ends_with("d") => {
-				let len = running_time.chars().count();
-				let s = running_time.chars().take(len-1).collect::<String>();
+			Some(ref uptime) if uptime.ends_with("d") => {
+				let len = uptime.chars().count();
+				let s = uptime.chars().take(len-1).collect::<String>();
 				Some(Duration::from_secs(24 * 60 * 60 * s.parse::<u64>()?))
 			},
-			Some(ref running_time) => {
-				Some(Duration::from_secs(60 * running_time.parse::<u64>()?))
+			Some(ref uptime) => {
+				Some(Duration::from_secs(60 * uptime.parse::<u64>()?))
 			}
 		};
 
@@ -322,26 +322,8 @@ fn run() -> Result<(),ApplicationError> {
 					}
 
 					let (mut teban, mut banmen, mut mc, _, mut mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
-						Ok(mut position) => match position {
-							SystemEvent::Position(teban, p, n, m) => {
-								let(banmen,mc) = match p {
-									UsiInitialPosition::Startpos => {
-										(BANMEN_START_POS.clone(), MochigomaCollections::Pair(HashMap::new(),HashMap::new()))
-									},
-									UsiInitialPosition::Sfen(ref b,MochigomaCollections::Pair(ref ms,ref mg)) => {
-										(b.clone(),MochigomaCollections::Pair(ms.clone(),mg.clone()))
-									},
-									UsiInitialPosition::Sfen(ref b,MochigomaCollections::Empty) => {
-										(b.clone(),MochigomaCollections::Pair(HashMap::new(),HashMap::new()))
-									}
-								};
-								(teban,banmen,mc,n,m)
-							},
-							_ => {
-								return Err(ApplicationError::StartupError(String::from(
-									"棋譜ファイルのパース結果が不正です。"
-								)));
-							}
+						Ok(mut position) => {
+							position.extract()
 						},
 						Err(_) => {
 							return Err(ApplicationError::StartupError(String::from(
@@ -387,23 +369,17 @@ fn run() -> Result<(),ApplicationError> {
 			}
 		};
 
-		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, running_time = {:?}, number_of_games = {:?}",
-			base_depth, max_depth, time_limit, running_time_none_parsed, number_of_games
+		print!("base_depth = {:?}, max_depth = {:?}, time_limit = {:?}, uptime = {:?}, number_of_games = {:?}",
+			base_depth, max_depth, time_limit, uptime_none_parsed, number_of_games
 		);
 
 		let info_sender = ConsoleInfoSender::new(silent);
 
-		let mut engine = SelfMatchEngine::new(
-			NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
-			NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
-			info_sender,
-			time_limit,
-			running_time,number_of_games
-		);
+		let mut engine = SelfMatchEngine::new();
 
 		let mut flip = true;
 
-		let on_before_newgame = move || {
+		let flip_players = move || {
 			flip = !flip;
 			!flip
 		};
@@ -415,7 +391,7 @@ fn run() -> Result<(),ApplicationError> {
 				return match system_event_queue.lock()  {
 					Ok(mut system_event_queue) => {
 						system_event_queue.push(SystemEvent::Quit);
-						Ok(())
+						Ok(false)
 					},
 					Err(_) => {
 						Err(SelfMatchRunningError::InvalidState(String::from(
@@ -424,8 +400,10 @@ fn run() -> Result<(),ApplicationError> {
 					}
 				};
 			}
-			Ok(())
+			Ok(true)
 		};
+
+		let mut kifuwriter = FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?;
 
 		let r = engine.start_default(|self_match_event_dispatcher| {
 									self_match_event_dispatcher
@@ -552,9 +530,12 @@ fn run() -> Result<(),ApplicationError> {
 											}
 										});
 								},
-								on_before_newgame,
-								initial_position_creator,Some(FileSfenKifuWriter::new(String::from("logs/kifu.txt"))?),
+								flip_players,
+								initial_position_creator,
+								Some(Box::new(move |sfen,mvs| kifuwriter.write(sfen,mvs))),
 								input_read_handler,
+								NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
+								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
 								[
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
@@ -567,6 +548,10 @@ fn run() -> Result<(),ApplicationError> {
 								].into_iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
+								info_sender,
+								time_limit,
+								uptime,
+								number_of_games,
 								|on_error_handler,e| {
 									match on_error_handler {
 										Some(ref h) => {

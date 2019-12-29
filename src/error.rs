@@ -15,6 +15,7 @@ use usiagent::error::TypeConvertError;
 use simplenn::error::InvalidStateError;
 use simplenn::error::PersistenceError;
 use usiagent::error::SfenStringConvertError;
+use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
 
 #[derive(Debug)]
@@ -91,10 +92,11 @@ pub enum ApplicationError {
 	ParseIntError(ParseIntError),
 	ParseFloatError(ParseFloatError),
 	AgentRunningError(String),
-	SelfMatchRunningError(SelfMatchRunningError),
+	SelfMatchRunningError(SelfMatchRunningError<CommonError>),
 	CsaParserError(CsaParserError),
 	LogicError(String),
 	LearningError(String),
+	KifuWriteError(KifuWriteError)
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -109,6 +111,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::CsaParserError(ref e) => write!(f, "{}",e),
 			ApplicationError::LogicError(ref s) => write!(f,"{}",s),
 			ApplicationError::LearningError(ref s) => write!(f,"{}",s),
+			ApplicationError::KifuWriteError(ref s) => write!(f,"{}",s),
 		}
 	}
 }
@@ -125,6 +128,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::CsaParserError(_) => "An error occurred parsing the csa file.",
 			ApplicationError::LogicError(_) => "Logic error.",
 			ApplicationError::LearningError(_) => "An error occurred while learning the neural network.",
+			ApplicationError::KifuWriteError(_) => "An error occurred when recording kifu or initialize KifuWriter.",
 		}
 	}
 
@@ -140,6 +144,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::CsaParserError(ref e) => Some(e),
 			ApplicationError::LogicError(_) => None,
 			ApplicationError::LearningError(_) => None,
+			ApplicationError::KifuWriteError(ref e) => Some(e),
 		}
 	}
 }
@@ -158,14 +163,19 @@ impl From<ParseFloatError> for ApplicationError {
 		ApplicationError::ParseFloatError(err)
 	}
 }
-impl From<SelfMatchRunningError> for ApplicationError {
-	fn from(err: SelfMatchRunningError) -> ApplicationError {
+impl From<SelfMatchRunningError<CommonError>> for ApplicationError {
+	fn from(err: SelfMatchRunningError<CommonError>) -> ApplicationError {
 		ApplicationError::SelfMatchRunningError(err)
 	}
 }
 impl From<SfenStringConvertError> for ApplicationError {
 	fn from(err: SfenStringConvertError) -> ApplicationError {
 		ApplicationError::SfenStringConvertError(err)
+	}
+}
+impl From<KifuWriteError> for ApplicationError {
+	fn from(err: KifuWriteError) -> ApplicationError {
+		ApplicationError::KifuWriteError(err)
 	}
 }
 impl From<CsaParserError> for ApplicationError {

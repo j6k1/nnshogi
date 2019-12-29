@@ -1,5 +1,6 @@
 use std;
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 use rand;
 use rand::Rng;
@@ -1382,8 +1383,8 @@ impl NNShogiPlayer {
 impl USIPlayer<CommonError> for NNShogiPlayer {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
-	fn get_option_kinds(&mut self) -> Result<HashMap<String,SysEventOptionKind>,CommonError> {
-		let mut kinds:HashMap<String,SysEventOptionKind> = HashMap::new();
+	fn get_option_kinds(&mut self) -> Result<BTreeMap<String,SysEventOptionKind>,CommonError> {
+		let mut kinds:BTreeMap<String,SysEventOptionKind> = BTreeMap::new();
 		kinds.insert(String::from("USI_Hash"),SysEventOptionKind::Num);
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
 		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
@@ -1396,8 +1397,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		Ok(kinds)
 	}
-	fn get_options(&mut self) -> Result<HashMap<String,UsiOptType>,CommonError> {
-		let mut options:HashMap<String,UsiOptType> = HashMap::new();
+	fn get_options(&mut self) -> Result<BTreeMap<String,UsiOptType>,CommonError> {
+		let mut options:BTreeMap<String,UsiOptType> = BTreeMap::new();
 		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH as i64)));
 		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH as i64)));
 		options.insert(String::from("MAX_PLY"),UsiOptType::Spin(0,1000,Some(MAX_PLY as i64)));
