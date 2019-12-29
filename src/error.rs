@@ -39,7 +39,7 @@ impl error::Error for CommonError {
 		}
 	}
 
-	fn cause(&self) -> Option<&error::Error> {
+	fn source(&self) -> Option<&(dyn error::Error + 'static)> {
 		match *self {
 			CommonError::Fail(_) => None,
 		}
@@ -132,7 +132,7 @@ impl error::Error for ApplicationError {
 		}
 	}
 
-	fn cause(&self) -> Option<&error::Error> {
+	fn source(&self) -> Option<&(dyn error::Error + 'static)> {
 		match *self {
 			ApplicationError::StartupError(_) => None,
 			ApplicationError::SfenStringConvertError(ref e) => Some(e),

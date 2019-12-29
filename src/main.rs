@@ -22,7 +22,6 @@ use std::fs::OpenOptions;
 use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
-use std::collections::HashMap;
 use rand::Rng;
 use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
@@ -82,7 +81,7 @@ impl ConfigLoader {
 		match toml::from_str(buf.as_str()) {
 			Ok(r) => Ok(r),
 			Err(ref e) => {
-				USIStdErrorWriter::write(&e.to_string()).is_err();
+				let _ = USIStdErrorWriter::write(&e.to_string());
 				Err(ApplicationError::StartupError(String::from(
 					"設定ファイルのロード時にエラーが発生しました。"
 				)))
@@ -94,7 +93,7 @@ fn main() {
 	match run() {
 		Ok(()) => (),
 		Err(ref e) =>  {
-			USIStdErrorWriter::write(&e.to_string()).is_err();
+			let _ = USIStdErrorWriter::write(&e.to_string());
 		}
 	};
 }
@@ -321,8 +320,8 @@ fn run() -> Result<(),ApplicationError> {
 						break;
 					}
 
-					let (mut teban, mut banmen, mut mc, _, mut mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
-						Ok(mut position) => {
+					let (mut teban, banmen, mut mc, _, mvs) = match position_parser.parse(&buf.split(" ").collect::<Vec<&str>>()) {
+						Ok(position) => {
 							position.extract()
 						},
 						Err(_) => {
@@ -361,7 +360,7 @@ fn run() -> Result<(),ApplicationError> {
 				let mut rnd = XorShiftRng::from_seed(rnd.gen());
 				let len = sfen_list.len();
 
-				let f:Box<FnMut() -> String + Send + 'static> = Box::new(move || {
+				let f:Box<dyn FnMut() -> String + Send + 'static> = Box::new(move || {
 					sfen_list[rnd.gen_range(0, len)].clone()
 				});
 
@@ -555,12 +554,12 @@ fn run() -> Result<(),ApplicationError> {
 								|on_error_handler,e| {
 									match on_error_handler {
 										Some(ref h) => {
-											h.lock().map(|h| h.call(e)).is_err();
+											let _ = h.lock().map(|h| h.call(e));
 										},
 										None => (),
 									}
 								});
-		std::io::stdout().flush().is_err();
+		let _ = std::io::stdout().flush();
 		r.map_err(|_| ApplicationError::SelfMatchRunningError(
 						SelfMatchRunningError::InvalidState(String::from(
 			"自己対局の実行中にエラーが発生しました。詳細はログを参照してください..."
@@ -578,7 +577,7 @@ fn run() -> Result<(),ApplicationError> {
 		let r = agent.start_default(|on_error_handler,e| {
 			match on_error_handler {
 				Some(ref h) => {
-					h.lock().map(|h| h.call(e)).is_err();
+					let _ = h.lock().map(|h| h.call(e));
 				},
 				None => (),
 			}

@@ -258,7 +258,7 @@ impl Search {
 		match info_sender.send(commands) {
 			Ok(_) => (),
 			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
+				let _ = on_error_handler.lock().map(|h| h.call(e));
 			}
 		}
 	}
@@ -275,7 +275,7 @@ impl Search {
 		match info_sender.send(commands) {
 			Ok(_) => (),
 			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
+				let _ = on_error_handler.lock().map(|h| h.call(e));
 			}
 		}
 	}
@@ -289,7 +289,7 @@ impl Search {
 		match info_sender.send(commands) {
 			Ok(_) => (),
 			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
+				let _ = on_error_handler.lock().map(|h| h.call(e));
 			}
 		}
 	}
@@ -517,7 +517,7 @@ impl Search {
 																&m,info_sender,on_error_handler) {
 				Ok((_,ss)) => Arc::new(ss),
 				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					let _ = on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
@@ -530,7 +530,7 @@ impl Search {
 																	&m,info_sender,on_error_handler) {
 				Ok((_,ss)) => Arc::new(ss),
 				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					let _ = on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
@@ -558,7 +558,7 @@ impl Search {
 			let r = match self.evalute_by_diff(evalutor,&self_nn_snapshot,false,teban,&Some(&state), &Some(&mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
 				Ok((r,_)) => r,
 				Err(ref e) => {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					let _ = on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
@@ -734,9 +734,9 @@ impl Search {
 											current_kyokumen_map,
 											depth,responded_oute) {
 				Some(r) => {
-					let (depth,obtained,mut mhash,mut shash,
-						 mut oute_kyokumen_map,
-						 mut current_kyokumen_map,
+					let (depth,obtained,mhash,shash,
+						 oute_kyokumen_map,
+						 current_kyokumen_map,
 						 is_sennichite) = r;
 
 					let m = m.to_applied_move();
@@ -894,7 +894,7 @@ impl Search {
 				let r = match receiver.recv() {
 					Ok(r) => r,
 					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						let _ = on_error_handler.lock().map(|h| h.call(e));
 						search.termination(receiver, threads, stop);
 						return Evaluation::Error;
 					}
@@ -940,9 +940,9 @@ impl Search {
 												current_kyokumen_map,
 												depth,responded_oute) {
 					Some(r) => {
-						let (depth,obtained,mut mhash,mut shash,
-							 mut oute_kyokumen_map,
-							 mut current_kyokumen_map,
+						let (depth,obtained,mhash,shash,
+							 oute_kyokumen_map,
+							 current_kyokumen_map,
 							 is_sennichite) = r;
 
 						let m = m.to_applied_move();
@@ -990,7 +990,7 @@ impl Search {
 
 								let sender = sender.clone();
 
-								let mut b = thread::Builder::new();
+								let b = thread::Builder::new();
 								let _ = b.stack_size(1024 * 1024 * 200).spawn(move || {
 									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 									let mut solver_event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
@@ -1116,7 +1116,7 @@ impl Search {
 				},
 				Err(ref e) => {
 					threads += 1;
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					let _ = on_error_handler.lock().map(|h| h.call(e));
 					search.termination(receiver, threads, stop);
 					return Evaluation::Error;
 				}
@@ -1677,8 +1677,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						Some(&(ref banmen,ref mc,mhash,shash)) => {
 							let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m.to_applied_move());
 							self.moved = true;
-							let mut mhash = self.search.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
-							let mut shash = self.search.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+							let mhash = self.search.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
+							let shash = self.search.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
 							(next.get_banmen().clone(),nmc.clone(),mhash,shash)
 						},
 						None => {

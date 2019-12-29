@@ -58,7 +58,7 @@ impl CsaLearnener {
 							*notify_quit = true;
 						},
 						Err(ref e) => {
-							on_error_handler.lock().map(|h| h.call(e)).is_err();
+							let _ = on_error_handler.lock().map(|h| h.call(e));
 						}
 					};
 					Ok(())
@@ -82,7 +82,7 @@ impl CsaLearnener {
 			loop {
 				match input_reader.read() {
 					Ok(line) => {
-						match line.trim_right() {
+						match line.trim_end() {
 							"quit" => {
 								match system_event_queue.lock() {
 									Ok(mut system_event_queue) => {
@@ -90,7 +90,7 @@ impl CsaLearnener {
 										return;
 									},
 									Err(ref e) => {
-										on_error_handler.lock().map(|h| h.call(e)).is_err();
+										let _ = on_error_handler.lock().map(|h| h.call(e));
 										return;
 									}
 								}
@@ -99,13 +99,13 @@ impl CsaLearnener {
 						}
 					},
 					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						let _ = on_error_handler.lock().map(|h| h.call(e));
 						match system_event_queue.lock() {
 							Ok(mut system_event_queue) => {
 								system_event_queue.push(SystemEvent::Quit);
 							},
 							Err(ref e) => {
-								on_error_handler.lock().map(|h| h.call(e)).is_err();
+								let _ = on_error_handler.lock().map(|h| h.call(e));
 							}
 						}
 						return;
@@ -202,7 +202,7 @@ impl CsaLearnener {
 				count += 1;
 
 				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
-					on_error_handler.lock().map(|h| h.call(e)).is_err();
+					let _ = on_error_handler.lock().map(|h| h.call(e));
 				}
 
 				match notify_quit.lock() {
@@ -212,7 +212,7 @@ impl CsaLearnener {
 						}
 					},
 					Err(ref e) => {
-						on_error_handler.lock().map(|h| h.call(e)).is_err();
+						let _ = on_error_handler.lock().map(|h| h.call(e));
 						return Err(ApplicationError::LearningError(String::from(
 							"End notification flag's exclusive lock could not be secured"
 						)));
