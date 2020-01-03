@@ -178,7 +178,7 @@ impl CsaLearnener {
 																	m.to_applied_move()
 																}).collect::<Vec<AppliedMove>>(),
 																history,
-																|banmen,_,mc,_,_,history| {
+																|_,banmen,mc,_,_,history| {
 					let mut history = history;
 					history.push((banmen.clone(),mc.clone(),0,0));
 					history

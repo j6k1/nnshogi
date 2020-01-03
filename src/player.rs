@@ -133,11 +133,9 @@ const MAX_PLY:u32 = 200;
 const MAX_PLY_TIMELIMIT:u64 = 0;
 type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Solver<CommonError>,
-						&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-						&mut USIEventDispatcher<UserEventKind,
-										UserEvent,Search,L,CommonError>,
-						&mut USIEventDispatcher<UserEventKind,
-											UserEvent,Solver<CommonError>,L,CommonError>,
+						&Arc<Mutex<UserEventQueue>>,
+						&mut UserEventDispatcher<Search,CommonError,L>,
+						&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 						&Arc<Intelligence>,&mut S,
 						&Arc<Mutex<OnErrorHandler<L>>>,
 						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
@@ -204,7 +202,7 @@ impl Search {
 	}
 
 	fn create_event_dispatcher<T,L>(&self,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
-		-> USIEventDispatcher<UserEventKind,UserEvent,T,L,CommonError> where L: Logger {
+		-> UserEventDispatcher<T,CommonError,L> where L: Logger {
 
 		let mut event_dispatcher = USIEventDispatcher::new(&on_error_handler.clone());
 
@@ -378,9 +376,8 @@ impl Search {
 	fn negascout<L,S>(&self,
 			this:&Arc<Search>,
 			solver:&mut Solver<CommonError>,
-			event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Search,L,CommonError>,
+			event_queue:&Arc<Mutex<UserEventQueue>>,
+								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
 								solver_event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 													UserEvent,Solver<CommonError>,L,CommonError>,
 								evalutor:&Arc<Intelligence>,
@@ -697,11 +694,9 @@ impl Search {
 
 	fn single_search<L,S>(search:&Arc<Search>,
 								solver:&mut Solver<CommonError>,
-								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Search,L,CommonError>,
-								solver_event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Solver<CommonError>,L,CommonError>,
+								event_queue:&Arc<Mutex<UserEventQueue>>,
+								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
+								solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
@@ -855,11 +850,9 @@ impl Search {
 
 	fn parallel_search<L,S>(search:&Arc<Search>,
 								_:& mut Solver<CommonError>,
-								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
-								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Search,L,CommonError>,
-								_:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Solver<CommonError>,L,CommonError>,
+								event_queue:&Arc<Mutex<UserEventQueue>>,
+								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
+								_:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								evalutor:&Arc<Intelligence>,
 								info_sender:&mut S,
 								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
@@ -1521,8 +1514,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
 
-		let (t,state,mc,r) = self.apply_moves(teban,state,
-												mc,m.into_iter()
+		let (t,state,mc,r) = self.apply_moves(state,teban,
+												mc,&m.into_iter()
 													.map(|m| m.to_applied_move())
 													.collect::<Vec<AppliedMove>>(),
 												(mhash,shash,kyokumen_map,history),
@@ -1590,7 +1583,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.moved = false;
 		Ok(())
 	}
-	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
 			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<BestMove,CommonError>
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
@@ -1695,7 +1688,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 		}
 	}
-	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<UserEventQueue>>,
 			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<CheckMate,CommonError>
 		where L: Logger, S: InfoSender,
@@ -1706,7 +1699,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn gameover<L>(&mut self,s:&GameEndState,
-		event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
+		event_queue:Arc<Mutex<UserEventQueue>>,
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
