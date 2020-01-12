@@ -1583,7 +1583,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.moved = false;
 		Ok(())
 	}
-	fn think<L,S>(&mut self,limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
+	fn think<L,S>(&mut self,think_start_time:Instant,
+			limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
 			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<BestMove,CommonError>
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
@@ -1596,7 +1597,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let state = &kyokumen.state;
 		let mc = &kyokumen.mc;
 
-		let limit = limit.to_instant(teban);
+		let limit = limit.to_instant(teban,think_start_time);
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_map = self.kyokumen_map.clone();
 		let oute_kyokumen_map = self.oute_kyokumen_map.clone();
@@ -1688,6 +1689,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 		}
 	}
+	fn think_ponder<L,S>(&mut self,_:&UsiGoTimeLimit,_:Arc<Mutex<UserEventQueue>>,
+			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
+			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		unimplemented!();
+	}
 	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<UserEventQueue>>,
 			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<CheckMate,CommonError>
@@ -1733,6 +1739,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 			self.history = Vec::new();
 		}
+		Ok(())
+	}
+
+	fn on_ponderhit(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		Ok(())
 	}
 
