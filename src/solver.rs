@@ -351,22 +351,22 @@ mod checkmate {
 
 				let r = if current_depth % 2 == 0 {
 					self.oute_only(solver,
-												strict_moves,
-												max_depth, max_nodes,
-												already_oute_kyokumen_map,
-												hasher, current_depth as u32,
-												check_timelimit, stop,
-												on_searchstart,
-												event_queue, event_dispatcher)
+										strict_moves,
+										max_depth, max_nodes,
+										already_oute_kyokumen_map,
+										hasher, current_depth as u32,
+										check_timelimit, stop,
+										on_searchstart,
+										event_queue, event_dispatcher)
 				} else {
 					self.response_oute(solver,
-												strict_moves,
-												max_depth, max_nodes,
-												already_oute_kyokumen_map,
-												hasher, current_depth as u32,
-												check_timelimit, stop,
-												on_searchstart,
-												event_queue, event_dispatcher)
+										strict_moves,
+										max_depth, max_nodes,
+										already_oute_kyokumen_map,
+										hasher, current_depth as u32,
+										check_timelimit, stop,
+										on_searchstart,
+										event_queue, event_dispatcher)
 				};
 
 				if let MaybeMate::Continuation = r {
