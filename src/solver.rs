@@ -330,7 +330,9 @@ mod checkmate {
 				self.pop_stack();
 
 				if let MaybeMate::MaxDepth = r {
-					r = MaybeMate::Continuation;
+					if self.current_frame.mvs.len() > 0 {
+						r = MaybeMate::Continuation;
+					}
 					self.current_frame.has_unknown = true;
 				}
 
