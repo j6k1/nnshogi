@@ -387,7 +387,6 @@ mod checkmate {
 			} else {
 				self.oute_only_preprocess(solver,
 											strict_moves,
-											&mut self.current_frame.clone(),
 											already_oute_kyokumen_map,
 											hasher,current_depth,check_timelimit,stop,
 											event_queue,event_dispatcher)
@@ -397,7 +396,6 @@ mod checkmate {
 		fn response_oute_preprocess<L,F>(&mut self,
 								solver:&mut Solver<E>,
 								_:bool,
-								next_frame:&mut CheckmateStackFrame,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 								hasher:&Search,
 								_:u32,
@@ -410,15 +408,15 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool {
 
-			let teban = next_frame.teban;
-			let state = &next_frame.state;
-			let mc = &next_frame.mc;
-			let mhash = next_frame.mhash;
-			let shash = next_frame.shash;
-			let ignore_kyokumen_map = &next_frame.ignore_kyokumen_map;
-			let current_kyokumen_map = &next_frame.current_kyokumen_map;
-			let mut pmvs = Vec::with_capacity(next_frame.mvs.len());
-			let mvs = mem::replace(&mut next_frame.mvs, Vec::new());
+			let teban = self.current_frame.teban;
+			let state = &self.current_frame.state;
+			let mc = &self.current_frame.mc;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let ignore_kyokumen_map = &self.current_frame.ignore_kyokumen_map;
+			let current_kyokumen_map = &self.current_frame.current_kyokumen_map;
+			let mut pmvs = Vec::with_capacity(self.current_frame.mvs.len());
+			let mvs = mem::replace(&mut self.current_frame.mvs, Vec::new());
 
 			for m in mvs.into_iter() {
 				let o = match m {
@@ -484,7 +482,7 @@ mod checkmate {
 
 			pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
-			next_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
 
 			MaybeMate::Continuation
 		}
@@ -599,7 +597,7 @@ mod checkmate {
 
 						let mvs = Rule::oute_only_moves_all(teban.opposite(), &next, &nmc);
 
-						let mut next_frame = CheckmateStackFrame {
+						let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
 							state:next,
 							mc:nmc,
@@ -611,11 +609,10 @@ mod checkmate {
 							oute_kyokumen_map:oute_kyokumen_map,
 							current_kyokumen_map:current_kyokumen_map,
 							has_unknown:false
-						};
+						});
 
 						match self.oute_only_preprocess(solver,
 														strict_moves,
-														&mut next_frame,
 														already_oute_kyokumen_map,
 														hasher,
 														current_depth+1,
@@ -624,10 +621,11 @@ mod checkmate {
 														event_queue,
 														event_dispatcher) {
 							r @ MaybeMate::Continuation => {
-								self.stack.push(mem::replace(&mut self.current_frame, next_frame));
+								self.stack.push(prev_frame);
 								r
 							},
 							r => {
+								self.current_frame = prev_frame;
 								r
 							}
 						}
@@ -639,7 +637,6 @@ mod checkmate {
 		fn oute_only_preprocess<L,F>(&mut self,
 								solver:&mut Solver<E>,
 								strict_moves:bool,
-								next_frame:&mut CheckmateStackFrame,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 								hasher:&Search,
 								current_depth:u32,
@@ -652,16 +649,16 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool {
 
-			let teban = next_frame.teban;
-			let state = &next_frame.state;
-			let mc = &next_frame.mc;
-			let mhash = next_frame.mhash;
-			let shash = next_frame.shash;
-			let ignore_kyokumen_map = &next_frame.ignore_kyokumen_map;
-			let current_kyokumen_map = &next_frame.current_kyokumen_map;
-			let mut pmvs = Vec::with_capacity(next_frame.mvs.len());
-			let oute_kyokumen_map = &next_frame.oute_kyokumen_map;
-			let mvs = mem::replace(&mut next_frame.mvs, Vec::new());
+			let teban = self.current_frame.teban;
+			let state = &self.current_frame.state;
+			let mc = &self.current_frame.mc;
+			let mhash = self.current_frame.mhash;
+			let shash = self.current_frame.shash;
+			let ignore_kyokumen_map = &self.current_frame.ignore_kyokumen_map;
+			let current_kyokumen_map = &self.current_frame.current_kyokumen_map;
+			let mut pmvs = Vec::with_capacity(self.current_frame.mvs.len());
+			let oute_kyokumen_map = &self.current_frame.oute_kyokumen_map;
+			let mvs = mem::replace(&mut self.current_frame.mvs, Vec::new());
 
 			for m in mvs.into_iter() {
 				match m {
@@ -737,7 +734,7 @@ mod checkmate {
 
 			pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
-			next_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
 
 			MaybeMate::Continuation
 		}
@@ -821,7 +818,7 @@ mod checkmate {
 					(next, nmc,_) => {
 						let mvs = Rule::respond_oute_only_moves_all(teban.opposite(), &next, &nmc);
 
-						let mut next_frame = CheckmateStackFrame {
+						let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
 							state:next,
 							mc:nmc,
@@ -833,11 +830,10 @@ mod checkmate {
 							oute_kyokumen_map:oute_kyokumen_map,
 							current_kyokumen_map:current_kyokumen_map,
 							has_unknown:false
-						};
+						});
 
 						match self.response_oute_preprocess(solver,
 														strict_moves,
-														&mut next_frame,
 														already_oute_kyokumen_map,
 														hasher,
 														current_depth+1,
@@ -846,10 +842,11 @@ mod checkmate {
 														event_queue,
 														event_dispatcher) {
 							r @ MaybeMate::Continuation => {
-								self.stack.push(mem::replace(&mut self.current_frame, next_frame));
+								self.stack.push(prev_frame);
 								r
 							},
 							r => {
+								self.current_frame = prev_frame;
 								r
 							}
 						}
