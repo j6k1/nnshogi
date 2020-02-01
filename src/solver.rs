@@ -372,7 +372,7 @@ mod checkmate {
 				};
 
 				if let MaybeMate::Continuation = r {
-					if self.current_frame.mvs.len() == 0 {
+					if self.stack.len() == 0 && self.current_frame.mvs.len() == 0 {
 						return MaybeMate::Nomate
 					}
 				}
