@@ -307,14 +307,19 @@ mod checkmate {
 							let mut mvs = mvs;
 							self.current_frame.m.map(|m| mvs.insert(0,m));
 							MaybeMate::MateMoves(d,mvs)
-						} else {
+						} else if self.current_frame.mvs.len() > 0 {
 							return MaybeMate::Continuation;
-						}					},
+						} else {
+							MaybeMate::Continuation
+						}
+					},
 					r @ MaybeMate::Nomate => {
 						if self.stack.len() % 2 != 0 || (!self.current_frame.has_unknown && self.current_frame.mvs.len() == 0) {
 							r
-						} else {
+						} else if self.current_frame.mvs.len() > 0 {
 							return MaybeMate::Continuation;
+						} else {
+							MaybeMate::Continuation
 						}
 					},
 					r => {
