@@ -281,7 +281,7 @@ mod checkmate {
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
 											UserEvent,Solver<E>,L,E>
-		)  -> MaybeMate where E: PlayerError,
+		) -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
@@ -299,7 +299,7 @@ mod checkmate {
 						on_searchstart,
 						event_queue,
 						event_dispatcher) {
-					r @ MaybeMate::Continuation => {
+					r @ MaybeMate::Continuation if self.current_frame.mvs.len() > 0 => {
 						return r
 					},
 					MaybeMate::MateMoves(d,mvs)=> {
@@ -333,7 +333,7 @@ mod checkmate {
 			} else {
 				let current_depth = self.stack.len() as u32;
 
-				if current_depth % 2 == 0 {
+				let r = if current_depth % 2 == 0 {
 					self.oute_only(solver,
 												strict_moves,
 												max_depth, max_nodes,
@@ -351,7 +351,15 @@ mod checkmate {
 												check_timelimit, stop,
 												on_searchstart,
 												event_queue, event_dispatcher)
+				};
+
+				if let MaybeMate::Continuation = r {
+					if self.current_frame.mvs.len() == 0 {
+						return MaybeMate::Nomate
+					}
 				}
+
+				r
 			}
 		}
 
