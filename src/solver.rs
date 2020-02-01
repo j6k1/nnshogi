@@ -287,6 +287,8 @@ mod checkmate {
 								S: FnMut(u32,u64) {
 
 			if depth > 0 {
+				let mut has_unknown = false;
+
 				let mut r = match self.exec(solver,
 						strict_moves,
 						depth-1,
@@ -327,14 +329,23 @@ mod checkmate {
 					}
 				};
 
+				if let MaybeMate::Continuation = r {
+					if self.current_frame.mvs.len() > 0 {
+						has_unknown = self.current_frame.has_unknown;
+					}
+				}
+
 				self.pop_stack();
 
 				if let MaybeMate::MaxDepth = r {
 					if self.current_frame.mvs.len() > 0 {
 						r = MaybeMate::Continuation;
+					} else {
+						has_unknown = true;
 					}
-					self.current_frame.has_unknown = true;
 				}
+
+				self.current_frame.has_unknown = has_unknown;
 
 				r
 			} else {
