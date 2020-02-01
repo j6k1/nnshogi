@@ -472,7 +472,7 @@ impl Search {
 					this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
 				};
 
-				match solver.checkmate(teban, state, mc,
+				match solver.checkmate(false,teban, state, mc,
 											self.max_ply,
 											None,
 											&mut oute_kyokumen_map.clone(),
