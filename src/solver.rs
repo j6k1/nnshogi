@@ -330,9 +330,7 @@ mod checkmate {
 				};
 
 				if let MaybeMate::Continuation = r {
-					if self.current_frame.mvs.len() == 0 {
-						has_unknown = self.current_frame.has_unknown;
-					}
+					has_unknown = self.current_frame.has_unknown;
 				}
 
 				self.pop_stack();
