@@ -467,7 +467,7 @@ mod checkmate {
 						let len = Rule::oute_only_moves_all(teban.opposite(), next, mc).len();
 
 						if len == 0 {
-							continue;
+							return MaybeMate::Nomate;
 						}
 
 						pmvs.push((m,len));
