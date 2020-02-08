@@ -373,8 +373,7 @@ impl Search {
 		Evaluation::Result(Score::Value(s),None)
 	}
 
-	fn negascout<L,S>(&self,
-			this:&Arc<Search>,
+	fn negascout<L,S>(self:&Arc<Self>,
 			solver:&mut Solver<CommonError>,
 			event_queue:&Arc<Mutex<UserEventQueue>>,
 								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
@@ -466,9 +465,10 @@ impl Search {
 						checkmate_limit.map(|l| l < now).unwrap_or(false)
 				})
 			};
-			let this = this.clone();
 			{
-				let mut on_startsearch = |depth,_| {
+				let this = self.clone();
+
+				let mut on_searchstart = |depth,_| {
 					this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
 				};
 
@@ -482,7 +482,7 @@ impl Search {
 											mhash, shash,
 											&mut check_timelimit,
 											stop,
-											&mut on_startsearch,
+											&mut on_searchstart,
 											event_queue,
 											solver_event_dispatcher) {
 					MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
@@ -610,7 +610,7 @@ impl Search {
 
 		mvs.sort_by(|a,b| b.0.cmp(&a.0));
 
-		strategy(this,solver,
+		strategy(self,solver,
 					event_queue,
 					event_dispatcher,
 					solver_event_dispatcher,
@@ -781,7 +781,6 @@ impl Search {
 								};
 
 								match search.negascout(
-									search,
 									solver,
 									event_queue,
 									event_dispatcher,
@@ -1011,7 +1010,6 @@ impl Search {
 										};
 
 										r = search.negascout(
-											&search,
 											&mut Solver::new(),
 											&event_queue,
 											&mut event_dispatcher,
@@ -1625,7 +1623,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				};
 
 				let result = match self.search.negascout(
-							&self.search.clone(),
 							&mut Solver::new(),
 							&event_queue,
 							&mut event_dispatcher,
