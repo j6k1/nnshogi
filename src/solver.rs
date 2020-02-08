@@ -467,7 +467,7 @@ mod checkmate {
 						let len = Rule::oute_only_moves_all(teban.opposite(), next, mc).len();
 
 						if len == 0 {
-							return MaybeMate::Nomate;
+							continue;
 						}
 
 						pmvs.push((m,len));
@@ -537,7 +537,7 @@ mod checkmate {
 				already_oute_kyokumen_map.as_mut().map(|m| m.insert(teban,mhash,shash,true));
 				return MaybeMate::MateMoves(current_depth,vec![]);
 			} else {
-				loop {
+				while self.current_frame.mvs.len() > 0 {
 					let m = self.current_frame.mvs.remove(0);
 
 					let o = match m {
@@ -639,6 +639,8 @@ mod checkmate {
 						}
 					}
 				}
+
+				MaybeMate::MateMoves(current_depth,vec![])
 			}
 		}
 
@@ -825,6 +827,10 @@ mod checkmate {
 				match next {
 					(next, nmc,_) => {
 						let mvs = Rule::respond_oute_only_moves_all(teban.opposite(), &next, &nmc);
+
+						if mvs.len() == 0 {
+							return MaybeMate::MateMoves(current_depth+1,vec![m])
+						}
 
 						let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
