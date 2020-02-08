@@ -1691,12 +1691,74 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		unimplemented!();
 	}
-	fn think_mate<L,S>(&mut self,_:&UsiGoMateTimeLimit,_:Arc<Mutex<UserEventQueue>>,
-			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
+	fn think_mate<L,S>(&mut self,limit:&UsiGoMateTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
+			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<CheckMate,CommonError>
 		where L: Logger, S: InfoSender,
 			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		Ok(CheckMate::NotiImplemented)
+		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+			UsiProtocolError::InvalidState(
+						String::from("Position information is not initialized."))
+		)?;
+
+		let teban = kyokumen.teban;
+		let state = &kyokumen.state;
+		let mc = &kyokumen.mc;
+		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
+
+		let limit = limit.to_instant(Instant::now());
+
+		let search = Search::new();
+
+		let mut info_sender = info_sender.clone();
+
+		let mut on_searchstart = |depth,_| {
+			search.send_seldepth(&mut info_sender, &on_error_handler, search.base_depth, 0 + depth);
+		};
+
+		let stop = Arc::new(AtomicBool::new(false));
+		let quited = Arc::new(AtomicBool::new(false));
+
+		let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
+
+		let mut solver = Solver::new();
+
+		let network_delay = search.network_delay;
+
+		let mut check_timelimit = move || {
+			limit.map_or(false,|l| {
+				let now = Instant::now();
+					l < now ||
+					l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN)
+			})
+		};
+
+		match solver.checkmate(false,teban, state, mc,
+									None,
+									None,
+									&mut KyokumenMap::new(),
+									&mut Some(KyokumenMap::new()),
+									&mut KyokumenMap::new(),
+									&search,
+									mhash, shash,
+									&mut check_timelimit,
+									&stop,
+									&mut on_searchstart,
+									&event_queue,
+									&mut event_dispatcher) {
+			MaybeMate::MateMoves(_,ref mvs) => {
+				Ok(CheckMate::Moves(mvs.into_iter().map(|m| m.to_move()).collect::<Vec<Move>>()))
+			},
+			MaybeMate::Nomate => {
+				Ok(CheckMate::Nomate)
+			},
+			MaybeMate::Continuation => {
+				Err(CommonError::Fail(String::from("logic error.")))
+			},
+			_ => {
+				Ok(CheckMate::Timeout)
+			}
+		}
 	}
 	fn on_stop(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		Ok(())
