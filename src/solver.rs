@@ -401,7 +401,7 @@ mod checkmate {
 								_:bool,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 								hasher:&Search,
-								_:u32,
+								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -481,13 +481,17 @@ mod checkmate {
 				}
 			}
 
-			let mut comparator = self.response_oute_comparator.clone();
+			if pmvs.len() == 0 {
+				MaybeMate::MateMoves(current_depth-1,vec![])
+			} else {
+				let mut comparator = self.response_oute_comparator.clone();
 
-			pmvs.sort_by(|a,b| comparator.cmp(a,b));
+				pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
-			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+				self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
 
-			MaybeMate::Continuation
+				MaybeMate::Continuation
+			}
 		}
 
 		fn response_oute<L,F,S>(&mut self,
@@ -740,13 +744,17 @@ mod checkmate {
 				}
 			}
 
-			let mut comparator = self.oute_comparator.clone();
+			if pmvs.len() == 0 {
+				MaybeMate::Nomate
+			} else {
+				let mut comparator = self.oute_comparator.clone();
 
-			pmvs.sort_by(|a,b| comparator.cmp(a,b));
+				pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
-			self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
+				self.current_frame.mvs = pmvs.into_iter().map(|(m,_)| m).collect::<Vec<LegalMove>>();
 
-			MaybeMate::Continuation
+				MaybeMate::Continuation
+			}
 		}
 
 		fn oute_only<L,F,S>(&mut self,
