@@ -224,7 +224,7 @@ impl Search {
 			let stop = stop.clone();
 			let quited = quited.clone();
 
-			event_dispatcher.add_handler(UserEventKind::Stop, move |_,e| {
+			event_dispatcher.add_handler(UserEventKind::Quit, move |_,e| {
 				match e {
 					&UserEvent::Quit => {
 						quited.store(true,atomic::Ordering::Release);
