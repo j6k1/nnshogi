@@ -542,7 +542,7 @@ mod checkmate {
 			}
 
 			if self.current_frame.mvs.len() == 0 {
-				already_oute_kyokumen_map.as_mut().map(|m| m.insert(teban.opposite(),mhash,shash,true));
+				already_oute_kyokumen_map.as_mut().map(|m| m.insert(teban,mhash,shash,true));
 				return MaybeMate::MateMoves(current_depth,vec![]);
 			} else {
 				let m = self.current_frame.mvs.remove(0);
@@ -567,7 +567,7 @@ mod checkmate {
 					}
 				}
 
-				let next = Rule::apply_move_none_check(& self.current_frame.state,teban,& self.current_frame.mc,m.to_applied_move());
+				let next = Rule::apply_move_none_check(&self.current_frame.state,teban,&self.current_frame.mc,m.to_applied_move());
 
 				match next {
 					(next,nmc,_) => {
@@ -594,8 +594,7 @@ mod checkmate {
 
 								match oute_kyokumen_map.get(teban,&mhash,&shash) {
 									Some(_) => {
-										already_oute_kyokumen_map.as_mut().map(|m| m.insert(teban.opposite(),mhash,shash,false));
-										return MaybeMate::Nomate;
+										continue;
 									},
 									None => {
 										oute_kyokumen_map.insert(teban,mhash,shash,());
