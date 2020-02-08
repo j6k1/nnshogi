@@ -349,7 +349,7 @@ mod checkmate {
 			} else {
 				let current_depth = self.stack.len() as u32;
 
-				let r = if current_depth % 2 == 0 {
+				if current_depth % 2 == 0 {
 					self.oute_only(solver,
 										strict_moves,
 										max_depth, max_nodes,
@@ -367,15 +367,7 @@ mod checkmate {
 										check_timelimit, stop,
 										on_searchstart,
 										event_queue, event_dispatcher)
-				};
-
-				if let MaybeMate::Continuation = r {
-					if self.stack.len() == 0 && self.current_frame.mvs.len() == 0 {
-						return MaybeMate::Nomate
-					}
 				}
-
-				r
 			}
 		}
 
@@ -607,6 +599,10 @@ mod checkmate {
 							}
 
 							let mvs = Rule::oute_only_moves_all(teban.opposite(), &next, &nmc);
+
+							if mvs.len() == 0 {
+								return MaybeMate::Nomate;
+							}
 
 							let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 								teban:teban.opposite(),
