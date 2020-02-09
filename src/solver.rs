@@ -301,7 +301,7 @@ mod checkmate {
 						on_searchstart,
 						event_queue,
 						event_dispatcher) {
-					r @ MaybeMate::Continuation if self.current_frame.mvs.len() > 0 => {
+					r @ MaybeMate::Continuation => {
 						return r
 					},
 					MaybeMate::MateMoves(d,mvs)=> {
