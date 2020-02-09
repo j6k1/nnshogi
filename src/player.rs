@@ -128,9 +128,13 @@ const MAX_DEPTH:u32 = 6;
 const TIMELIMIT_MARGIN:u64 = 50;
 const NETWORK_DELAY:u32 = 1100;
 const DEFALUT_DISPLAY_EVALUTE_SCORE:bool = false;
+const DEFAULT_ADJUST_DEPTH:bool = true;
 const MAX_THREADS:u32 = 1;
 const MAX_PLY:u32 = 200;
 const MAX_PLY_TIMELIMIT:u64 = 0;
+const TURN_COUNT:u32 = 50;
+const MIN_TURN_COUNT:u32 = 5;
+
 type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Solver<CommonError>,
 						&Arc<Mutex<UserEventQueue>>,
@@ -145,8 +149,10 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Option<KyokumenMap<u64,bool>>,
 						&mut Option<KyokumenMap<u64,bool>>,
 						&KyokumenMap<u64,()>,
-						u64,u64,Option<Instant>,
-						u32,u32,u32,
+						u64,u64,
+						Option<Instant>,
+						Option<Instant>,
+						u32,u32,u32,u64,
 						&Arc<AtomicBool>,&Arc<AtomicBool>,
 						&Vec<(u32,LegalMove)>,bool,
 						&mut KyokumenMap<u64,i64>) -> Evaluation;
@@ -161,7 +167,10 @@ pub struct Search {
 	max_ply_mate:Option<u32>,
 	max_ply_timelimit:Option<Duration>,
 	network_delay:u32,
+	turn_count:u32,
+	min_turn_count:u32,
 	display_evalute_score:bool,
+	adjust_depth:bool,
 }
 impl Search {
 	pub fn new() -> Search {
@@ -200,7 +209,10 @@ impl Search {
 			max_ply_mate:None,
 			max_ply_timelimit:max_ply_timelimit,
 			network_delay:NETWORK_DELAY,
+			turn_count:TURN_COUNT,
+			min_turn_count:MIN_TURN_COUNT,
 			display_evalute_score:DEFALUT_DISPLAY_EVALUTE_SCORE,
+			adjust_depth:DEFAULT_ADJUST_DEPTH,
 		}
 	}
 
@@ -399,7 +411,9 @@ impl Search {
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
+								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
+								node_count:u64,
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
 								strategy:Strategy<L,S>,
@@ -629,8 +643,11 @@ impl Search {
 					self_already_oute_map,
 					opponent_already_oute_map,
 					oute_kyokumen_map,
-					mhash,shash,limit,depth,
+					mhash,shash,limit,
+					current_limit,
+					depth,
 					current_depth,base_depth,
+					node_count,
 					stop,quited,
 					&mvs,
 					responded_oute,
@@ -716,7 +733,9 @@ impl Search {
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
+								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
+								node_count:u64,
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
@@ -727,7 +746,13 @@ impl Search {
 		let mut scoreval = Score::NEGINFINITE;
 		let mut best_move:Option<Move> = None;
 
+		let mut processed_nodes:u32 = 0;
+		let start_time = Instant::now();
+
 		for (priority,m) in mvs {
+			processed_nodes += 1;
+			let nodes = node_count * mvs.len() as u64 - processed_nodes as u64;
+
 			match search.startup_strategy(teban,state,mc,m,
 											mhash,shash,
 										 	*priority,
@@ -803,8 +828,11 @@ impl Search {
 									opponent_already_oute_map,
 									self_already_oute_map,
 									&oute_kyokumen_map,
-									mhash,shash,limit,depth-1,
+									mhash,shash,
+									limit,current_limit,
+									depth-1,
 									current_depth+1,base_depth,
+									nodes,
 									stop,quited,Search::single_search,
 									kyokumen_score_map) {
 
@@ -845,6 +873,23 @@ impl Search {
 							Some(best_move) => Evaluation::Timeout(Some(best_move)),
 							None => Evaluation::Timeout(Some(m.to_move())),
 						};
+					} else if (search.adjust_depth && nodes <= std::u32::MAX as u64 &&
+						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+					) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+						match search.evalute_by_diff(evalutor,
+										&self_nn_snapshot,
+										false,
+										teban,
+										&prev_state.as_ref(),&prev_mc.as_ref(),
+										&Some(m.to_move()),info_sender,on_error_handler) {
+							Ok((r,_)) => {
+								return r;
+							},
+							Err(ref e) => {
+								let _ = on_error_handler.lock().map(|h| h.call(e));
+								return Evaluation::Error;
+							}
+						}
 					}
 				},
 				None => (),
@@ -873,7 +918,9 @@ impl Search {
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
+								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
+								node_count:u64,
 								stop:&Arc<AtomicBool>,
 								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
@@ -887,7 +934,11 @@ impl Search {
 		let (sender,receiver):(_,Receiver<(Evaluation,AppliedMove)>) = mpsc::channel();
 		let mut threads = search.max_threads;
 
+		let mvs_count = mvs.len() as u64;
+
 		let mut it = mvs.into_iter();
+		let mut processed_nodes:u32 = 0;
+		let start_time = Instant::now();
 
 		loop {
 			if threads == 0 {
@@ -900,6 +951,8 @@ impl Search {
 					}
 				};
 				threads += 1;
+				processed_nodes += 1;
+				let nodes = node_count * mvs_count - processed_nodes as u64;
 
 				match r {
 					(Evaluation::Timeout(_),m) => {
@@ -924,6 +977,27 @@ impl Search {
 							if scoreval >= beta {
 								search.termination(receiver, threads, stop);
 								return Evaluation::Result(scoreval,best_move);
+							}
+						}
+
+						if (search.adjust_depth && nodes <= std::u32::MAX as u64 &&
+							current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+						) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+							search.termination(receiver, threads, stop);
+
+							match search.evalute_by_diff(evalutor,
+											&self_nn_snapshot,
+											false,
+											teban,
+											&Some(state),&Some(mc),
+											&Some(m.to_move()),info_sender,on_error_handler) {
+								Ok((r,_)) => {
+									return r;
+								}
+								Err(ref e) => {
+									let _ = on_error_handler.lock().map(|h| h.call(e));
+									return Evaluation::Error;
+								}
 							}
 						}
 					},
@@ -1035,8 +1109,10 @@ impl Search {
 											&mut opponent_already_oute_map,
 											&mut self_already_oute_map,
 											&oute_kyokumen_map,
-											mhash,shash,limit,depth-1,
-											current_depth+1,base_depth,
+											mhash,shash,
+											limit,current_limit,
+											depth-1,current_depth+1,base_depth,
+											node_count,
 											&stop,&quited,Search::single_search,
 											&mut kyokumen_score_map);
 
@@ -1349,6 +1425,7 @@ pub struct NNShogiPlayer {
 	shash:u64,
 	oute_kyokumen_map:KyokumenMap<u64,()>,
 	kyokumen_map:KyokumenMap<u64,u32>,
+	remaining_turns:u32,
 	nna_filename:String,
 	nnb_filename:String,
 	learning_mode:bool,
@@ -1371,6 +1448,7 @@ impl NNShogiPlayer {
 			shash:0,
 			oute_kyokumen_map:KyokumenMap::new(),
 			kyokumen_map:KyokumenMap::new(),
+			remaining_turns:TURN_COUNT,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			learning_mode:learning_mode,
@@ -1392,10 +1470,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		kinds.insert(String::from("MAX_PLY"),SysEventOptionKind::Num);
 		kinds.insert(String::from("MAX_PLY_MATE"),SysEventOptionKind::Num);
 		kinds.insert(String::from("MAX_PLY_TIMELIMIT"),SysEventOptionKind::Num);
+		kinds.insert(String::from("TURN_COUNT"),SysEventOptionKind::Num);
+		kinds.insert(String::from("MIN_TURN_COUNT"),SysEventOptionKind::Num);
 		kinds.insert(String::from("Threads"),SysEventOptionKind::Num);
 		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
 		kinds.insert(String::from("NetworkDelay"),SysEventOptionKind::Num);
 		kinds.insert(String::from("DispEvaluteScore"),SysEventOptionKind::Bool);
+		kinds.insert(String::from("AdjustDepth"),SysEventOptionKind::Bool);
 
 		Ok(kinds)
 	}
@@ -1406,9 +1487,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		options.insert(String::from("MAX_PLY"),UsiOptType::Spin(0,1000,Some(MAX_PLY as i64)));
 		options.insert(String::from("MAX_PLY_MATE"),UsiOptType::Spin(0,10000,Some(0)));
 		options.insert(String::from("MAX_PLY_TIMELIMIT"),UsiOptType::Spin(0,300000,Some(MAX_PLY_TIMELIMIT as i64)));
+		options.insert(String::from("TURN_COUNT"),UsiOptType::Spin(0,1000,Some(TURN_COUNT as i64)));
+		options.insert(String::from("MIN_TURN_COUNT"),UsiOptType::Spin(0,1000,Some(MIN_TURN_COUNT as i64)));
 		options.insert(String::from("Threads"),UsiOptType::Spin(1,100,Some(MAX_THREADS as i64)));
 		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY as i64)));
 		options.insert(String::from("DispEvaluteScore"),UsiOptType::Check(Some(DEFALUT_DISPLAY_EVALUTE_SCORE)));
+		options.insert(String::from("AdjustDepth"),UsiOptType::Check(Some(DEFAULT_ADJUST_DEPTH)));
+
 		Ok(options)
 	}
 	fn take_ready(&mut self) -> Result<(),CommonError> {
@@ -1467,6 +1552,14 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							_ => DEFALUT_DISPLAY_EVALUTE_SCORE,
 						}
 					},
+					"AdjustDepth" => {
+						search.adjust_depth =  match value {
+							SysEventOption::Bool(b) => {
+								b
+							},
+							_ => DEFAULT_ADJUST_DEPTH,
+						}
+					},
 					"MAX_PLY" => {
 						search.max_ply = match value {
 							SysEventOption::Num(0) => {
@@ -1501,13 +1594,29 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							_ => None,
 						};
 					},
+					"TURN_COUNT" => {
+						search.turn_count = match value {
+							SysEventOption::Num(c) => {
+								c as u32
+							},
+							_ => TURN_COUNT,
+						};
+					},
+					"MIN_TURN_COUNT" => {
+						search.min_turn_count = match value {
+							SysEventOption::Num(c) => {
+								c as u32
+							},
+							_ => MIN_TURN_COUNT,
+						};
+					},
 					_ => (),
 				}
 				Ok(())
 			},
 			None => {
 				Err(CommonError::Fail(String::from(
-					"Could not get a mutable reference of evaluator."
+					"Could not get a mutable reference of searcher."
 				)))
 			}
 		}
@@ -1516,6 +1625,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.kyokumen = None;
 		self.history.clear();
 		self.count_of_move_started = 0;
+		self.remaining_turns = self.search.turn_count;
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,banmen:Banmen,
@@ -1619,6 +1729,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let mc = &kyokumen.mc;
 
 		let limit = limit.to_instant(teban,think_start_time);
+		let current_limit = limit.map(|l| think_start_time + (l  - think_start_time) / self.remaining_turns);
+
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 		let kyokumen_map = self.kyokumen_map.clone();
 		let oute_kyokumen_map = self.oute_kyokumen_map.clone();
@@ -1662,7 +1774,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&mut Some(KyokumenMap::new()),
 							&oute_kyokumen_map,
 							mhash,shash,
-							limit, base_depth, 1, base_depth,
+							limit,
+							current_limit,
+							base_depth, 1, base_depth,
+							1,
 							&stop,
 							&quited,
 							strategy,
@@ -1686,6 +1801,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					}
 				};
+
+				if self.remaining_turns > self.search.min_turn_count {
+					self.remaining_turns -= 1;
+				}
 
 				if let BestMove::Move(m,_) = result {
 					let h = match self.history.last() {
