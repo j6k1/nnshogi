@@ -401,7 +401,7 @@ mod checkmate {
 								_:bool,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 								hasher:&Search,
-								current_depth:u32,
+								_:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
@@ -477,7 +477,7 @@ mod checkmate {
 				}
 			}
 
-			let mut comparator = self.response_oute_comparator.clone();
+			let mut comparator = self.oute_comparator.clone();
 
 			pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
@@ -722,7 +722,7 @@ mod checkmate {
 				}
 			}
 
-			let mut comparator = self.oute_comparator.clone();
+			let mut comparator = self.response_oute_comparator.clone();
 
 			pmvs.sort_by(|a,b| comparator.cmp(a,b));
 
