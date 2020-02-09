@@ -157,6 +157,7 @@ pub struct Search {
 	max_depth:u32,
 	max_threads:u32,
 	max_ply:Option<u32>,
+	max_ply_mate:Option<u32>,
 	max_ply_timelimit:Option<Duration>,
 	network_delay:u32,
 	display_evalute_score:bool,
@@ -195,6 +196,7 @@ impl Search {
 			max_depth:MAX_DEPTH,
 			max_threads:MAX_THREADS,
 			max_ply:Some(MAX_PLY),
+			max_ply_mate:None,
 			max_ply_timelimit:max_ply_timelimit,
 			network_delay:NETWORK_DELAY,
 			display_evalute_score:DEFALUT_DISPLAY_EVALUTE_SCORE,
@@ -1380,6 +1382,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		kinds.insert(String::from("USI_Ponder"),SysEventOptionKind::Bool);
 		kinds.insert(String::from("MaxDepth"),SysEventOptionKind::Num);
 		kinds.insert(String::from("MAX_PLY"),SysEventOptionKind::Num);
+		kinds.insert(String::from("MAX_PLY_MATE"),SysEventOptionKind::Num);
 		kinds.insert(String::from("MAX_PLY_TIMELIMIT"),SysEventOptionKind::Num);
 		kinds.insert(String::from("Threads"),SysEventOptionKind::Num);
 		kinds.insert(String::from("BaseDepth"),SysEventOptionKind::Num);
@@ -1393,6 +1396,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		options.insert(String::from("BaseDepth"),UsiOptType::Spin(1,100,Some(BASE_DEPTH as i64)));
 		options.insert(String::from("MaxDepth"),UsiOptType::Spin(1,100,Some(MAX_DEPTH as i64)));
 		options.insert(String::from("MAX_PLY"),UsiOptType::Spin(0,1000,Some(MAX_PLY as i64)));
+		options.insert(String::from("MAX_PLY_MATE"),UsiOptType::Spin(0,10000,Some(0)));
 		options.insert(String::from("MAX_PLY_TIMELIMIT"),UsiOptType::Spin(0,300000,Some(MAX_PLY_TIMELIMIT as i64)));
 		options.insert(String::from("Threads"),UsiOptType::Spin(1,100,Some(MAX_THREADS as i64)));
 		options.insert(String::from("NetworkDelay"),UsiOptType::Spin(0,10000,Some(NETWORK_DELAY as i64)));
@@ -1464,6 +1468,17 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 								Some(depth as u32)
 							},
 							_ => Some(MAX_PLY),
+						};
+					},
+					"MAX_PLY_MATE" => {
+						search.max_ply_mate = match value {
+							SysEventOption::Num(0) => {
+								None
+							},
+							SysEventOption::Num(depth) => {
+								Some(depth as u32)
+							},
+							_ => None,
 						};
 					},
 					"MAX_PLY_TIMELIMIT" => {
@@ -1734,7 +1749,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		};
 
 		match solver.checkmate(false,teban, state, mc,
-									None,
+									self.search.max_ply_mate.clone(),
 									None,
 									&mut KyokumenMap::new(),
 									&mut Some(KyokumenMap::new()),
