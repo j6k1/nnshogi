@@ -143,6 +143,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&Arc<MochigomaCollections>,
 						&KyokumenMap<u64,u32>,
 						&mut Option<KyokumenMap<u64,bool>>,
+						&mut Option<KyokumenMap<u64,bool>>,
 						&KyokumenMap<u64,()>,
 						u64,u64,Option<Instant>,
 						u32,u32,u32,
@@ -393,7 +394,8 @@ impl Search {
 								prev_mc:&Option<Arc<MochigomaCollections>>,
 								obtained:Option<ObtainKind>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								self_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -624,7 +626,8 @@ impl Search {
 					teban,state,
 					alpha,beta,mc,
 					current_kyokumen_map,
-					already_oute_map,
+					self_already_oute_map,
+					opponent_already_oute_map,
 					oute_kyokumen_map,
 					mhash,shash,limit,depth,
 					current_depth,base_depth,
@@ -708,7 +711,8 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								self_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -796,7 +800,8 @@ impl Search {
 									-b,-alpha,Some(m.to_move()),&mc,
 									&prev_state,&prev_mc,
 									obtained,&current_kyokumen_map,
-									already_oute_map,
+									opponent_already_oute_map,
+									self_already_oute_map,
 									&oute_kyokumen_map,
 									mhash,shash,limit,depth-1,
 									current_depth+1,base_depth,
@@ -863,7 +868,8 @@ impl Search {
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
-								already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								self_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
+								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
 								limit:Option<Instant>,
@@ -976,7 +982,8 @@ impl Search {
 								let self_nn_snapshot = self_nn_snapshot.clone();
 								let state = Arc::new(state);
 								let mc = Arc::new(mc);
-								let mut already_oute_map = already_oute_map.clone();
+								let mut self_already_oute_map = self_already_oute_map.clone();
+								let mut opponent_already_oute_map = opponent_already_oute_map.clone();
 								let limit = limit.clone();
 								let stop = stop.clone();
 								let quited = quited.clone();
@@ -1025,7 +1032,8 @@ impl Search {
 											-b,-a,Some(m.to_move()),&mc,
 											&prev_state,&prev_mc,
 											obtained,&current_kyokumen_map,
-											&mut already_oute_map,
+											&mut opponent_already_oute_map,
+											&mut self_already_oute_map,
 											&oute_kyokumen_map,
 											mhash,shash,limit,depth-1,
 											current_depth+1,base_depth,
@@ -1650,6 +1658,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&prev_state,
 							&prev_mc,
 							None, &kyokumen_map,
+							&mut Some(KyokumenMap::new()),
 							&mut Some(KyokumenMap::new()),
 							&oute_kyokumen_map,
 							mhash,shash,
