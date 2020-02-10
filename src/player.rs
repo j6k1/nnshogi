@@ -878,20 +878,7 @@ impl Search {
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 					) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-						match search.evalute_by_diff(evalutor,
-										&self_nn_snapshot,
-										false,
-										teban,
-										&prev_state.as_ref(),&prev_mc.as_ref(),
-										&Some(m.to_move()),info_sender,on_error_handler) {
-							Ok((r,_)) => {
-								return r;
-							},
-							Err(ref e) => {
-								let _ = on_error_handler.lock().map(|h| h.call(e));
-								return Evaluation::Error;
-							}
-						}
+						return Evaluation::Result(scoreval,best_move);
 					}
 				},
 				None => (),
@@ -986,21 +973,7 @@ impl Search {
 							current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
 							search.termination(receiver, threads, stop);
-
-							match search.evalute_by_diff(evalutor,
-											&self_nn_snapshot,
-											false,
-											teban,
-											&Some(state),&Some(mc),
-											&Some(m.to_move()),info_sender,on_error_handler) {
-								Ok((r,_)) => {
-									return r;
-								}
-								Err(ref e) => {
-									let _ = on_error_handler.lock().map(|h| h.call(e));
-									return Evaluation::Error;
-								}
-							}
+							return Evaluation::Result(scoreval,best_move);
 						}
 					},
 					(Evaluation::Error,_) => {
