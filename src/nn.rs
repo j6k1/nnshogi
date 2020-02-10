@@ -387,8 +387,11 @@ impl Intelligence {
 
 						let dk = kinds[dy as usize][dx as usize];
 
-						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
+						if dk != KomaKind::Blank {
 							d.push((self.input_index_of_banmen(t,dk,dx,dy)?,-1f64));
+						}
+
+						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
 							d.push((self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?,1f64));
 						}
 
