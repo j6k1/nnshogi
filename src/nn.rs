@@ -625,14 +625,26 @@ impl Intelligence {
 			Teban::Gote => mg,
 		};
 
-		let offset = match kind {
-			MochigomaKind::Fu => 81 * 28,
-			MochigomaKind::Kyou => 81 * 28 + 18,
-			MochigomaKind::Kei => 81 * 28 + 18 + 4,
-			MochigomaKind::Gin => 81 * 28 + 18 + 8,
-			MochigomaKind::Kin => 81 * 28 + 18 + 12,
-			MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-			MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+		let offset = if is_opposite {
+			match kind {
+				MochigomaKind::Fu => 81 * 28 + 18 + 20,
+				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
+			}
+		} else {
+			match kind {
+				MochigomaKind::Fu => 81 * 28,
+				MochigomaKind::Kyou => 81 * 28 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+			}
 		};
 
 		match mc.get(&kind) {
@@ -664,18 +676,30 @@ impl Intelligence {
 			Teban::Gote => mg,
 		};
 
+		let offset = if is_opposite {
+			match kind {
+				MochigomaKind::Fu => 81 * 28 + 18 + 20,
+				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
+			}
+		} else {
+			match kind {
+				MochigomaKind::Fu => 81 * 28,
+				MochigomaKind::Kyou => 81 * 28 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+			}
+		};
+
 		match mc.get(&kind) {
 			Some(c) if *c > 0 => {
-				let offset = match kind {
-					MochigomaKind::Fu => 81 * 28,
-					MochigomaKind::Kyou => 81 * 28 + 18,
-					MochigomaKind::Kei => 81 * 28 + 18 + 4,
-					MochigomaKind::Gin => 81 * 28 + 18 + 8,
-					MochigomaKind::Kin => 81 * 28 + 18 + 12,
-					MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-					MochigomaKind::Hisha => 81 * 28 + 18 + 18,
-				};
-
 				let offset = offset as usize;
 
 				Ok(offset + (*c as usize - 1))

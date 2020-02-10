@@ -524,6 +524,8 @@ impl Search {
 		};
 
 		let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
+			// この差分適用はself側ではなく相手の駒の移動を適用するので相手の持ち駒を参照するために
+			// is_oppositeをtrueにする。
 			let self_nn_snapshot = 	match self.evalute_by_diff(evalutor,
 																&self_nn_snapshot,
 																true,
@@ -873,7 +875,7 @@ impl Search {
 							Some(best_move) => Evaluation::Timeout(Some(best_move)),
 							None => Evaluation::Timeout(Some(m.to_move())),
 						};
-					} else if (search.adjust_depth && nodes <= std::u32::MAX as u64 &&
+					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 					) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
 						match search.evalute_by_diff(evalutor,
@@ -980,7 +982,7 @@ impl Search {
 							}
 						}
 
-						if (search.adjust_depth && nodes <= std::u32::MAX as u64 &&
+						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 							current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
 							search.termination(receiver, threads, stop);
