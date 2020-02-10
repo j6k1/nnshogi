@@ -21,6 +21,7 @@ pub enum MaybeMate {
 	MaxNodes,
 	Timeout,
 	Continuation,
+	Unknown,
 }
 pub struct Solver<E> where E: PlayerError {
 	error_type:PhantomData<E>
@@ -349,7 +350,7 @@ mod checkmate {
 			} else {
 				let current_depth = self.stack.len() as u32;
 
-				if current_depth % 2 == 0 {
+				let r = if current_depth % 2 == 0 {
 					self.oute_only(solver,
 										strict_moves,
 										max_depth, max_nodes,
@@ -367,7 +368,15 @@ mod checkmate {
 										check_timelimit, stop,
 										on_searchstart,
 										event_queue, event_dispatcher)
+				};
+
+				if let MaybeMate::Nomate = r {
+					if self.stack.len() == 0 && self.current_frame.mvs.len() == 0 && self.current_frame.has_unknown {
+						return MaybeMate::Unknown
+					}
 				}
+
+				r
 			}
 		}
 
