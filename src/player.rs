@@ -1159,6 +1159,15 @@ impl Search {
 									return Evaluation::Result(scoreval,best_move);
 								}
 							}
+
+							let nodes = node_count * mvs_count - processed_nodes as u64;
+
+							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
+								current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+							) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+								search.termination(receiver, threads, stop);
+								return Evaluation::Result(scoreval,best_move);
+							}
 						},
 						(Evaluation::Error,_) => {
 							search.termination(receiver, threads, stop);
