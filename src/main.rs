@@ -44,6 +44,7 @@ use learning::CsaLearnener;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+	max_threads:Option<u32>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,
@@ -562,6 +563,7 @@ fn run() -> Result<(),ApplicationError> {
 								NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
 								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
 								[
+									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
 									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
@@ -573,6 +575,7 @@ fn run() -> Result<(),ApplicationError> {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
+									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
 									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
