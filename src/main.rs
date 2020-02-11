@@ -530,6 +530,13 @@ fn run() -> Result<(),ApplicationError> {
 														Teban::Sente => String::from("先手"),
 														Teban::Gote => String::from("後手"),
 													};
+													print!("{}の反則負けです（王の自滅手）\n",t);
+												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::Suicide)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
 													print!("{}の反則負けです（王手に応じなかった）\n",t);
 												},
 												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Timeover(t)) => {
