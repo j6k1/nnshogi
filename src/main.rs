@@ -52,6 +52,7 @@ pub struct Config {
 	min_turn_count:Option<u32>,
 	adjust_depth:Option<bool>,
 	time_limit:Option<u32>,
+	time_limit_byoyomi:Option<u32>,
 	uptime:Option<String>,
 	number_of_games:Option<u32>,
 	silent:bool,
@@ -173,10 +174,14 @@ fn run() -> Result<(),ApplicationError> {
 		}
 
 		let time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
-			if l == 0 {
+			if l == 0 && config.time_limit_byoyomi.unwrap_or(0) ==0 {
 				UsiGoTimeLimit::Infinite
+			} else if config.time_limit_byoyomi.unwrap_or(0) == 0 {
+				UsiGoTimeLimit::Limit(Some((l,l)),None)
+			} else if l == 0 {
+				UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(config.time_limit_byoyomi.unwrap_or(0))))
 			} else {
-				UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
+				UsiGoTimeLimit::Limit(Some((l,l)),Some(UsiGoByoyomiOrInc::Byoyomi(config.time_limit_byoyomi.unwrap_or(0))))
 			}
 		});
 
