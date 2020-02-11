@@ -188,10 +188,26 @@ fn run() -> Result<(),ApplicationError> {
 		let time_limit:UsiGoTimeLimit = match matches.opt_str("timelimit") {
 			Some(time_limit) => {
 				let l = time_limit.parse()?;
-				if l == 0 {
-					UsiGoTimeLimit::Infinite
+				let b = matches.opt_str("timelimit_byoyomi");
+
+				if let Some(b) = b {
+					let b = b.parse()?;
+
+					if l == 0 && b ==0 {
+						UsiGoTimeLimit::Infinite
+					} else if b == 0 {
+						UsiGoTimeLimit::Limit(Some((l,l)),None)
+					} else if l == 0 {
+						UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(b)))
+					} else {
+						UsiGoTimeLimit::Limit(Some((l,l)),Some(UsiGoByoyomiOrInc::Byoyomi(b)))
+					}
 				} else {
-					UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
+					if l == 0 {
+						UsiGoTimeLimit::Infinite
+					} else {
+						UsiGoTimeLimit::Limit(Some((l,l)),None)
+					}
 				}
 			}
 			None => time_limit,
