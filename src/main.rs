@@ -46,6 +46,11 @@ use learning::CsaLearnener;
 pub struct Config {
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
+	max_ply:Option<u32>,
+	max_ply_timelimit:Option<u32>,
+	turn_count:Option<u32>,
+	min_turn_count:Option<u32>,
+	adjust_depth:Option<bool>,
 	time_limit:Option<u32>,
 	uptime:Option<String>,
 	number_of_games:Option<u32>,
@@ -538,12 +543,22 @@ fn run() -> Result<(),ApplicationError> {
 								[
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
+									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
+									("MAX_PLY_TIMELIMIT",SysEventOption::Num(config.max_ply_timelimit.unwrap_or(0) as i64)),
+									("TURN_COUNT",SysEventOption::Num(config.turn_count.unwrap_or(0) as i64)),
+									("MIN_TURN_COUNT",SysEventOption::Num(config.min_turn_count.unwrap_or(0) as i64)),
+									("AdjustDepth",SysEventOption::Bool(config.adjust_depth.unwrap_or(false))),
 								].iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
+									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
+									("MAX_PLY_TIMELIMIT",SysEventOption::Num(config.max_ply_timelimit.unwrap_or(0) as i64)),
+									("TURN_COUNT",SysEventOption::Num(config.turn_count.unwrap_or(0) as i64)),
+									("MIN_TURN_COUNT",SysEventOption::Num(config.min_turn_count.unwrap_or(0) as i64)),
+									("AdjustDepth",SysEventOption::Bool(config.adjust_depth.unwrap_or(false))),
 								].iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
