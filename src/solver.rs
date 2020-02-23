@@ -695,7 +695,7 @@ mod checkmate {
 				});
 
 				if let Some(true) = completed {
-					if strict_moves {
+					if !strict_moves {
 						return MaybeMate::MateMoves(current_depth,vec![m]);
 					}
 				} else if let Some(false) = completed {

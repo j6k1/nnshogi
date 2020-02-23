@@ -494,7 +494,7 @@ impl Search {
 											self.max_ply,
 											None,
 											&mut oute_kyokumen_map.clone(),
-											&mut Some(KyokumenMap::new()),
+											self_already_oute_map,
 											&mut current_kyokumen_map.clone(),
 											&*this.clone(),
 											mhash, shash,
