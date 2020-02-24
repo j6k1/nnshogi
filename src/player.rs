@@ -47,7 +47,7 @@ const DAN_MAX:usize = 9;
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Evaluation {
 	Result(Score,Option<Move>),
-	Timeout(Option<Move>),
+	Timeout(Option<Score>,Option<Move>),
 	Error,
 }
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -430,7 +430,7 @@ impl Search {
 		if depth == 0 || current_depth == self.max_depth {
 			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(None);
+				return Evaluation::Timeout(None,None);
 			} else {
 				if let Some(&s) = kyokumen_score_map.get(teban,&mhash,&shash) {
 					return Evaluation::Result(Score::Value(s),None);
@@ -450,14 +450,14 @@ impl Search {
 
 		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None);
+			return Evaluation::Timeout(None,None);
 		}
 
 		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),&*state) {
 			if depth == 0 || current_depth == self.max_depth {
 				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 					self.send_message(info_sender, on_error_handler, "think timeout!");
-					return Evaluation::Timeout(None);
+					return Evaluation::Timeout(None,None);
 				}
 			}
 
@@ -515,7 +515,7 @@ impl Search {
 
 			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 				self.send_message(info_sender, on_error_handler, "think timeout!");
-				return Evaluation::Timeout(None);
+				return Evaluation::Timeout(None,None);
 			}
 
 			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &*state, &*mc);
@@ -570,7 +570,7 @@ impl Search {
 			return Evaluation::Result(Score::NEGINFINITE,None);
 		} else if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].to_move()));
+			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
 		} else if mvs.len() == 1 {
 			let r = match self.evalute_by_diff(evalutor,&self_nn_snapshot,false,teban,&Some(&state), &Some(&mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
 				Ok((r,_)) => r,
@@ -587,7 +587,7 @@ impl Search {
 
 		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
-			return Evaluation::Timeout(Some(mvs[0].to_move()));
+			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
 		}
 
 		let mut mvs = mvs.into_iter().map(|m| {
@@ -838,10 +838,17 @@ impl Search {
 									stop,quited,Search::single_search,
 									kyokumen_score_map) {
 
-									Evaluation::Timeout(_) => {
+									Evaluation::Timeout(s,_) => {
+										if let Some(s) = s {
+											if -s > scoreval {
+												scoreval = -s;
+												best_move = Some(m.to_move());
+											}
+										}
+
 										return match best_move {
-											Some(best_move) => Evaluation::Timeout(Some(best_move)),
-											None => Evaluation::Timeout(Some(m.to_move())),
+											Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
+											None => Evaluation::Timeout(None,Some(m.to_move())),
 										};
 									},
 									Evaluation::Result(s,_) => {
@@ -872,8 +879,8 @@ impl Search {
 					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
 						search.send_message(info_sender, on_error_handler, "think timeout!");
 						return match best_move {
-							Some(best_move) => Evaluation::Timeout(Some(best_move)),
-							None => Evaluation::Timeout(Some(m.to_move())),
+							Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
+							None => Evaluation::Timeout(None,Some(m.to_move())),
 						};
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
@@ -935,7 +942,7 @@ impl Search {
 					Ok(r) => r,
 					Err(ref e) => {
 						let _ = on_error_handler.lock().map(|h| h.call(e));
-						search.termination(receiver, threads, stop);
+						let _ = search.termination(receiver, threads, stop, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				};
@@ -944,15 +951,24 @@ impl Search {
 				let nodes = node_count * mvs_count - processed_nodes as u64;
 
 				match r {
-					(Evaluation::Timeout(_),m) => {
+					(Evaluation::Timeout(s,_),m) => {
+						if let Some(s) = s {
+							if -s > scoreval {
+								scoreval = -s;
+								best_move = Some(m.to_move());
+							}
+						}
+
 						match best_move {
 							Some(best_move) => {
-								search.termination(receiver, threads, stop);
-								return Evaluation::Timeout(Some(best_move));
+								let r = search.termination(receiver, threads, stop, scoreval, Some(best_move));
+								let (scoreval,best_move) = r;
+								return Evaluation::Timeout(scoreval,best_move);
 							},
 							None => {
-								search.termination(receiver, threads, stop);
-								return Evaluation::Timeout(Some(m.to_move()));
+								let r = search.termination(receiver, threads, stop, scoreval, best_move);
+								let (scoreval,best_move) = r;
+								return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
 							},
 						};
 					},
@@ -964,20 +980,20 @@ impl Search {
 								alpha = scoreval;
 							}
 							if scoreval >= beta {
-								search.termination(receiver, threads, stop);
-								return Evaluation::Result(scoreval,best_move);
+								let (scoreval,best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 							}
 						}
 
 						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 							current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-							search.termination(receiver, threads, stop);
-							return Evaluation::Result(scoreval,best_move);
+							let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+							return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 						}
 					},
 					(Evaluation::Error,_) => {
-						search.termination(receiver, threads, stop);
+						let _ = search.termination(receiver, threads, stop, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				}
@@ -1015,8 +1031,8 @@ impl Search {
 											alpha = scoreval;
 										}
 										if scoreval >= beta {
-											search.termination(receiver, threads, stop);
-											return Evaluation::Result(scoreval,best_move);
+											let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+											return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 										}
 									}
 									continue;
@@ -1114,11 +1130,11 @@ impl Search {
 						let _ = event_dispatcher.dispatch_events(search,&*event_queue);
 
 						if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-							search.termination(receiver, threads, stop);
+							let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
 
 							return match best_move {
-								Some(best_move) => Evaluation::Timeout(Some(best_move)),
-								None => Evaluation::Timeout(Some(m.to_move())),
+								Some(best_move) => Evaluation::Timeout(scoreval,Some(best_move)),
+								None => Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move()))),
 							};
 						}
 					},
@@ -1135,15 +1151,22 @@ impl Search {
 					threads += 1;
 
 					match r {
-						(Evaluation::Timeout(_),m) => {
+						(Evaluation::Timeout(s,_),m) => {
+							if let Some(s) = s {
+								if -s > scoreval {
+									scoreval = -s;
+									best_move = Some(m.to_move());
+								}
+							}
+
 							match best_move {
 								Some(best_move) => {
-									search.termination(receiver, threads, stop);
-									return Evaluation::Timeout(Some(best_move));
+									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, Some(best_move));
+									return Evaluation::Timeout(scoreval,best_move);
 								},
 								None => {
-									search.termination(receiver, threads, stop);
-									return Evaluation::Timeout(Some(m.to_move()));
+									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+									return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
 								},
 							};
 						},
@@ -1155,8 +1178,8 @@ impl Search {
 									alpha = scoreval;
 								}
 								if scoreval >= beta {
-									search.termination(receiver, threads, stop);
-									return Evaluation::Result(scoreval,best_move);
+									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+									return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 								}
 							}
 
@@ -1165,12 +1188,12 @@ impl Search {
 							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 								current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 							) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-								search.termination(receiver, threads, stop);
-								return Evaluation::Result(scoreval,best_move);
+								let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 							}
 						},
 						(Evaluation::Error,_) => {
-							search.termination(receiver, threads, stop);
+							let _ = search.termination(receiver, threads, stop, scoreval, best_move);
 							return Evaluation::Error;
 						}
 					}
@@ -1178,7 +1201,7 @@ impl Search {
 				Err(ref e) => {
 					threads += 1;
 					let _ = on_error_handler.lock().map(|h| h.call(e));
-					search.termination(receiver, threads, stop);
+					let _ = search.termination(receiver, threads, stop, scoreval, best_move);
 					return Evaluation::Error;
 				}
 			};
@@ -1187,11 +1210,38 @@ impl Search {
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,threads:u32,stop:&Arc<AtomicBool>) {
+	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,
+				   threads:u32,stop:&Arc<AtomicBool>,
+				   score:Score,best_move:Option<Move>) -> (Option<Score>,Option<Move>) {
 		stop.store(true,atomic::Ordering::Release);
 
+		let mut score = score;
+		let mut best_move = best_move;
+
 		for _ in threads..self.max_threads {
-			let _ = r.recv();
+			if let Ok((r,m)) = r.recv() {
+				match r {
+					Evaluation::Result(s, _) => {
+						if -s > score {
+							score = -s;
+							best_move = Some(m.to_move());
+						}
+					},
+					Evaluation::Timeout(Some(s), _) => {
+						if -s > score {
+							score = -s;
+							best_move = Some(m.to_move());
+						}
+					},
+					_ => ()
+				}
+			}
+		}
+
+		if best_move.is_some() {
+			(Some(score), best_move)
+		} else {
+			(None, best_move)
 		}
 	}
 
@@ -1772,13 +1822,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					Evaluation::Result(_,None) => {
 						BestMove::Resign
 					},
-					Evaluation::Timeout(Some(m)) => {
+					Evaluation::Timeout(_,Some(m)) => {
 						BestMove::Move(m,None)
 					}
-					Evaluation::Timeout(None) if quited.load(atomic::Ordering::Acquire) => {
+					Evaluation::Timeout(_,None) if quited.load(atomic::Ordering::Acquire) => {
 						BestMove::Abort
 					},
-					Evaluation::Timeout(None) => {
+					Evaluation::Timeout(_,None) => {
 						BestMove::Resign
 					},
 					Evaluation::Error => {
