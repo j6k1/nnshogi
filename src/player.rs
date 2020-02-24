@@ -1962,7 +1962,38 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				Some(ref mut evalutor) => {
 					match Arc::get_mut(evalutor) {
 						Some(evalutor)  => {
-							evalutor.learning(true,teban,last_teban,self.history.clone(),s,&*event_queue)?;
+							const BASE_RATE:f64 = 0.96;
+
+							let mut rate = 1.0f64;
+							let mut rnd = rand::thread_rng();
+
+							evalutor.learning_by_training_data(last_teban,
+															   self.history.clone(),
+															   s,|s,t| {
+								let r = match s {
+									&GameEndState::Win if t == teban => {
+										let a:f64 = rnd.gen();
+										let b:f64 = 1f64 - a;
+										Some((a / 2f64 + a / 2f64 * rate, b / 2f64 + b / 2f64 * rate))
+									},
+									&GameEndState::Win => {
+										Some((0.5 - 0.5 * rate, 0.5 - 0.5 * rate))
+									},
+									&GameEndState::Lose if t == teban => {
+										Some((0.5 - 0.5 * rate, 0.5 - 0.5 * rate))
+									},
+									&GameEndState::Lose => {
+										let a:f64 = rnd.gen();
+										let b:f64 = 1f64 - a;
+										Some((a / 2f64 + a / 2f64 * rate, b / 2f64 + b / 2f64 * rate))
+									},
+									_ => None
+								};
+
+								rate = rate * BASE_RATE;
+
+								r
+							}, &*event_queue)?;
 						},
 						None => {
 							return Err(CommonError::Fail(String::from(

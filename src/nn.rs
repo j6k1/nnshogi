@@ -172,6 +172,45 @@ impl Intelligence {
 		(answer * F64_FRACTION_MAX as f64) as i64
 	}
 
+
+	pub fn learning_by_training_data<'a,D>(&mut self,
+						last_teban:Teban,
+						history:Vec<(Banmen,MochigomaCollections,u64,u64)>, s:&GameEndState,
+						mut training_data_generator:D,
+						event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+						-> Result<(),CommonError> where D: FnMut(&GameEndState,Teban) -> Option<(f64,f64)> {
+		let mut t = last_teban;
+
+		for h in history.iter().rev() {
+			match self.handle_events(&*event_queue) {
+				Err(_) => {
+					return Err(CommonError::Fail(
+						String::from("An error occurred while processing the event.")));
+				},
+				_ => (),
+			}
+
+			if self.quited {
+				break;
+			}
+
+			let mut input:Vec<f64> = Vec::new();
+			input.extend_from_slice(&self.make_input(t,&h.0,&h.1));
+
+			if let Some((a,b)) = training_data_generator(s,t) {
+				self.nna.learn(&input, &(0..1).map(|_| a)
+					.collect::<Vec<f64>>())?;
+				self.nnb.learn(&input, &(0..1).map(|_| b)
+					.collect::<Vec<f64>>())?;
+			}
+
+			t = t.opposite();
+		}
+
+		self.save()
+	}
+
+	/*
 	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
 		teban:Teban,last_teban:Teban,
 		history:Vec<(Banmen,MochigomaCollections,u64,u64)>,s:&GameEndState,
@@ -250,7 +289,7 @@ impl Intelligence {
 
 		self.save()
 	}
-
+	*/
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
 			PersistenceWithBinFile::new(
