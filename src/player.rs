@@ -92,8 +92,8 @@ impl PartialOrd for Score {
 				match *other {
 					Score::NegativeValue(r) => l.partial_cmp(&r)?,
 					Score::Value(r) => r.partial_cmp(&l)?,
-					Score::INFINITE => Ordering::Greater,
-					Score::NEGINFINITE => Ordering::Less,
+					Score::INFINITE => Ordering::Less,
+					Score::NEGINFINITE => Ordering::Greater,
 				}
 			}
 		})
