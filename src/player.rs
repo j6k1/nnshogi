@@ -90,8 +90,8 @@ impl PartialOrd for Score {
 			},
 			Score::NegativeValue(l) => {
 				match *other {
-					Score::NegativeValue(r) => l.partial_cmp(&r)?,
-					Score::Value(r) => r.partial_cmp(&l)?,
+					Score::NegativeValue(r) => r.partial_cmp(&l)?,
+					Score::Value(r) => l.partial_cmp(&r)?,
 					Score::INFINITE => Ordering::Less,
 					Score::NEGINFINITE => Ordering::Greater,
 				}
@@ -1969,7 +1969,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 							evalutor.learning_by_training_data(last_teban,
 															   self.history.clone(),
-															   s,|s,t| {
+															   s,move |s,t| {
 								let r = match s {
 									&GameEndState::Win if t == teban => {
 										let a:f64 = rnd.gen();

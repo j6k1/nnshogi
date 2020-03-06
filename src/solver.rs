@@ -604,6 +604,10 @@ mod checkmate {
 
 						let mvs = Rule::oute_only_moves_all(teban.opposite(), &next, &nmc);
 
+						if mvs.len() == 0 {
+							return MaybeMate::Nomate;
+						}
+
 						let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
 							state:next,
@@ -818,6 +822,10 @@ mod checkmate {
 				match next {
 					(next, nmc,_) => {
 						let mvs = Rule::respond_oute_only_moves_all(teban.opposite(), &next, &nmc);
+
+						if mvs.len() == 0 {
+							return MaybeMate::MateMoves(current_depth+1,vec![m]);
+						}
 
 						let prev_frame = mem::replace(&mut self.current_frame, CheckmateStackFrame {
 							teban:teban.opposite(),
