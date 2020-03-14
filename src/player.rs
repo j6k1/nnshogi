@@ -14,7 +14,6 @@ use std::sync::mpsc::Receiver;
 use error::*;
 use std::num::Wrapping;
 use std::time::{Instant,Duration};
-use std::cmp::Ordering;
 use std::ops::Neg;
 use std::ops::Add;
 use std::ops::Sub;
@@ -50,11 +49,10 @@ enum Evaluation {
 	Timeout(Option<Score>,Option<Move>),
 	Error,
 }
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
 enum Score {
 	NEGINFINITE,
 	Value(i64),
-	NegativeValue(i64),
 	INFINITE,
 }
 impl Neg for Score {
@@ -62,41 +60,10 @@ impl Neg for Score {
 
 	fn neg(self) -> Score {
 		match self {
+			Score::Value(v) => Score::Value(-v),
 			Score::INFINITE => Score::NEGINFINITE,
 			Score::NEGINFINITE => Score::INFINITE,
-			Score::Value(v) => Score::NegativeValue(v),
-			Score::NegativeValue(v) => Score::Value(v),
 		}
-	}
-}
-impl PartialOrd for Score {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering>	{
-		Some(match *self {
-			Score::INFINITE if *other == Score::INFINITE => {
-				Ordering::Equal
-			},
-			Score::INFINITE => Ordering::Greater,
-			Score::NEGINFINITE if *other == Score::NEGINFINITE => {
-				Ordering::Equal
-			},
-			Score::NEGINFINITE => Ordering::Less,
-			Score::Value(l) => {
-				match *other {
-					Score::Value(r) => l.partial_cmp(&r)?,
-					Score::NegativeValue(r) => r.partial_cmp(&l)?,
-					Score::INFINITE => Ordering::Less,
-					Score::NEGINFINITE => Ordering::Greater,
-				}
-			},
-			Score::NegativeValue(l) => {
-				match *other {
-					Score::NegativeValue(r) => r.partial_cmp(&l)?,
-					Score::Value(r) => l.partial_cmp(&r)?,
-					Score::INFINITE => Ordering::Less,
-					Score::NEGINFINITE => Ordering::Greater,
-				}
-			}
-		})
 	}
 }
 impl Add<i64> for Score {
@@ -104,7 +71,6 @@ impl Add<i64> for Score {
 
 	fn add(self, other:i64) -> Self::Output {
 		match self {
-			Score::NegativeValue(v) => Score::NegativeValue(v + other),
 			Score::Value(v) => Score::Value(v + other),
 			Score::INFINITE => Score::INFINITE,
 			Score::NEGINFINITE => Score::NEGINFINITE,
@@ -116,7 +82,6 @@ impl Sub<i64> for Score {
 
 	fn sub(self, other:i64) -> Self::Output {
 		match self {
-			Score::NegativeValue(v) => Score::NegativeValue(v - other),
 			Score::Value(v) => Score::Value(v - other),
 			Score::INFINITE => Score::INFINITE,
 			Score::NEGINFINITE => Score::NEGINFINITE,
@@ -798,7 +763,7 @@ impl Search {
 
 							let repeat = match alpha {
 								Score::NEGINFINITE | Score::INFINITE => 1,
-								Score::Value(_) | Score::NegativeValue(_) => 2,
+								Score::Value(_) => 2,
 							};
 
 							let state = Arc::new(state);
@@ -1068,7 +1033,7 @@ impl Search {
 
 									let repeat = match alpha {
 										Score::NEGINFINITE | Score::INFINITE => 1,
-										Score::Value(_) | Score::NegativeValue(_) => 2,
+										Score::Value(_) => 2,
 									};
 
 									let mut a = alpha;
