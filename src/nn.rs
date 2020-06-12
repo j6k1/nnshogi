@@ -35,12 +35,12 @@ pub struct Intelligence {
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
-	learning_mode:bool,
+	enable_shake_shake:bool,
 	quited:bool,
 }
 pub const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
 impl Intelligence {
-	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,learning_mode:bool) -> Intelligence {
+	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,enable_shake_shake:bool) -> Intelligence {
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 		let n = Normal::new(0.0, 1.0).unwrap();
@@ -79,7 +79,7 @@ impl Intelligence {
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
-			learning_mode:learning_mode,
+			enable_shake_shake:enable_shake_shake,
 			quited:false,
 		}
 	}
@@ -101,7 +101,7 @@ impl Intelligence {
 		let nnaanswera = self.nna.solve(&input)?;
 		let nnbanswerb = self.nnb.solve(&input)?;
 
-		let (a,b) = if self.learning_mode {
+		let (a,b) = if self.enable_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -128,7 +128,7 @@ impl Intelligence {
 		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
 		let ssb = self.nnb.solve_diff(&input,&snapshot.1)?;
 
-		let (a,b) = if self.learning_mode {
+		let (a,b) = if self.enable_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -152,7 +152,7 @@ impl Intelligence {
 		let ssa = &snapshot.0;
 		let ssb = &snapshot.1;
 
-		let (a,b) = if self.learning_mode {
+		let (a,b) = if self.enable_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
