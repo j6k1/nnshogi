@@ -337,10 +337,6 @@ impl Intelligence {
 			&Banmen(ref kinds) => {
 				for y in 0..9 {
 					for x in 0..9 {
-						let (x,y) = match t {
-							Teban::Sente => (x,y),
-							Teban::Gote => (8 - x, 8 - y),
-						};
 						let kind = kinds[y][x];
 
 						if kind != KomaKind::Blank {

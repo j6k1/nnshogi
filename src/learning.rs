@@ -69,7 +69,7 @@ impl CsaLearnener {
 
 		let mut evalutor = Intelligence::new(String::from("data"),
 															String::from("nn.a.bin"),
-															String::from("nn.b.bin"),true);
+															String::from("nn.b.bin"),false);
 
 		print!("learning start... kifudir = {}\n", kifudir);
 
