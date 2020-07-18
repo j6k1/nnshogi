@@ -1927,7 +1927,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				Some(ref mut evalutor) => {
 					match Arc::get_mut(evalutor) {
 						Some(evalutor)  => {
-							const BASE_RATE:f64 = 0.96;
+//							const BASE_RATE:f64 = 0.96;
+							const BASE_RATE:f64 = 1.0;
 
 							let mut rate = 1.0f64;
 							let mut rnd = rand::thread_rng();
