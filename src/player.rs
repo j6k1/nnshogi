@@ -301,11 +301,13 @@ impl Search {
 	}
 	*/
 
-	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,snapshot:&Arc<(SnapShot,SnapShot)>,
-								is_opposite:bool,teban:Teban,state:&Option<&Arc<State>>,
+	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,
+								self_snapshot:&Arc<(SnapShot,SnapShot)>,
+								opponent_snapshot:&Arc<(SnapShot,SnapShot)>,
+								teban:Teban,state:&Option<&Arc<State>>,
 								mc:&Option<&Arc<MochigomaCollections>>,m:&Option<Move>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Result<(Evaluation,(SnapShot,SnapShot)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		-> Result<(Evaluation,(SnapShot,SnapShot),(SnapShot,SnapShot)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let state = match state {
 			&Some(ref state) => state,
 			&None => {
@@ -332,7 +334,9 @@ impl Search {
 			}
 		};
 
-		let (s,snapshot) = evalutor.evalute_by_diff(&snapshot,is_opposite,teban,state.get_banmen(),mc,m)?;
+		let (ss,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot,true,teban,state.get_banmen(),mc,m)?;
+		let (os,opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot,false,teban.opposite(),state.get_banmen(),mc,m)?;
+		let s = ss - os;
 
 		if self.display_evalute_score {
 			let teban_str = match teban {
@@ -342,15 +346,18 @@ impl Search {
 			self.send_message(info_sender, on_error_handler, &format!("evalute score =  {0: >17} ({1})",s,teban_str));
 		}
 
-		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),snapshot))
+		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),self_snapshot,opponent_snapshot))
 	}
 
-	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,snapshot:&Arc<(SnapShot,SnapShot)>)
+	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,
+						   self_snapshot:&Arc<(SnapShot,SnapShot)>,
+						   opponent_snapshot:&Arc<(SnapShot,SnapShot)>)
 		-> Evaluation {
 
-		let s = evalutor.evalute_by_snapshot(snapshot);
+		let ss = evalutor.evalute_by_snapshot(self_snapshot);
+		let os = evalutor.evalute_by_snapshot(opponent_snapshot);
 
-		Evaluation::Result(Score::Value(s),None)
+		Evaluation::Result(Score::Value(ss - os),None)
 	}
 
 	fn negascout<L,S>(self:&Arc<Self>,
@@ -400,7 +407,7 @@ impl Search {
 				if let Some(&s) = kyokumen_score_map.get(teban,&mhash,&shash) {
 					return Evaluation::Result(Score::Value(s),None);
 				} else {
-					let r = self.evalute_by_snapshot(evalutor,self_nn_snapshot);
+					let r = self.evalute_by_snapshot(evalutor,self_nn_snapshot,opponent_nn_snapshot);
 
 					if let Evaluation::Result(Score::Value(s),_) = r {
 						kyokumen_score_map.insert(teban,mhash,shash,s);
@@ -431,7 +438,7 @@ impl Search {
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				return self.evalute_by_snapshot(evalutor,self_nn_snapshot);
+				return self.evalute_by_snapshot(evalutor,self_nn_snapshot,opponent_nn_snapshot);
 			} else {
 				(mvs,true)
 			}
@@ -491,26 +498,15 @@ impl Search {
 		let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
 			// この差分適用はself側ではなく相手の駒の移動を適用するので相手の持ち駒を参照するために
 			// is_oppositeをtrueにする。
-			let self_nn_snapshot = 	match self.evalute_by_diff(evalutor,
+			let (self_nn_snapshot,opponent_nn_snapshot) = match self.evalute_by_diff(evalutor,
 																&self_nn_snapshot,
-																true,
+																 &opponent_nn_snapshot,
 																teban,
 																&prev_state.as_ref(),&prev_mc.as_ref(),
 																&m,info_sender,on_error_handler) {
-				Ok((_,ss)) => Arc::new(ss),
-				Err(ref e) => {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
-					return Evaluation::Error;
-				}
-			};
-
-			let opponent_nn_snapshot = match self.evalute_by_diff(evalutor,
-																	&opponent_nn_snapshot,
-																	false,
-																	teban.opposite(),
-																	&prev_state.as_ref(),&prev_mc.as_ref(),
-																	&m,info_sender,on_error_handler) {
-				Ok((_,ss)) => Arc::new(ss),
+				Ok((_,sss,oss)) => {
+					(Arc::new(sss),Arc::new(oss))
+				},
 				Err(ref e) => {
 					let _ = on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
@@ -537,8 +533,18 @@ impl Search {
 			self.send_message(info_sender, on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
 		} else if mvs.len() == 1 {
-			let r = match self.evalute_by_diff(evalutor,&self_nn_snapshot,false,teban,&Some(&state), &Some(&mc), &Some(mvs[0].to_move()), info_sender, on_error_handler) {
-				Ok((r,_)) => r,
+			let r = match self.evalute_by_diff(evalutor,
+											   &opponent_nn_snapshot,
+											   &self_nn_snapshot,
+											   teban.opposite(),
+											   &Some(&state),
+											   &Some(&mc),
+											   &Some(mvs[0].to_move()),
+											   info_sender, on_error_handler) {
+				Ok((Evaluation::Result(s,m),_,_)) => {
+					Evaluation::Result(-s,m)
+				},
+				Ok((r,_,_)) => r,
 				Err(ref e) => {
 					let _ = on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
