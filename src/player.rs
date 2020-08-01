@@ -1787,13 +1787,16 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&quited,
 							strategy,
 							&mut KyokumenMap::new()) {
-					Evaluation::Result(_,Some(m)) => {
-						BestMove::Move(m,None)
-					},
 					Evaluation::Result(_,None) => {
 						BestMove::Resign
 					},
-					Evaluation::Timeout(Some(s),_) if s == Score::NEGINFINITE => {
+					Evaluation::Result(Score::NEGINFINITE,_) => {
+						BestMove::Resign
+					},
+					Evaluation::Result(_,Some(m)) => {
+						BestMove::Move(m,None)
+					},
+					Evaluation::Timeout(Some(Score::NEGINFINITE),_) => {
 						BestMove::Resign
 					}
 					Evaluation::Timeout(_,Some(m)) => {
