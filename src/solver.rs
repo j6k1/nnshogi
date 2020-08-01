@@ -793,6 +793,12 @@ mod checkmate {
 			} else {
 				let m = self.current_frame.mvs.remove(0);
 
+				if let LegalMove::To(mv) = m {
+					if let Some(ObtainKind::Ou) = mv.obtained() {
+						return MaybeMate::MateMoves(current_depth+1,vec![m]);
+					}
+				}
+				
 				let next = Rule::apply_move_none_check(&self.current_frame.state,teban,&self.current_frame.mc,m.to_applied_move());
 
 				let o = match m {
