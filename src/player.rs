@@ -819,7 +819,7 @@ impl Search {
 
 										return match best_move {
 											Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
-											None => Evaluation::Timeout(None,Some(m.to_move())),
+											None => Evaluation::Timeout(Some(scoreval),Some(m.to_move())),
 										};
 									},
 									Evaluation::Result(s,_) => {
@@ -851,7 +851,7 @@ impl Search {
 						search.send_message(info_sender, on_error_handler, "think timeout!");
 						return match best_move {
 							Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
-							None => Evaluation::Timeout(None,Some(m.to_move())),
+							None => Evaluation::Timeout(Some(scoreval),Some(m.to_move())),
 						};
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
