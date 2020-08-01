@@ -1793,6 +1793,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					Evaluation::Result(_,None) => {
 						BestMove::Resign
 					},
+					Evaluation::Timeout(Some(s),_) if s == Score::NEGINFINITE => {
+						BestMove::Resign
+					}
 					Evaluation::Timeout(_,Some(m)) => {
 						BestMove::Move(m,None)
 					}
