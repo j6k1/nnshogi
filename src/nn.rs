@@ -178,7 +178,7 @@ impl Intelligence {
 						history:Vec<(Banmen,MochigomaCollections,u64,u64)>, s:&GameEndState,
 						mut training_data_generator:D,
 						event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-						-> Result<(),CommonError> where D: FnMut(&GameEndState,Teban) -> Option<(f64,f64)> {
+						-> Result<(),CommonError> where D: FnMut(&GameEndState,Teban,bool) -> Option<(f64,f64)> {
 		let mut t = last_teban;
 
 		for h in history.iter().rev() {
@@ -194,14 +194,20 @@ impl Intelligence {
 				break;
 			}
 
-			let mut input:Vec<f64> = Vec::new();
-			input.extend_from_slice(&self.make_input(t,&h.0,&h.1));
+			let mut is_opposite = false;
 
-			if let Some((a,b)) = training_data_generator(s,t) {
-				self.nna.learn(&input, &(0..1).map(|_| a)
-					.collect::<Vec<f64>>())?;
-				self.nnb.learn(&input, &(0..1).map(|_| b)
-					.collect::<Vec<f64>>())?;
+			for _ in 0..2 {
+				let input = self.make_input(t, &h.0, &h.1);
+
+				if let Some((a, b)) = training_data_generator(s, t, is_opposite) {
+					self.nna.learn(&input, &(0..1).map(|_| a)
+						.collect::<Vec<f64>>())?;
+					self.nnb.learn(&input, &(0..1).map(|_| b)
+						.collect::<Vec<f64>>())?;
+				}
+
+				t = t.opposite();
+				is_opposite = !is_opposite;
 			}
 
 			t = t.opposite();
@@ -427,7 +433,13 @@ impl Intelligence {
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							d.push((self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?,1f64));
+							let (offset,count) = self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
+
+							if count > 1 {
+								d.push((offset + count - 1, -1f64));
+							}
+
+							d.push((offset + count,1f64));
 						}
 
 						if n {
@@ -440,7 +452,14 @@ impl Intelligence {
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				d.push((self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?,-1f64));
+				let (offset,count) = self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
+
+				d.push((offset+count,-1f64));
+
+				if count >  1 {
+					d.push((offset+count-1,1f64));
+				}
+
 				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
 		}
@@ -647,7 +666,9 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections)
+		-> Result<(usize,usize),CommonError> {
+
 		let ms = HashMap::new();
 		let mg = HashMap::new();
 
@@ -689,16 +710,16 @@ impl Intelligence {
 			Some(c) => {
 				let offset = offset as usize;
 
-				Ok(offset + *c as usize)
+				Ok((offset,*c as usize + 1))
 			},
 			_ => {
-				Ok(offset as usize)
+				Ok((offset,1))
 			}
 		}
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<(usize,usize),CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
 
@@ -740,7 +761,7 @@ impl Intelligence {
 			Some(c) if *c > 0 => {
 				let offset = offset as usize;
 
-				Ok(offset + (*c as usize - 1))
+				Ok((offset,*c as usize))
 			},
 			_ => {
 				Err(CommonError::Fail(

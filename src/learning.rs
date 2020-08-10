@@ -190,16 +190,16 @@ impl CsaLearnener {
 					GameEndState::Lose
 				};
 
-				match evalutor.learning_by_training_data(teban,history,&s,|s,t| {
+				match evalutor.learning_by_training_data(teban,history,&s,|s,t, _| {
 					match s {
 						&GameEndState::Win if t == teban_at_start => {
 							Some((1f64,1f64))
 						},
 						&GameEndState::Win => {
-							Some((0.5f64, 0.5f64))
+							Some((0f64, 0f64))
 						},
 						&GameEndState::Lose if t == teban_at_start => {
-							Some((0.5f64, 0.5f64))
+							Some((0f64, 0f64))
 						},
 						&GameEndState::Lose => {
 							Some((1f64, 1f64))

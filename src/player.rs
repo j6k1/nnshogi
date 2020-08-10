@@ -1948,7 +1948,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 							evalutor.learning_by_training_data(last_teban,
 															   self.history.clone(),
-															   s,move |s,t| {
+															   s,move |s,t, is_opposite| {
 								let r = match s {
 									&GameEndState::Win if t == teban => {
 										let a:f64 = rnd.gen();
@@ -1969,7 +1969,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 									_ => None
 								};
 
-								rate = rate * BASE_RATE;
+								if is_opposite {
+									rate = rate * BASE_RATE;
+								}
 
 								r
 							}, &*event_queue)?;
