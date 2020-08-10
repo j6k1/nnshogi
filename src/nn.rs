@@ -456,7 +456,7 @@ impl Intelligence {
 
 				d.push((offset+count,-1f64));
 
-				if count >  1 {
+				if count > 1 {
 					d.push((offset+count-1,1f64));
 				}
 
