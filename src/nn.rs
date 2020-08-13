@@ -433,13 +433,9 @@ impl Intelligence {
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let (offset,count) = self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
+							let offset = self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
 
-							if count > 1 {
-								d.push((offset + count - 1, -1f64));
-							}
-
-							d.push((offset + count,1f64));
+							d.push((offset,1f64));
 						}
 
 						if n {
@@ -452,13 +448,9 @@ impl Intelligence {
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let (offset,count) = self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
+				let offset = self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
 
-				d.push((offset+count,-1f64));
-
-				if count > 1 {
-					d.push((offset+count-1,1f64));
-				}
+				d.push((offset,-1f64));
 
 				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
@@ -667,7 +659,7 @@ impl Intelligence {
 
 	#[inline]
 	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections)
-		-> Result<(usize,usize),CommonError> {
+		-> Result<usize,CommonError> {
 
 		let ms = HashMap::new();
 		let mg = HashMap::new();
@@ -710,16 +702,16 @@ impl Intelligence {
 			Some(c) => {
 				let offset = offset as usize;
 
-				Ok((offset,*c as usize + 1))
+				Ok(offset + *c as usize + 1)
 			},
 			_ => {
-				Ok((offset,1))
+				Ok(offset + 1)
 			}
 		}
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<(usize,usize),CommonError> {
+	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
 
@@ -761,7 +753,7 @@ impl Intelligence {
 			Some(c) if *c > 0 => {
 				let offset = offset as usize;
 
-				Ok((offset,*c as usize))
+				Ok(offset + *c as usize)
 			},
 			_ => {
 				Err(CommonError::Fail(
