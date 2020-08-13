@@ -435,7 +435,7 @@ impl Intelligence {
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
 							let offset = self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
 
-							d.push((offset,1f64));
+							d.push((offset, 1f64));
 						}
 
 						if n {
@@ -450,7 +450,7 @@ impl Intelligence {
 				let (dx,dy) = (9-dx,dy-1);
 				let offset = self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
 
-				d.push((offset,-1f64));
+				d.push((offset, -1f64));
 
 				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
@@ -702,10 +702,10 @@ impl Intelligence {
 			Some(c) => {
 				let offset = offset as usize;
 
-				Ok(offset + *c as usize + 1)
+				Ok(offset + *c as usize)
 			},
 			_ => {
-				Ok(offset + 1)
+				Ok(offset)
 			}
 		}
 	}
@@ -753,7 +753,7 @@ impl Intelligence {
 			Some(c) if *c > 0 => {
 				let offset = offset as usize;
 
-				Ok(offset + *c as usize)
+				Ok(offset + *c as usize - 1)
 			},
 			_ => {
 				Err(CommonError::Fail(
