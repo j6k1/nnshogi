@@ -1434,7 +1434,7 @@ pub struct NNShogiPlayer {
 	remaining_turns:u32,
 	nna_filename:String,
 	nnb_filename:String,
-	learning_mode:bool,
+	bias_shake_shake:bool,
 	evalutor:Option<Arc<Intelligence>>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
@@ -1446,7 +1446,7 @@ impl fmt::Debug for NNShogiPlayer {
 	}
 }
 impl NNShogiPlayer {
-	pub fn new(nna_filename:String,nnb_filename:String,learning_mode:bool) -> NNShogiPlayer {
+	pub fn new(nna_filename:String, nnb_filename:String, bias_shake_shake:bool) -> NNShogiPlayer {
 		NNShogiPlayer {
 			search:Arc::new(Search::new()),
 			kyokumen:None,
@@ -1457,7 +1457,7 @@ impl NNShogiPlayer {
 			remaining_turns:TURN_COUNT,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
-			learning_mode:learning_mode,
+			bias_shake_shake,
 			evalutor:None,
 			history:Vec::new(),
 			count_of_move_started:0,
@@ -1509,7 +1509,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				self.evalutor = Some(Arc::new(Intelligence::new(
 										String::from("data"),
 										self.nna_filename.clone(),
-										self.nnb_filename.clone(),self.learning_mode)));
+										self.nnb_filename.clone(),self.bias_shake_shake)));
 			}
 		}
 		Ok(())
@@ -1940,41 +1940,36 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				Some(ref mut evalutor) => {
 					match Arc::get_mut(evalutor) {
 						Some(evalutor)  => {
-//							const BASE_RATE:f64 = 0.96;
-							const BASE_RATE:f64 = 1.0;
+							let (a,b) = if self.bias_shake_shake {
+								let mut rnd = rand::thread_rng();
 
-							let mut rate = 1.0f64;
-							let mut rnd = rand::thread_rng();
+								let a: f64 = rnd.gen();
+								let b: f64 = 1f64 - a;
+
+								(a,b)
+							} else {
+								(1f64,1f64)
+							};
 
 							evalutor.learning_by_training_data(last_teban,
 															   self.history.clone(),
-															   s,move |s,t, is_opposite| {
-								let r = match s {
-									&GameEndState::Win if t == teban => {
-										let a:f64 = rnd.gen();
-										let b:f64 = 1f64 - a;
-										Some((a / 2f64 + a / 2f64 * rate, b / 2f64 + b / 2f64 * rate))
-									},
-									&GameEndState::Win => {
-										Some((0.5 - 0.5 * rate, 0.5 - 0.5 * rate))
-									},
-									&GameEndState::Lose if t == teban => {
-										Some((0.5 - 0.5 * rate, 0.5 - 0.5 * rate))
-									},
-									&GameEndState::Lose => {
-										let a:f64 = rnd.gen();
-										let b:f64 = 1f64 - a;
-										Some((a / 2f64 + a / 2f64 * rate, b / 2f64 + b / 2f64 * rate))
-									},
-									_ => None
-								};
-
-								if is_opposite {
-									rate = rate * BASE_RATE;
-								}
-
-								r
-							}, &*event_queue)?;
+															   s,&move |s,t, ab| {
+									match s {
+										&GameEndState::Win if t == teban => {
+											ab
+										}
+										&GameEndState::Win => {
+											0f64
+										},
+										&GameEndState::Lose if t == teban => {
+											0f64
+										},
+										&GameEndState::Lose => {
+											ab
+										},
+										_ => 0.5f64
+									}
+								}, a,b,&*event_queue)?;
 						},
 						None => {
 							return Err(CommonError::Fail(String::from(

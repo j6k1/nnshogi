@@ -21,6 +21,7 @@ use csaparser::EndState;
 use error::ApplicationError;
 use error::CommonError;
 use nn::Intelligence;
+use rand::Rng;
 
 pub struct CsaLearnener {
 
@@ -32,7 +33,7 @@ impl CsaLearnener {
 		}
 	}
 
-	pub fn learning(&mut self,kifudir:String,lowerrate:f64) -> Result<(),ApplicationError> {
+	pub fn learning(&mut self,kifudir:String,lowerrate:f64,bias_shake_shake:bool) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -190,30 +191,47 @@ impl CsaLearnener {
 					GameEndState::Lose
 				};
 
-				match evalutor.learning_by_training_data(teban,history,&s,|s,t, _| {
+				let (a,b) = if bias_shake_shake {
+					let mut rnd = rand::thread_rng();
+
+					let a: f64 = rnd.gen();
+					let b: f64 = 1f64 - a;
+
+					(a,b)
+				} else {
+					(1f64,1f64)
+				};
+
+				match evalutor.learning_by_training_data(teban,
+					history,
+					&s,&move |s,t, ab| {
+
 					match s {
-						&GameEndState::Win if t == teban_at_start => {
-							Some((1f64,1f64))
-						},
+						&GameEndState::Win if t == teban => {
+							ab
+						}
 						&GameEndState::Win => {
-							Some((0f64, 0f64))
+							0f64
 						},
-						&GameEndState::Lose if t == teban_at_start => {
-							Some((0f64, 0f64))
+						&GameEndState::Lose if t == teban => {
+							0f64
 						},
 						&GameEndState::Lose => {
-							Some((1f64, 1f64))
+							ab
 						},
-						_ => Some((0.5,0.5))
+						_ => 0.5f64
 					}
-				}, &*user_event_queue) {
+				}, a,b, &*user_event_queue) {
 					Err(_) => {
 						return Err(ApplicationError::LearningError(String::from(
 							"An error occurred while learning the neural network."
 						)));
 					},
-					_ => (),
-				}
+					Ok((ma,mb)) => {
+						println!("error_total: {}, error_average: {}",ma.error_total,ma.error_average);
+						println!("error_total: {}, error_average: {}",mb.error_total,mb.error_average);
+					}
+				};
 
 				count += 1;
 

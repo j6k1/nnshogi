@@ -58,6 +58,7 @@ pub struct Config {
 	number_of_games:Option<u32>,
 	silent:bool,
 	initial_position:Option<InitialPositionKifu>,
+	bias_shake_shake_with_kifu:bool
 }
 #[derive(Debug, Deserialize)]
 pub struct InitialPositionKifu {
@@ -127,8 +128,9 @@ fn run() -> Result<(),ApplicationError> {
 	};
 
 	if let Some(kifudir) = matches.opt_str("kifudir") {
+		let config = ConfigLoader::new("settings.toml")?.load()?;
 		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-		CsaLearnener::new().learning(kifudir,lowerrate)
+		CsaLearnener::new().learning(kifudir,lowerrate,config.bias_shake_shake_with_kifu)
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 

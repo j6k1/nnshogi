@@ -12,6 +12,7 @@ use std::fs;
 use simplenn::function::activation::*;
 use simplenn::function::optimizer::*;
 use simplenn::function::loss::*;
+use simplenn::Metrics;
 use simplenn::NN;
 use simplenn::NNModel;
 use simplenn::NNUnits;
@@ -35,7 +36,7 @@ pub struct Intelligence {
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
-	enable_shake_shake:bool,
+	bias_shake_shake:bool,
 	quited:bool,
 }
 pub const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
@@ -79,14 +80,14 @@ impl Intelligence {
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
-			enable_shake_shake:enable_shake_shake,
+			bias_shake_shake:enable_shake_shake,
 			quited:false,
 		}
 	}
 
 	pub fn make_snapshot(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<(SnapShot,SnapShot),InvalidStateError> {
-		let input = self.make_input(t,b,mc);
+		let input = Intelligence::make_input(t,b,mc);
 
 		let ssa = self.nna.solve_shapshot(&input)?;
 		let ssb = self.nnb.solve_shapshot(&input)?;
@@ -96,12 +97,12 @@ impl Intelligence {
 
 	pub fn evalute(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<i64,InvalidStateError> {
-		let input = self.make_input(t,b,mc);
+		let input = Intelligence::make_input(t,b,mc);
 
 		let nnaanswera = self.nna.solve(&input)?;
 		let nnbanswerb = self.nnb.solve(&input)?;
 
-		let (a,b) = if self.enable_shake_shake {
+		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -123,12 +124,12 @@ impl Intelligence {
 
 	pub fn evalute_by_diff(&self,snapshot:&(SnapShot,SnapShot),is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move)
 		-> Result<(i64,(SnapShot,SnapShot)),CommonError> {
-		let input = self.make_diff_input(is_opposite,t,b,mc,m)?;
+		let input = Intelligence::make_diff_input(is_opposite,t,b,mc,m)?;
 
 		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
 		let ssb = self.nnb.solve_diff(&input,&snapshot.1)?;
 
-		let (a,b) = if self.enable_shake_shake {
+		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -152,7 +153,7 @@ impl Intelligence {
 		let ssa = &snapshot.0;
 		let ssb = &snapshot.1;
 
-		let (a,b) = if self.enable_shake_shake {
+		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -172,130 +173,59 @@ impl Intelligence {
 		(answer * F64_FRACTION_MAX as f64) as i64
 	}
 
+	fn create_training_data_generator<'a,D>(s:GameEndState,ab:f64,training_data_generator:&'a D) -> impl FnMut(Teban) -> f64 + 'a
+		where D: Fn(&GameEndState,Teban,f64) -> f64 {
+
+		move |t| {
+			let ab = training_data_generator(&s,t,ab);
+
+			ab
+		}
+	}
 
 	pub fn learning_by_training_data<'a,D>(&mut self,
 						last_teban:Teban,
-						history:Vec<(Banmen,MochigomaCollections,u64,u64)>, s:&GameEndState,
-						mut training_data_generator:D,
-						event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-						-> Result<(),CommonError> where D: FnMut(&GameEndState,Teban,bool) -> Option<(f64,f64)> {
-		let mut t = last_teban;
+						history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
+						s:&GameEndState,
+						training_data_generator:&D,
+						a:f64,b:f64,
+						_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+						-> Result<(Metrics,Metrics),CommonError>
+		where D: Fn(&GameEndState,Teban,f64) -> f64 {
 
-		for h in history.iter().rev() {
-			match self.handle_events(&*event_queue) {
-				Err(_) => {
-					return Err(CommonError::Fail(
-						String::from("An error occurred while processing the event.")));
-				},
-				_ => (),
-			}
+		let mut teban = last_teban;
 
-			if self.quited {
-				break;
-			}
+		let ma = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban, banmen, mc);
 
-			let mut is_opposite = false;
+			let mut f = Intelligence::create_training_data_generator(*s,a,training_data_generator);
 
-			for _ in 0..2 {
-				let input = self.make_input(t, &h.0, &h.1);
+			let t = f(teban);
 
-				if let Some((a, b)) = training_data_generator(s, t, is_opposite) {
-					self.nna.learn(&input, &(0..1).map(|_| a)
-						.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input, &(0..1).map(|_| b)
-						.collect::<Vec<f64>>())?;
-				}
+			teban = teban.opposite();
 
-				t = t.opposite();
-				is_opposite = !is_opposite;
-			}
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
 
-			t = t.opposite();
-		}
+		let mut teban = last_teban;
 
-		self.save()
+		let mb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban, banmen, mc);
+
+			let mut f = Intelligence::create_training_data_generator(*s,b,training_data_generator);
+
+			let t = f(teban);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		self.save()?;
+
+		Ok((ma,mb))
 	}
 
-	/*
-	pub fn learning<'a>(&mut self,enable_shake_shake:bool,
-		teban:Teban,last_teban:Teban,
-		history:Vec<(Banmen,MochigomaCollections,u64,u64)>,s:&GameEndState,
-		event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-		-> Result<(),CommonError> {
-
-		const BASE_RATE:f64 = 0.96;
-
-		let mut rate = 1.0f64;
-
-		let mut t = last_teban;
-
-		for h in history.iter().rev() {
-			match self.handle_events(&*event_queue) {
-				Err(_) => {
-					return Err(CommonError::Fail(
-							String::from("An error occurred while processing the event.")));
-				},
-				_ => (),
-			}
-
-			if self.quited {
-				break;
-			}
-
-			let mut input:Vec<f64> = Vec::new();
-			input.extend_from_slice(&self.make_input(t,&h.0,&h.1));
-
-			let mut rnd = rand::thread_rng();
-			let a:f64 = rnd.gen();
-			let b = 1f64 - a;
-
-			match s {
-				&GameEndState::Win if t == teban && enable_shake_shake => {
-					self.nna.learn(&input,&(0..1).map(|_| a / 2.0f64 + a / 2.0f64 * rate)
-													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| b / 2.0f64 + b / 2.0f64 * rate)
-													.collect::<Vec<f64>>())?;
-				},
-				&GameEndState::Win if t == teban => {
-					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-				},
-				&GameEndState::Win => {
-					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-				},
-				_ if t == teban => {
-					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 - 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-				},
-				_ if enable_shake_shake => {
-					self.nna.learn(&input,&(0..1).map(|_| a / 2.0f64 + a / 2.0f64 * rate)
-												.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| b / 2.0f64 + b / 2.0f64 * rate)
-													.collect::<Vec<f64>>())?;
-				},
-				_  => {
-					self.nna.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
-												.collect::<Vec<f64>>())?;
-					self.nnb.learn(&input,&(0..1).map(|_| 0.5f64 + 0.5f64 * rate)
-													.collect::<Vec<f64>>())?;
-				}
-			}
-
-			t = t.opposite();
-
-			rate = rate * BASE_RATE;
-		}
-
-		self.save()
-	}
-	*/
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
 			PersistenceWithBinFile::new(
@@ -310,6 +240,7 @@ impl Intelligence {
 		Ok(())
 	}
 
+	#[allow(dead_code)]
 	fn handle_events<'a>(&mut self,event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
 		{
@@ -318,6 +249,7 @@ impl Intelligence {
 		Ok(())
 	}
 
+	#[allow(dead_code)]
 	fn dispatch_events<'a>(&mut self, event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
 		{
 		let events = {
@@ -336,7 +268,7 @@ impl Intelligence {
 		Ok(())
 	}
 
-	pub fn make_input(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 2344] {
+	pub fn make_input(t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 2344] {
 		let mut inputs:[f64; 2344] = [0f64; 2344];
 
 		match b {
@@ -346,7 +278,7 @@ impl Intelligence {
 						let kind = kinds[y][x];
 
 						if kind != KomaKind::Blank {
-							let index = self.input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
 
 							inputs[index] = 1f64;
 						}
@@ -412,7 +344,7 @@ impl Intelligence {
 		inputs
 	}
 
-	pub fn make_diff_input(&self,is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move) -> Result<Vec<(usize,f64)>,CommonError> {
+	pub fn make_diff_input(is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move) -> Result<Vec<(usize,f64)>,CommonError> {
 		let mut d = Vec::new();
 
 		match m {
@@ -424,35 +356,35 @@ impl Intelligence {
 
 						let sk = kinds[sy as usize][sx as usize];
 
-						d.push((self.input_index_of_banmen(t,sk,sx,sy)?,-1f64));
+						d.push((Intelligence::input_index_of_banmen(t,sk,sx,sy)?,-1f64));
 
 						let dk = kinds[dy as usize][dx as usize];
 
 						if dk != KomaKind::Blank {
-							d.push((self.input_index_of_banmen(t,dk,dx,dy)?,-1f64));
+							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-1f64));
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = self.input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
+							let offset = Intelligence::input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
 
 							d.push((offset, 1f64));
 						}
 
 						if n {
-							d.push((self.input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
+							d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
 						} else {
-							d.push((self.input_index_of_banmen(t,sk,dx,dy)?,1f64));
+							d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1f64));
 						}
 					}
 				}
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let offset = self.input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
+				let offset = Intelligence::input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
 
 				d.push((offset, -1f64));
 
-				d.push((self.input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
+				d.push((Intelligence::input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
 			}
 		}
 
@@ -460,7 +392,7 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_of_banmen(&self,teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
+	fn input_index_of_banmen(teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
 		let index = match teban {
 			Teban::Sente => {
 				match kind {
@@ -658,7 +590,7 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_get(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections)
+	fn input_index_with_of_mochigoma_get(is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections)
 		-> Result<usize,CommonError> {
 
 		let ms = HashMap::new();
@@ -711,7 +643,7 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_put(&self,is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_put(is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
 
