@@ -56,7 +56,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nna = NN::new(model,|_| SGD::new(0.001),CrossEntropy::new());
+		let nna = NN::new(model,|_| SGD::new(0.01),CrossEntropy::new());
 
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
@@ -72,7 +72,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nnb = NN::new(model,|_| SGD::new(0.001),CrossEntropy::new());
+		let nnb = NN::new(model,|_| SGD::new(0.01),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
@@ -173,16 +173,6 @@ impl Intelligence {
 		(answer * F64_FRACTION_MAX as f64) as i64
 	}
 
-	fn create_training_data_generator<'a,D>(s:GameEndState,ab:f64,training_data_generator:&'a D) -> impl FnMut(Teban) -> f64 + 'a
-		where D: Fn(&GameEndState,Teban,f64) -> f64 {
-
-		move |t| {
-			let ab = training_data_generator(&s,t,ab);
-
-			ab
-		}
-	}
-
 	pub fn learning_by_training_data<'a,D>(&mut self,
 						last_teban:Teban,
 						history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
@@ -198,9 +188,7 @@ impl Intelligence {
 		let ma = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(teban, banmen, mc);
 
-			let mut f = Intelligence::create_training_data_generator(*s,a,training_data_generator);
-
-			let t = f(teban);
+			let t = training_data_generator(s,teban,a);
 
 			teban = teban.opposite();
 
@@ -212,9 +200,7 @@ impl Intelligence {
 		let mb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(teban, banmen, mc);
 
-			let mut f = Intelligence::create_training_data_generator(*s,b,training_data_generator);
-
-			let t = f(teban);
+			let t = training_data_generator(s,teban,b);
 
 			teban = teban.opposite();
 
