@@ -88,6 +88,26 @@ const OPPONENT_MOCHIGOMA_KIN_INDEX:usize = OPPONENT_MOCHIGOMA_GIN_INDEX + 5;
 const OPPONENT_MOCHIGOMA_KAKU_INDEX:usize = OPPONENT_MOCHIGOMA_KIN_INDEX + 5;
 const OPPONENT_MOCHIGOMA_HISHA_INDEX:usize = OPPONENT_MOCHIGOMA_KAKU_INDEX + 3;
 
+const SELF_INDEX_MAP:[usize; 7] = [
+	MOCHIGOMA_FU_INDEX,
+	MOCHIGOMA_KYOU_INDEX,
+	MOCHIGOMA_KEI_INDEX,
+	MOCHIGOMA_GIN_INDEX,
+	MOCHIGOMA_KIN_INDEX,
+	MOCHIGOMA_KAKU_INDEX,
+	MOCHIGOMA_HISHA_INDEX
+];
+
+const OPPONENT_INDEX_MAP:[usize; 7] = [
+	OPPONENT_MOCHIGOMA_FU_INDEX,
+	OPPONENT_MOCHIGOMA_KYOU_INDEX,
+	OPPONENT_MOCHIGOMA_KEI_INDEX,
+	OPPONENT_MOCHIGOMA_GIN_INDEX,
+	OPPONENT_MOCHIGOMA_KIN_INDEX,
+	OPPONENT_MOCHIGOMA_KAKU_INDEX,
+	OPPONENT_MOCHIGOMA_HISHA_INDEX
+];
+
 impl Intelligence {
 	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,enable_shake_shake:bool) -> Intelligence {
 		let mut rnd = rand::thread_rng();
@@ -95,9 +115,10 @@ impl Intelligence {
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
-										NNUnits::new(2344,
-											(100,Box::new(FReLU::new())),
-											(100,Box::new(FReLU::new())))
+										NNUnits::new(5436,
+											(256,Box::new(FReLU::new())),
+											(32,Box::new(FReLU::new())))
+											.add((32,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
@@ -111,9 +132,10 @@ impl Intelligence {
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
-										NNUnits::new(2344,
-											(100,Box::new(FReLU::new())),
-											(100,Box::new(FReLU::new())))
+										NNUnits::new(5436,
+												 (256,Box::new(FReLU::new())),
+												 (32,Box::new(FReLU::new())))
+											.add((32,Box::new(FReLU::new())))
 											.add((1,Box::new(FSigmoid::new()))),
 										BinFileInputReader::new(
 											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
@@ -427,196 +449,82 @@ impl Intelligence {
 
 	#[inline]
 	fn input_index_of_banmen(teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
+		const SENTE_INDEX_MAP:[usize; 28] = [
+			FU_INDEX,
+			KYOU_INDEX,
+			KEI_INDEX,
+			GIN_INDEX,
+			KIN_INDEX,
+			KAKU_INDEX,
+			HISHA_INDEX,
+			OU_INDEX,
+			NARIFU_INDEX,
+			NARIKYOU_INDEX,
+			NARIKEI_INDEX,
+			NARIGIN_INDEX,
+			NARIKAKU_INDEX,
+			NARIHISHA_INDEX,
+			OPPONENT_FU_INDEX,
+			OPPONENT_KYOU_INDEX,
+			OPPONENT_KEI_INDEX,
+			OPPONENT_GIN_INDEX,
+			OPPONENT_KIN_INDEX,
+			OPPONENT_KAKU_INDEX,
+			OPPONENT_HISHA_INDEX,
+			OPPONENT_OU_INDEX,
+			OPPONENT_NARIFU_INDEX,
+			OPPONENT_NARIKYOU_INDEX,
+			OPPONENT_NARIKEI_INDEX,
+			OPPONENT_NARIGIN_INDEX,
+			OPPONENT_NARIKAKU_INDEX,
+			OPPONENT_NARIHISHA_INDEX
+		];
+
+		const GOTE_INDEX_MAP:[usize; 28] = [
+			OPPONENT_FU_INDEX,
+			OPPONENT_KYOU_INDEX,
+			OPPONENT_KEI_INDEX,
+			OPPONENT_GIN_INDEX,
+			OPPONENT_KIN_INDEX,
+			OPPONENT_KAKU_INDEX,
+			OPPONENT_HISHA_INDEX,
+			OPPONENT_OU_INDEX,
+			OPPONENT_NARIFU_INDEX,
+			OPPONENT_NARIKYOU_INDEX,
+			OPPONENT_NARIKEI_INDEX,
+			OPPONENT_NARIGIN_INDEX,
+			OPPONENT_NARIKAKU_INDEX,
+			OPPONENT_NARIHISHA_INDEX,
+			FU_INDEX,
+			KYOU_INDEX,
+			KEI_INDEX,
+			GIN_INDEX,
+			KIN_INDEX,
+			KAKU_INDEX,
+			HISHA_INDEX,
+			OU_INDEX,
+			NARIFU_INDEX,
+			NARIKYOU_INDEX,
+			NARIKEI_INDEX,
+			NARIGIN_INDEX,
+			NARIKAKU_INDEX,
+			NARIHISHA_INDEX
+		];
+
 		let index = match teban {
+			Teban::Sente | Teban::Gote if kind == KomaKind::Blank => {
+				return Err(CommonError::Fail(
+					String::from(
+						"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
+					)));
+			},
 			Teban::Sente => {
-				match kind {
-					KomaKind::SFu => {
-						y * 9 + x
-					},
-					KomaKind::SKyou => {
-						y * 9 + x + 81
-					},
-					KomaKind::SKei => {
-						y * 9 + x + 81 * 2
-					},
-					KomaKind::SGin => {
-						y * 9 + x + 81 * 3
-					},
-					KomaKind::SKin => {
-						y * 9 + x + 81 * 4
-					},
-					KomaKind::SKaku => {
-						y * 9 + x + 81 * 5
-					},
-					KomaKind::SHisha => {
-						y * 9 + x + 81 * 6
-					},
-					KomaKind::SOu => {
-						y * 9 + x + 81 * 7
-					},
-					KomaKind::SFuN => {
-						y * 9 + x + 81 * 8
-					},
-					KomaKind::SKyouN => {
-						y * 9 + x + 81 * 9
-					},
-					KomaKind::SKeiN => {
-						y * 9 + x + 81 * 10
-					},
-					KomaKind::SGinN => {
-						y * 9 + x + 81 * 11
-					},
-					KomaKind::SKakuN => {
-						y * 9 + x + 81 * 12
-					},
-					KomaKind::SHishaN => {
-						y * 9 + x + 81 * 13
-					},
-					KomaKind::GFu => {
-						y * 9 + x + 81 * 14
-					},
-					KomaKind::GKyou => {
-						y * 9 + x + 81 * 15
-					},
-					KomaKind::GKei => {
-						y * 9 + x + 81 * 16
-					},
-					KomaKind::GGin => {
-						y * 9 + x + 81 * 17
-					},
-					KomaKind::GKin => {
-						y * 9 + x + 81 * 18
-					},
-					KomaKind::GKaku => {
-						y * 9 + x + 81 * 19
-					},
-					KomaKind::GHisha => {
-						y * 9 + x + 81 * 20
-					},
-					KomaKind::GOu => {
-						y * 9 + x + 81 * 21
-					},
-					KomaKind::GFuN => {
-						y * 9 + x + 81 * 22
-					},
-					KomaKind::GKyouN => {
-						y * 9 + x + 81 * 23
-					},
-					KomaKind::GKeiN => {
-						y * 9 + x + 81 * 24
-					},
-					KomaKind::GGinN => {
-						y * 9 + x + 81 * 25
-					},
-					KomaKind::GKakuN => {
-						y * 9 + x + 81 * 26
-					},
-					KomaKind::GHishaN => {
-						y * 9 + x + 81 * 27
-					},
-					_ => {
-						return Err(CommonError::Fail(
-									String::from(
-										"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
-								)));
-					},
-				}
+				SENTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
 			},
 			Teban::Gote => {
 				let (x,y) = (8-x,8-y);
 
-				match kind {
-					KomaKind::GFu => {
-						y * 9 + x
-					},
-					KomaKind::GKyou => {
-						y * 9 + x + 81
-					},
-					KomaKind::GKei => {
-						y * 9 + x + 81 * 2
-					},
-					KomaKind::GGin => {
-						y * 9 + x + 81 * 3
-					},
-					KomaKind::GKin => {
-						y * 9 + x + 81 * 4
-					},
-					KomaKind::GKaku => {
-						y * 9 + x + 81 * 5
-					},
-					KomaKind::GHisha => {
-						y * 9 + x + 81 * 6
-					},
-					KomaKind::GOu => {
-						y * 9 + x + 81 * 7
-					},
-					KomaKind::GFuN => {
-						y * 9 + x + 81 * 8
-					},
-					KomaKind::GKyouN => {
-						y * 9 + x + 81 * 9
-					},
-					KomaKind::GKeiN => {
-						y * 9 + x + 81 * 10
-					},
-					KomaKind::GGinN => {
-						y * 9 + x + 81 * 11
-					},
-					KomaKind::GKakuN => {
-						y * 9 + x + 81 * 12
-					},
-					KomaKind::GHishaN => {
-						y * 9 + x + 81 * 13
-					},
-					KomaKind::SFu => {
-						y * 9 + x + 81 * 14
-					},
-					KomaKind::SKyou => {
-						y * 9 + x + 81 * 15
-					},
-					KomaKind::SKei => {
-						y * 9 + x + 81 * 16
-					},
-					KomaKind::SGin => {
-						y * 9 + x + 81 * 17
-					},
-					KomaKind::SKin => {
-						y * 9 + x + 81 * 18
-					},
-					KomaKind::SKaku => {
-						y * 9 + x + 81 * 19
-					},
-					KomaKind::SHisha => {
-						y * 9 + x + 81 * 20
-					},
-					KomaKind::SOu => {
-						y * 9 + x + 81 * 21
-					},
-					KomaKind::SFuN => {
-						y * 9 + x + 81 * 22
-					},
-					KomaKind::SKyouN => {
-						y * 9 + x + 81 * 23
-					},
-					KomaKind::SKeiN => {
-						y * 9 + x + 81 * 24
-					},
-					KomaKind::SGinN => {
-						y * 9 + x + 81 * 25
-					},
-					KomaKind::SKakuN => {
-						y * 9 + x + 81 * 26
-					},
-					KomaKind::SHishaN => {
-						y * 9 + x + 81 * 27
-					},
-					_ => {
-						return Err(CommonError::Fail(
-									String::from(
-										"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
-								)));
-					}
-				}
+				GOTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
 			}
 		};
 
@@ -643,25 +551,9 @@ impl Intelligence {
 		};
 
 		let offset = if is_self {
-			match kind {
-				MochigomaKind::Fu => 81 * 28,
-				MochigomaKind::Kyou => 81 * 28 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
-			}
+			SELF_INDEX_MAP[kind as usize]
 		} else {
-			match kind {
-				MochigomaKind::Fu => 81 * 28 + 18 + 20,
-				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
-			}
+			OPPONENT_INDEX_MAP[kind as usize]
 		};
 
 		match mc.get(&kind) {
@@ -694,25 +586,9 @@ impl Intelligence {
 		};
 
 		let offset = if is_self {
-			match kind {
-				MochigomaKind::Fu => 81 * 28,
-				MochigomaKind::Kyou => 81 * 28 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
-			}
+			SELF_INDEX_MAP[kind as usize]
 		} else {
-			match kind {
-				MochigomaKind::Fu => 81 * 28 + 18 + 20,
-				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
-			}
+			OPPONENT_INDEX_MAP[kind as usize]
 		};
 
 		match mc.get(&kind) {
