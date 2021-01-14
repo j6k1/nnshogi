@@ -324,8 +324,8 @@ impl Intelligence {
 		Ok(())
 	}
 
-	pub fn make_input(t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 2344] {
-		let mut inputs:[f64; 2344] = [0f64; 2344];
+	pub fn make_input(t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 5436] {
+		let mut inputs:[f64; 5436] = [0f64; 5436];
 
 		match b {
 			&Banmen(ref kinds) => {
@@ -333,7 +333,13 @@ impl Intelligence {
 					for x in 0..9 {
 						let kind = kinds[y][x];
 
-						if kind != KomaKind::Blank {
+						if t == Teban::Sente && kind == KomaKind::SOu || t == Teban::Gote && kind == KomaKind::GOu {
+							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+
+							for i in 0..(KOMA_COUNT-1) {
+								inputs[index + i] = 1f64;
+							}
+						} else if kind != KomaKind::Blank {
 							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
 
 							inputs[index] = 1f64;
@@ -355,46 +361,24 @@ impl Intelligence {
 			Teban::Gote => (mg,ms),
 		};
 
-		for k in &MOCHIGOMA_KINDS {
-			match ms.get(&k) {
-				Some(c) => {
-					let offset = match k {
-						&MochigomaKind::Fu => 81 * 28,
-						&MochigomaKind::Kyou => 81 * 28 + 18,
-						&MochigomaKind::Kei => 81 * 28 + 18 + 4,
-						&MochigomaKind::Gin => 81 * 28 + 18 + 8,
-						&MochigomaKind::Kin => 81 * 28 + 18 + 12,
-						&MochigomaKind::Kaku => 81 * 28 + 18 + 16,
-						&MochigomaKind::Hisha => 81 * 28 + 18 + 18,
-					};
+		for &k in &MOCHIGOMA_KINDS {
+			match ms.get(&k).unwrap_or(&0) {
+				&c => {
+					let offset = SELF_INDEX_MAP[k as usize];
 
 					let offset = offset as usize;
 
-					for i in 0..(*c as usize) {
-						inputs[offset + i] = 1f64;
-					}
-				},
-				None => (),
+					inputs[offset + c as usize] = 1f64;
+				}
 			}
-			match mg.get(&k) {
-				Some(c) => {
-					let offset = match k {
-						&MochigomaKind::Fu => 81 * 28 + 18 + 20,
-						&MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
-						&MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
-						&MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
-						&MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
-						&MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
-						&MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
-					};
+			match mg.get(&k).unwrap_or(&0) {
+				&c => {
+					let offset = OPPONENT_INDEX_MAP[k as usize];
 
 					let offset = offset as usize;
 
-					for i in 0..(*c as usize) {
-						inputs[offset + i] = 1f64;
-					}
-				},
-				None => (),
+					inputs[offset + c as usize] = 1f64;
+				}
 			}
 		}
 		inputs
@@ -412,7 +396,23 @@ impl Intelligence {
 
 						let sk = kinds[sy as usize][sx as usize];
 
-						d.push((Intelligence::input_index_of_banmen(t,sk,sx,sy)?,-1f64));
+						if t == Teban::Sente && sk == KomaKind::SOu || t == Teban::Gote && sk == KomaKind::GOu {
+							let si = Intelligence::input_index_of_banmen(t, sk, sx, sy)?;
+							let di = Intelligence::input_index_of_banmen(t,sk,dx,dy)?;
+
+							for i in 0..(KOMA_COUNT-1) {
+								d.push((si + i, -1f64));
+								d.push((di + i,1f64));
+							}
+						} else {
+							d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -1f64));
+
+							if n {
+								d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
+							} else {
+								d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1f64));
+							}
+						}
 
 						let dk = kinds[dy as usize][dx as usize];
 
@@ -425,22 +425,24 @@ impl Intelligence {
 
 							d.push((offset, 1f64));
 						}
-
-						if n {
-							d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
-						} else {
-							d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1f64));
-						}
 					}
 				}
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let offset = Intelligence::input_index_with_of_mochigoma_put(is_self, t, kind, mc)?;
+				let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
 
-				d.push((offset, -1f64));
+				if offset < 1 {
+					return Err(CommonError::Fail(
+						String::from(
+							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
+						)))
+				} else {
+					d.push((offset, -1f64));
+					d.push((offset - 1, 1f64));
 
-				d.push((Intelligence::input_index_of_banmen(t,KomaKind::from((t,kind)),dx,dy)?,1f64));
+					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1f64));
+				}
 			}
 		}
 
@@ -556,52 +558,11 @@ impl Intelligence {
 			OPPONENT_INDEX_MAP[kind as usize]
 		};
 
-		match mc.get(&kind) {
-			Some(c) => {
+		match mc.get(&kind).unwrap_or(&0) {
+			&c => {
 				let offset = offset as usize;
 
-				Ok(offset + *c as usize)
-			},
-			_ => {
-				Ok(offset)
-			}
-		}
-	}
-
-	#[inline]
-	fn input_index_with_of_mochigoma_put(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections) -> Result<usize,CommonError> {
-		let ms = HashMap::new();
-		let mg = HashMap::new();
-
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
-
-		let mc = match teban {
-			Teban::Sente if is_self => ms,
-			Teban::Sente => mg,
-			Teban::Gote if is_self => mg,
-			Teban::Gote => ms,
-		};
-
-		let offset = if is_self {
-			SELF_INDEX_MAP[kind as usize]
-		} else {
-			OPPONENT_INDEX_MAP[kind as usize]
-		};
-
-		match mc.get(&kind) {
-			Some(c) if *c > 0 => {
-				let offset = offset as usize;
-
-				Ok(offset + *c as usize - 1)
-			},
-			_ => {
-				Err(CommonError::Fail(
-					String::from(
-						"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
-				)))
+				Ok(offset + c as usize)
 			}
 		}
 	}
