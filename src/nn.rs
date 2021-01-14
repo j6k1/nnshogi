@@ -122,9 +122,9 @@ impl Intelligence {
 		Ok((answer * F64_FRACTION_MAX as f64) as i64)
 	}
 
-	pub fn evalute_by_diff(&self,snapshot:&(SnapShot,SnapShot),is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move)
-		-> Result<(i64,(SnapShot,SnapShot)),CommonError> {
-		let input = Intelligence::make_diff_input(is_opposite,t,b,mc,m)?;
+	pub fn evalute_by_diff(&self, snapshot:&(SnapShot,SnapShot), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
+						   -> Result<(i64,(SnapShot,SnapShot)),CommonError> {
+		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
 
 		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
 		let ssb = self.nnb.solve_diff(&input,&snapshot.1)?;
@@ -330,7 +330,7 @@ impl Intelligence {
 		inputs
 	}
 
-	pub fn make_diff_input(is_opposite:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move) -> Result<Vec<(usize,f64)>,CommonError> {
+	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, f64)>,CommonError> {
 		let mut d = Vec::new();
 
 		match m {
@@ -351,7 +351,7 @@ impl Intelligence {
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = Intelligence::input_index_with_of_mochigoma_get(is_opposite,t,MochigomaKind::try_from(dk)?,mc)?;
+							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
 
 							d.push((offset, 1f64));
 						}
@@ -366,7 +366,7 @@ impl Intelligence {
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let offset = Intelligence::input_index_with_of_mochigoma_put(is_opposite,t,kind,mc)?;
+				let offset = Intelligence::input_index_with_of_mochigoma_put(is_self, t, kind, mc)?;
 
 				d.push((offset, -1f64));
 
@@ -576,8 +576,8 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_get(is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections)
-		-> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_get(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
+										 -> Result<usize,CommonError> {
 
 		let ms = HashMap::new();
 		let mg = HashMap::new();
@@ -588,23 +588,13 @@ impl Intelligence {
 		};
 
 		let mc = match teban {
-			Teban::Sente if is_opposite => mg,
-			Teban::Sente => ms,
-			Teban::Gote if is_opposite => ms,
-			Teban::Gote => mg,
+			Teban::Sente if is_self => ms,
+			Teban::Sente => mg,
+			Teban::Gote if is_self => mg,
+			Teban::Gote => ms,
 		};
 
-		let offset = if is_opposite {
-			match kind {
-				MochigomaKind::Fu => 81 * 28 + 18 + 20,
-				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
-			}
-		} else {
+		let offset = if is_self {
 			match kind {
 				MochigomaKind::Fu => 81 * 28,
 				MochigomaKind::Kyou => 81 * 28 + 18,
@@ -613,6 +603,16 @@ impl Intelligence {
 				MochigomaKind::Kin => 81 * 28 + 18 + 12,
 				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
 				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+			}
+		} else {
+			match kind {
+				MochigomaKind::Fu => 81 * 28 + 18 + 20,
+				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
 			}
 		};
 
@@ -629,7 +629,7 @@ impl Intelligence {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_put(is_opposite:bool,teban:Teban,kind:MochigomaKind,mc:&MochigomaCollections) -> Result<usize,CommonError> {
+	fn input_index_with_of_mochigoma_put(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections) -> Result<usize,CommonError> {
 		let ms = HashMap::new();
 		let mg = HashMap::new();
 
@@ -639,23 +639,13 @@ impl Intelligence {
 		};
 
 		let mc = match teban {
-			Teban::Sente if is_opposite => mg,
-			Teban::Sente => ms,
-			Teban::Gote if is_opposite => ms,
-			Teban::Gote => mg,
+			Teban::Sente if is_self => ms,
+			Teban::Sente => mg,
+			Teban::Gote if is_self => mg,
+			Teban::Gote => ms,
 		};
 
-		let offset = if is_opposite {
-			match kind {
-				MochigomaKind::Fu => 81 * 28 + 18 + 20,
-				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
-				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
-				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
-				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
-				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
-				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
-			}
-		} else {
+		let offset = if is_self {
 			match kind {
 				MochigomaKind::Fu => 81 * 28,
 				MochigomaKind::Kyou => 81 * 28 + 18,
@@ -664,6 +654,16 @@ impl Intelligence {
 				MochigomaKind::Kin => 81 * 28 + 18 + 12,
 				MochigomaKind::Kaku => 81 * 28 + 18 + 16,
 				MochigomaKind::Hisha => 81 * 28 + 18 + 18,
+			}
+		} else {
+			match kind {
+				MochigomaKind::Fu => 81 * 28 + 18 + 20,
+				MochigomaKind::Kyou => 81 * 28 + 18 + 20 + 18,
+				MochigomaKind::Kei => 81 * 28 + 18 + 20 + 18 + 4,
+				MochigomaKind::Gin => 81 * 28 + 18 + 20 + 18 + 8,
+				MochigomaKind::Kin => 81 * 28 + 18 + 20 + 18 + 12,
+				MochigomaKind::Kaku => 81 * 28 + 18 + 20 + 18 + 16,
+				MochigomaKind::Hisha => 81 * 28 + 18 + 20 + 18 + 18,
 			}
 		};
 

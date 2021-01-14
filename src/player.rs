@@ -334,8 +334,8 @@ impl Search {
 			}
 		};
 
-		let (ss,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot,false,teban,state.get_banmen(),mc,m)?;
-		let (os,opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot,true,teban.opposite(),state.get_banmen(),mc,m)?;
+		let (ss,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot,true,teban,state.get_banmen(),mc,m)?;
+		let (os,opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot,false,teban.opposite(),state.get_banmen(),mc,m)?;
 		let s = ss - os;
 
 		if self.display_evalute_score {
