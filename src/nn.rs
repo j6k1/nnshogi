@@ -546,8 +546,10 @@ impl Intelligence {
 		};
 
 		let mc = match teban {
-			Teban::Sente => ms,
-			Teban::Gote => mg,
+			Teban::Sente if is_self => ms,
+			Teban::Sente => mg,
+			Teban::Gote if is_self => mg,
+			Teban::Gote => ms,
 		};
 
 		let offset = if is_self {
