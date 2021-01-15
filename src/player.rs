@@ -1426,7 +1426,7 @@ impl Search {
 }
 pub struct NNShogiPlayer {
 	search:Arc<Search>,
-	kyokumen:Option<Arc<Kyokumen>>,
+	kyokumen:Option<Kyokumen>,
 	mhash:u64,
 	shash:u64,
 	oute_kyokumen_map:KyokumenMap<u64,()>,
@@ -1706,11 +1706,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			current_teban = current_teban.opposite();
 		}
 
-		self.kyokumen = Some(Arc::new(Kyokumen {
+		self.kyokumen = Some(Kyokumen {
 			state:state,
 			mc:mc,
 			teban:t
-		}));
+		});
 		self.mhash = mhash;
 		self.shash = shash;
 		self.oute_kyokumen_map = oute_kyokumen_map;
@@ -1725,14 +1725,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<BestMove,CommonError>
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+		let (teban,state,mc) = self.kyokumen.as_ref().map(|k| (k.teban,&k.state,&k.mc)).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
 		)?;
-
-		let teban = kyokumen.teban;
-		let state = &kyokumen.state;
-		let mc = &kyokumen.mc;
 
 		let limit = limit.to_instant(teban,think_start_time);
 		let current_limit = limit.map(|l| think_start_time + (l  - think_start_time) / self.remaining_turns);
@@ -1851,14 +1847,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		-> Result<CheckMate,CommonError>
 		where L: Logger, S: InfoSender,
 			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+		let (teban,state,mc) = self.kyokumen.as_ref().map(|k| (k.teban,&k.state,&k.mc)).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
 		)?;
 
-		let teban = kyokumen.teban;
-		let state = &kyokumen.state;
-		let mc = &kyokumen.mc;
 		let (mhash,shash) = (self.mhash.clone(), self.shash.clone());
 
 		let limit = limit.to_instant(Instant::now());
@@ -1922,12 +1915,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		event_queue:Arc<Mutex<UserEventQueue>>,
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
-		let kyokumen = self.kyokumen.as_ref().map(|k| k.clone()).ok_or(
+		let teban = self.kyokumen.as_ref().map(|k| k.teban).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Information of 'teban' is not set."))
 		)?;
-
-		let teban = kyokumen.teban;
 
 		if self.count_of_move_started > 0 {
 			let (teban,last_teban) = if self.moved {
