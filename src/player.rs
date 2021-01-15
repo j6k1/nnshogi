@@ -273,10 +273,10 @@ impl Search {
 	}
 	*/
 
-	fn make_snapshot(&self,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections)
+	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections)
 		-> Result<(SnapShot,SnapShot),CommonError> {
 
-		let r = evalutor.make_snapshot(teban,state.get_banmen(),mc)?;
+		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc)?;
 
 		Ok(r)
 	}
@@ -1746,8 +1746,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		match self.evalutor {
 			Some(ref evalutor) => {
-				let self_nn_snapshot = self.search.make_snapshot(evalutor,teban,state,mc)?;
-				let opponent_nn_snapshot = self.search.make_snapshot(evalutor,teban.opposite(),state,mc)?;
+				let self_nn_snapshot = self.search.make_snapshot(true,evalutor,teban,state,mc)?;
+				let opponent_nn_snapshot = self.search.make_snapshot(false,evalutor,teban.opposite(),state,mc)?;
 
 				let prev_state:Option<Arc<State>> = None;
 				let prev_mc:Option<Arc<MochigomaCollections>> = None;

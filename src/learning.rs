@@ -227,9 +227,9 @@ impl CsaLearnener {
 							"An error occurred while learning the neural network."
 						)));
 					},
-					Ok((ma,mb)) => {
-						println!("error_total: {}, error_average: {}",ma.error_total,ma.error_average);
-						println!("error_total: {}, error_average: {}",mb.error_total,mb.error_average);
+					Ok((msa,moa,msb,mob)) => {
+						println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
+						println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
 					}
 				};
 

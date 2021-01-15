@@ -44,7 +44,10 @@ pub const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
 const BANMEN_SIZE:usize = 81;
 const KOMA_COUNT:usize = 40;
 
-const OU_INDEX:usize = 0;
+const SELF_TEBAN_INDEX:usize = 0;
+const OPPONENT_TEBAN_INDEX:usize = SELF_TEBAN_INDEX + (KOMA_COUNT - 1);
+
+const OU_INDEX:usize = OPPONENT_TEBAN_INDEX + (KOMA_COUNT - 1);
 const FU_INDEX:usize = OU_INDEX + BANMEN_SIZE * (KOMA_COUNT - 1);
 const KYOU_INDEX:usize = FU_INDEX + BANMEN_SIZE;
 const KEI_INDEX:usize = KYOU_INDEX + BANMEN_SIZE;
@@ -115,7 +118,7 @@ impl Intelligence {
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
-										NNUnits::new(5436,
+										NNUnits::new(5514,
 											(256,Box::new(FReLU::new())),
 											(32,Box::new(FReLU::new())))
 											.add((32,Box::new(FReLU::new())))
@@ -132,7 +135,7 @@ impl Intelligence {
 		let n = Normal::new(0.0, 1.0).unwrap();
 
 		let model:NNModel = NNModel::with_unit_initializer(
-										NNUnits::new(5436,
+										NNUnits::new(5514,
 												 (256,Box::new(FReLU::new())),
 												 (32,Box::new(FReLU::new())))
 											.add((32,Box::new(FReLU::new())))
@@ -155,9 +158,9 @@ impl Intelligence {
 		}
 	}
 
-	pub fn make_snapshot(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<(SnapShot,SnapShot),InvalidStateError> {
-		let input = Intelligence::make_input(t,b,mc);
+		let input = Intelligence::make_input(is_self,t,b,mc);
 
 		let ssa = self.nna.solve_shapshot(&input)?;
 		let ssb = self.nnb.solve_shapshot(&input)?;
@@ -165,9 +168,9 @@ impl Intelligence {
 		Ok((ssa,ssb))
 	}
 
-	pub fn evalute(&self,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<i64,InvalidStateError> {
-		let input = Intelligence::make_input(t,b,mc);
+		let input = Intelligence::make_input(is_self,t,b,mc);
 
 		let nnaanswera = self.nna.solve(&input)?;
 		let nnbanswerb = self.nnb.solve(&input)?;
@@ -250,13 +253,25 @@ impl Intelligence {
 						training_data_generator:&D,
 						a:f64,b:f64,
 						_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-						-> Result<(Metrics,Metrics),CommonError>
+						-> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
 		where D: Fn(&GameEndState,Teban,f64) -> f64 {
 
 		let mut teban = last_teban;
 
-		let ma = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban, banmen, mc);
+		let msa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+
+			let t = training_data_generator(s,teban,a);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		let mut teban = last_teban.opposite();
+
+		let moa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
 
@@ -267,8 +282,20 @@ impl Intelligence {
 
 		let mut teban = last_teban;
 
-		let mb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban, banmen, mc);
+		let msb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+
+			let t = training_data_generator(s,teban,b);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		let mut teban = last_teban.opposite();
+
+		let mob = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
 
@@ -279,7 +306,7 @@ impl Intelligence {
 
 		self.save()?;
 
-		Ok((ma,mb))
+		Ok((msa,moa,msb,mob))
 	}
 
 	fn save(&mut self) -> Result<(),CommonError>{
@@ -324,8 +351,18 @@ impl Intelligence {
 		Ok(())
 	}
 
-	pub fn make_input(t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 5436] {
-		let mut inputs:[f64; 5436] = [0f64; 5436];
+	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 5514] {
+		let mut inputs:[f64; 5514] = [0f64; 5514];
+
+		let index = if is_self {
+			SELF_TEBAN_INDEX
+		} else {
+			OPPONENT_TEBAN_INDEX
+		};
+
+		for i in 0..(KOMA_COUNT-1) {
+			inputs[index + i] = 1f64;
+		}
 
 		match b {
 			&Banmen(ref kinds) => {
@@ -386,6 +423,17 @@ impl Intelligence {
 
 	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, f64)>,CommonError> {
 		let mut d = Vec::new();
+
+		let (addi,subi) = if is_self {
+			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
+		} else {
+			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
+		};
+
+		for i in 0..(KOMA_COUNT-1) {
+			d.push((subi + i, -1f64));
+			d.push((addi + i,1f64));
+		}
 
 		match m {
 			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
