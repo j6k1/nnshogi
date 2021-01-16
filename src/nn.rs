@@ -471,7 +471,8 @@ impl Intelligence {
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
 							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
 
-							d.push((offset, 1f64));
+							d.push((offset, -1f64));
+							d.push((offset+1, 1f64));
 						}
 					}
 				}
