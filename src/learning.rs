@@ -202,7 +202,10 @@ impl CsaLearnener {
 					(1f64,1f64)
 				};
 
-				match evalutor.learning_by_training_data(teban.opposite(),
+				let teban = teban.opposite();
+
+				match evalutor.learning_by_training_data(
+					teban,
 					history,
 					&s,&move |s,t, ab| {
 
