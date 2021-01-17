@@ -259,7 +259,7 @@ impl Intelligence {
 		let mut teban = last_teban;
 
 		let msa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
 
@@ -271,7 +271,7 @@ impl Intelligence {
 		let mut teban = last_teban.opposite();
 
 		let moa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
 
@@ -283,7 +283,7 @@ impl Intelligence {
 		let mut teban = last_teban;
 
 		let msb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
 
@@ -295,7 +295,7 @@ impl Intelligence {
 		let mut teban = last_teban.opposite();
 
 		let mob = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,teban, banmen, mc);
+			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
 
