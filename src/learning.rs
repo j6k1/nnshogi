@@ -127,13 +127,12 @@ impl CsaLearnener {
 			let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
 
 			for p in parsed.into_iter() {
-				let es = match p.end_state {
-					Some(EndState::Toryo) => EndState::Toryo,
-					Some(EndState::Tsumi) => EndState::Tsumi,
+				match p.end_state {
+					Some(EndState::Toryo) | Some(EndState::Tsumi) => (),
 					_ => {
 						continue;
 					}
-				};
+				}
 
 				if !p.comments.iter().any(|c| {
 					if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
@@ -185,12 +184,6 @@ impl CsaLearnener {
 					history
 				});
 
-				let s = if es == EndState::Toryo {
-					GameEndState::Lose
-				} else {
-					GameEndState::Win
-				};
-
 				let (a,b) = if bias_shake_shake {
 					let mut rnd = rand::thread_rng();
 
@@ -207,7 +200,7 @@ impl CsaLearnener {
 				match evalutor.learning_by_training_data(
 					teban,
 					history,
-					&s,&move |s,t, ab| {
+					&GameEndState::Win,&move |s,t, ab| {
 
 					match s {
 						&GameEndState::Win if t == teban => {
