@@ -121,24 +121,12 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&Arc<AtomicBool>,&Arc<AtomicBool>,
 						&Vec<(u32,LegalMove)>,bool,
 						&mut KyokumenMap<u64,i64>) -> Evaluation;
-
-pub struct Search {
+pub struct KyokumenHash {
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-	base_depth:u32,
-	max_depth:u32,
-	max_threads:u32,
-	max_ply:Option<u32>,
-	max_ply_mate:Option<u32>,
-	max_ply_timelimit:Option<Duration>,
-	network_delay:u32,
-	turn_count:u32,
-	min_turn_count:u32,
-	display_evalute_score:bool,
-	adjust_depth:bool,
 }
-impl Search {
-	pub fn new() -> Search {
+impl KyokumenHash {
+	pub fn new() -> KyokumenHash {
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -158,6 +146,235 @@ impl Search {
 			}
 		}
 
+		KyokumenHash {
+			kyokumen_hash_seeds:kyokumen_hash_seeds,
+			mochigoma_hash_seeds:mochigoma_hash_seeds,
+		}
+	}
+
+	fn calc_hash<AF,PF>(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,
+						m:&Move,obtained:&Option<MochigomaKind>,add:AF,pull:PF)
+						-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
+		match b {
+			&Banmen(ref kinds) => {
+				match m {
+					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, n)) => {
+						let sx = (9 - sx) as usize;
+						let sy = (sy - 1) as usize;
+						let dx = (9 - dx) as usize;
+						let dy = dy as usize - 1;
+
+						let mut hash = h;
+						let k = kinds[sy][sx];
+
+						hash =  pull(hash,self.kyokumen_hash_seeds[k as usize][sy * 8 + sx]);
+						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sy * 8 + sx]);
+
+						let dk = kinds[dy][dx] as usize;
+
+						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
+
+						let k = if n {
+							match k {
+								KomaKind::SFu => KomaKind::SFuN,
+								KomaKind::SKyou => KomaKind::SKyouN,
+								KomaKind::SKei => KomaKind::SKeiN,
+								KomaKind::SGin => KomaKind::SGinN,
+								KomaKind::SKaku => KomaKind::SKakuN,
+								KomaKind::SHisha => KomaKind::SHishaN,
+								KomaKind::GFu => KomaKind::GFuN,
+								KomaKind::GKyou => KomaKind::GKyouN,
+								KomaKind::GKei => KomaKind::GKeiN,
+								KomaKind::GGin => KomaKind::GGinN,
+								KomaKind::GKaku => KomaKind::GKakuN,
+								KomaKind::GHisha => KomaKind::GHishaN,
+								k => k,
+							}
+						} else {
+							k
+						} as usize;
+
+						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
+
+						hash = match obtained  {
+							&None => hash,
+							&Some(ref obtained) => {
+								let c =  match t {
+									&Teban::Sente => {
+										match mc {
+											&MochigomaCollections::Pair(ref mc,_) => {
+												match mc.get(obtained) {
+													Some(c) => *c as usize,
+													None => 0,
+												}
+											},
+											&MochigomaCollections::Empty => 0,
+										}
+									},
+									&Teban::Gote => {
+										match mc {
+											&MochigomaCollections::Pair(_,ref mc) => {
+												match mc.get(obtained) {
+													Some(c) => *c as usize,
+													None => 0,
+												}
+											},
+											&MochigomaCollections::Empty => 0,
+										}
+									}
+								};
+
+								let k = *obtained as usize;
+
+								match t {
+									&Teban::Sente => {
+										hash = add(hash,self.mochigoma_hash_seeds[0][c][k]);
+									},
+									&Teban::Gote => {
+										hash = add(hash,self.mochigoma_hash_seeds[1][c][k]);
+									}
+								}
+								hash
+							}
+						};
+
+						hash
+					},
+					&Move::Put(ref mk, ref md) => {
+						let mut hash = h;
+
+						let c = match t {
+							&Teban::Sente => {
+								match mc {
+									&MochigomaCollections::Pair(ref mc,_) => {
+										match mc.get(&mk) {
+											None | Some(&0) => {
+												return hash;
+											}
+											Some(c) => *c as usize,
+										}
+									},
+									&MochigomaCollections::Empty => {
+										return hash;
+									}
+								}
+							},
+							&Teban::Gote => {
+								match mc {
+									&MochigomaCollections::Pair(_,ref mc) => {
+										match mc.get(&mk) {
+											None | Some(&0) => {
+												return hash;
+											}
+											Some(c) => *c as usize,
+										}
+									},
+									&MochigomaCollections::Empty => {
+										return hash;
+									}
+								}
+							}
+						};
+
+						let k = *mk as usize;
+
+						match t {
+							&Teban::Sente => {
+								hash = pull(hash,self.mochigoma_hash_seeds[0][c-1][k]);
+							},
+							&Teban::Gote => {
+								hash = pull(hash,self.mochigoma_hash_seeds[1][c-1][k]);
+							}
+						}
+
+						let dx = 9 - md.0 as usize;
+						let dy = md.1 as usize - 1;
+						let dk = kinds[dy][dx] as usize;
+
+						hash = pull(hash,self.kyokumen_hash_seeds[dk as usize][dy * 8 + dx]);
+
+						let k = KomaKind::from((*t,*mk)) as usize;
+
+						hash = add(hash,self.kyokumen_hash_seeds[k as usize][dy * 8 + dx]);
+						hash
+					}
+				}
+			}
+		}
+	}
+
+	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,t,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
+	}
+
+	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+		self.calc_hash(h,t,b,mc,m,obtained,|h,v| {
+			let h = Wrapping(h);
+			let v = Wrapping(v);
+			(h + v).0
+		}, |h,v| {
+			let h = Wrapping(h);
+			let v = Wrapping(v);
+			(h - v).0
+		})
+	}
+
+	fn calc_initial_hash(&self,b:&Banmen,
+						 ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
+		let mut mhash:u64 = 0;
+		let mut shash:Wrapping<u64> = Wrapping(0u64);
+
+		match b {
+			&Banmen(ref kinds) => {
+				for y in 0..9 {
+					for x in 0..9 {
+						let k = kinds[y][x] as usize;
+						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 8 + x];
+						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 8 + x]);
+					}
+				}
+			}
+		}
+		for k in &MOCHIGOMA_KINDS {
+			match ms.get(&k) {
+				Some(c) => {
+					for i in 0..(*c as usize) {
+						mhash = mhash ^ self.mochigoma_hash_seeds[0][i][*k as usize];
+						shash = shash + Wrapping(self.mochigoma_hash_seeds[0][i][*k as usize]);
+					}
+				},
+				None => (),
+			}
+			match mg.get(&k) {
+				Some(c) => {
+					for i in 0..(*c as usize) {
+						mhash = mhash ^ self.mochigoma_hash_seeds[1][i][*k as usize];
+						shash = shash + Wrapping(self.mochigoma_hash_seeds[1][i][*k as usize]);
+					}
+				},
+				None => (),
+			}
+		}
+
+		(mhash,shash.0)
+	}
+}
+pub struct Search {
+	kyokumenhash:KyokumenHash,
+	base_depth:u32,
+	max_depth:u32,
+	max_threads:u32,
+	max_ply:Option<u32>,
+	max_ply_mate:Option<u32>,
+	max_ply_timelimit:Option<Duration>,
+	network_delay:u32,
+	turn_count:u32,
+	min_turn_count:u32,
+	display_evalute_score:bool,
+	adjust_depth:bool,
+}
+impl Search {
+	pub fn new() -> Search {
 		let max_ply_timelimit = if MAX_PLY_TIMELIMIT >  0 {
 			Some(Duration::from_millis(MAX_PLY_TIMELIMIT))
 		} else {
@@ -165,8 +382,7 @@ impl Search {
 		};
 
 		Search {
-			kyokumen_hash_seeds:kyokumen_hash_seeds,
-			mochigoma_hash_seeds:mochigoma_hash_seeds,
+			kyokumenhash:KyokumenHash::new(),
 			base_depth:BASE_DEPTH,
 			max_depth:MAX_DEPTH,
 			max_threads:MAX_THREADS,
@@ -1217,211 +1433,17 @@ impl Search {
 		}
 	}
 
-	fn calc_hash<AF,PF>(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,
-												m:&Move,obtained:&Option<MochigomaKind>,add:AF,pull:PF)
-		-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
-		match b {
-			&Banmen(ref kinds) => {
-				match m {
-					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, n)) => {
-						let sx = (9 - sx) as usize;
-						let sy = (sy - 1) as usize;
-						let dx = (9 - dx) as usize;
-						let dy = dy as usize - 1;
-
-						let mut hash = h;
-						let k = kinds[sy][sx];
-
-						hash =  pull(hash,self.kyokumen_hash_seeds[k as usize][sy * 8 + sx]);
-						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sy * 8 + sx]);
-
-						let dk = kinds[dy][dx] as usize;
-
-						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
-
-						let k = if n {
-							match k {
-								KomaKind::SFu => KomaKind::SFuN,
-								KomaKind::SKyou => KomaKind::SKyouN,
-								KomaKind::SKei => KomaKind::SKeiN,
-								KomaKind::SGin => KomaKind::SGinN,
-								KomaKind::SKaku => KomaKind::SKakuN,
-								KomaKind::SHisha => KomaKind::SHishaN,
-								KomaKind::GFu => KomaKind::GFuN,
-								KomaKind::GKyou => KomaKind::GKyouN,
-								KomaKind::GKei => KomaKind::GKeiN,
-								KomaKind::GGin => KomaKind::GGinN,
-								KomaKind::GKaku => KomaKind::GKakuN,
-								KomaKind::GHisha => KomaKind::GHishaN,
-								k => k,
-							}
-						} else {
-							k
-						} as usize;
-
-						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
-
-						hash = match obtained  {
-								&None => hash,
-								&Some(ref obtained) => {
-									let c =  match t {
-										&Teban::Sente => {
-											match mc {
-												&MochigomaCollections::Pair(ref mc,_) => {
-													match mc.get(obtained) {
-														Some(c) => *c as usize,
-														None => 0,
-													}
-												},
-												&MochigomaCollections::Empty => 0,
-											}
-										},
-										&Teban::Gote => {
-											match mc {
-												&MochigomaCollections::Pair(_,ref mc) => {
-													match mc.get(obtained) {
-														Some(c) => *c as usize,
-														None => 0,
-													}
-												},
-												&MochigomaCollections::Empty => 0,
-											}
-										}
-									};
-
-									let k = *obtained as usize;
-
-									match t {
-										&Teban::Sente => {
-											hash = add(hash,self.mochigoma_hash_seeds[0][c][k]);
-										},
-										&Teban::Gote => {
-											hash = add(hash,self.mochigoma_hash_seeds[1][c][k]);
-										}
-									}
-									hash
-								}
-						};
-
-						hash
-					},
-					&Move::Put(ref mk, ref md) => {
-						let mut hash = h;
-
-						let c = match t {
-							&Teban::Sente => {
-								match mc {
-									&MochigomaCollections::Pair(ref mc,_) => {
-										match mc.get(&mk) {
-											None | Some(&0) => {
-												return hash;
-											}
-											Some(c) => *c as usize,
-										}
-									},
-									&MochigomaCollections::Empty => {
-										return hash;
-									}
-								}
-							},
-							&Teban::Gote => {
-								match mc {
-									&MochigomaCollections::Pair(_,ref mc) => {
-										match mc.get(&mk) {
-											None | Some(&0) => {
-												return hash;
-											}
-											Some(c) => *c as usize,
-										}
-									},
-									&MochigomaCollections::Empty => {
-										return hash;
-									}
-								}
-							}
-						};
-
-						let k = *mk as usize;
-
-						match t {
-							&Teban::Sente => {
-								hash = pull(hash,self.mochigoma_hash_seeds[0][c-1][k]);
-							},
-							&Teban::Gote => {
-								hash = pull(hash,self.mochigoma_hash_seeds[1][c-1][k]);
-							}
-						}
-
-						let dx = 9 - md.0 as usize;
-						let dy = md.1 as usize - 1;
-						let dk = kinds[dy][dx] as usize;
-
-						hash = pull(hash,self.kyokumen_hash_seeds[dk as usize][dy * 8 + dx]);
-
-						let k = KomaKind::from((*t,*mk)) as usize;
-
-						hash = add(hash,self.kyokumen_hash_seeds[k as usize][dy * 8 + dx]);
-						hash
-					}
-				}
-			}
-		}
-	}
-
 	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,t,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
+		self.kyokumenhash.calc_main_hash(h,t,b,mc,m,obtained)
 	}
 
 	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,t,b,mc,m,obtained,|h,v| {
-			let h = Wrapping(h);
-			let v = Wrapping(v);
-			(h + v).0
-		}, |h,v| {
-			let h = Wrapping(h);
-			let v = Wrapping(v);
-			(h - v).0
-		})
+		self.kyokumenhash.calc_sub_hash(h,t,b,mc,m,obtained)
 	}
 
 	fn calc_initial_hash(&self,b:&Banmen,
 		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
-		let mut mhash:u64 = 0;
-		let mut shash:Wrapping<u64> = Wrapping(0u64);
-
-		match b {
-			&Banmen(ref kinds) => {
-				for y in 0..9 {
-					for x in 0..9 {
-						let k = kinds[y][x] as usize;
-						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 8 + x];
-						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 8 + x]);
-					}
-				}
-			}
-		}
-		for k in &MOCHIGOMA_KINDS {
-			match ms.get(&k) {
-				Some(c) => {
-					for i in 0..(*c as usize) {
-						mhash = mhash ^ self.mochigoma_hash_seeds[0][i][*k as usize];
-						shash = shash + Wrapping(self.mochigoma_hash_seeds[0][i][*k as usize]);
-					}
-				},
-				None => (),
-			}
-			match mg.get(&k) {
-				Some(c) => {
-					for i in 0..(*c as usize) {
-						mhash = mhash ^ self.mochigoma_hash_seeds[1][i][*k as usize];
-						shash = shash + Wrapping(self.mochigoma_hash_seeds[1][i][*k as usize]);
-					}
-				},
-				None => (),
-			}
-		}
-
-		(mhash,shash.0)
+		self.kyokumenhash.calc_initial_hash(b,ms,mg)
 	}
 }
 pub struct NNShogiPlayer {
