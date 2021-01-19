@@ -259,21 +259,21 @@ impl Intelligence {
 		let mut teban = last_teban;
 
 		let msa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
+			let input = Intelligence::make_input(true,teban, banmen, mc);
 
-			let t = training_data_generator(s,last_teban,a);
+			let t = training_data_generator(s,teban,a);
 
 			teban = teban.opposite();
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
 
-		let mut teban = last_teban;
+		let mut teban = last_teban.opposite();
 
 		let moa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban.opposite(),last_teban.opposite(), banmen, mc);
+			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(s,last_teban.opposite(),a);
+			let t = training_data_generator(s,teban,a);
 
 			teban = teban.opposite();
 
@@ -283,21 +283,21 @@ impl Intelligence {
 		let mut teban = last_teban;
 
 		let msb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban,last_teban, banmen, mc);
+			let input = Intelligence::make_input(true,teban, banmen, mc);
 
-			let t = training_data_generator(s,last_teban,b);
+			let t = training_data_generator(s,teban,b);
 
 			teban = teban.opposite();
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
 
-		let mut teban = last_teban;
+		let mut teban = last_teban.opposite();
 
 		let mob = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(teban == last_teban.opposite(),last_teban.opposite(), banmen, mc);
+			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(s,last_teban.opposite(),b);
+			let t = training_data_generator(s,teban,b);
 
 			teban = teban.opposite();
 
