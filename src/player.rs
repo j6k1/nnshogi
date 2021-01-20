@@ -101,12 +101,9 @@ const TURN_COUNT:u32 = 50;
 const MIN_TURN_COUNT:u32 = 5;
 
 type Strategy<L,S> = fn (&Arc<Search>,
-						&mut Solver<CommonError>,
-						&Arc<Mutex<UserEventQueue>>,
+						&mut Environment<L,S>,
 						&mut UserEventDispatcher<Search,CommonError,L>,
 						&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-						&Arc<Intelligence>,&mut S,
-						&Arc<Mutex<OnErrorHandler<L>>>,
 						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
 						Teban,&Arc<State>,Score,Score,
 						&Arc<MochigomaCollections>,
@@ -115,18 +112,11 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Option<KyokumenMap<u64,bool>>,
 						&KyokumenMap<u64,()>,
 						u64,u64,
-						Option<Instant>,
-						Option<Instant>,
 						u32,u32,u32,u64,
-						&Arc<AtomicBool>,&Arc<AtomicBool>,
-						&Vec<(u32,LegalMove)>,bool,
-						&mut KyokumenMap<u64,i64>) -> Evaluation;
-pub struct Environment<'a,L,S> where L: Logger, S: InfoSender {
+						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
+pub struct Environment<L,S> where L: Logger, S: InfoSender {
 	solver:Solver<CommonError>,
 	event_queue:Arc<Mutex<UserEventQueue>>,
-	event_dispatcher:UserEventDispatcher<'a,Search,CommonError,L>,
-	solver_event_dispatcher:USIEventDispatcher<'a,UserEventKind,
-		UserEvent,Solver<CommonError>,L,CommonError>,
 	evalutor:Arc<Intelligence>,
 	info_sender:S,
 	on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
@@ -136,13 +126,11 @@ pub struct Environment<'a,L,S> where L: Logger, S: InfoSender {
 	quited:Arc<AtomicBool>,
 	kyokumen_score_map:KyokumenMap<u64,i64>
 }
-impl<'a,L,S> Clone for Environment<'a,L,S> where L: Logger, S: InfoSender {
+impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 	fn clone(&self) -> Self {
 		Environment {
 			solver:Solver::new(),
 			event_queue:self.event_queue.clone(),
-			event_dispatcher:Self::create_event_dispatcher(&self.on_error_handler,&self.stop,&self.quited),
-			solver_event_dispatcher:Self::create_event_dispatcher(&self.on_error_handler,&self.stop,&self.quited),
 			evalutor:self.evalutor.clone(),
 			info_sender:self.info_sender.clone(),
 			on_error_handler:self.on_error_handler.clone(),
@@ -154,22 +142,19 @@ impl<'a,L,S> Clone for Environment<'a,L,S> where L: Logger, S: InfoSender {
 		}
 	}
 }
-impl<'a,L,S> Environment<'a,L,S> where L: Logger, S: InfoSender {
-	pub fn new(solver:Solver<CommonError>,
-			   event_queue:Arc<Mutex<UserEventQueue>>,
+impl<L,S> Environment<L,S> where L: Logger, S: InfoSender {
+	pub fn new(event_queue:Arc<Mutex<UserEventQueue>>,
 			   evalutor:Arc<Intelligence>,
 			   info_sender:S,
 			   on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
 			   limit:Option<Instant>,
-			   current_limit:Option<Instant>) -> Environment<'a,L,S> {
+			   current_limit:Option<Instant>) -> Environment<L,S> {
 		let stop = Arc::new(AtomicBool::new(false));
 		let quited = Arc::new(AtomicBool::new(false));
 
 		Environment {
-			solver:solver,
+			solver:Solver::new(),
 			event_queue:event_queue,
-			event_dispatcher:Self::create_event_dispatcher(&on_error_handler,&stop,&quited),
-			solver_event_dispatcher:Self::create_event_dispatcher(&on_error_handler,&stop,&quited),
 			evalutor:evalutor,
 			info_sender:info_sender,
 			on_error_handler:on_error_handler,
@@ -179,44 +164,6 @@ impl<'a,L,S> Environment<'a,L,S> where L: Logger, S: InfoSender {
 			quited:quited,
 			kyokumen_score_map:KyokumenMap::new()
 		}
-	}
-
-	fn create_event_dispatcher<T>(on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
-									-> UserEventDispatcher<'a,T,CommonError,L> where L: Logger {
-
-		let mut event_dispatcher = USIEventDispatcher::new(&on_error_handler.clone());
-
-		{
-			let stop = stop.clone();
-
-			event_dispatcher.add_handler(UserEventKind::Stop, move |_,e| {
-				match e {
-					&UserEvent::Stop => {
-						stop.store(true,atomic::Ordering::Release);
-						Ok(())
-					},
-					e => Err(EventHandlerError::InvalidState(e.event_kind())),
-				}
-			});
-		}
-
-		{
-			let stop = stop.clone();
-			let quited = quited.clone();
-
-			event_dispatcher.add_handler(UserEventKind::Quit, move |_,e| {
-				match e {
-					&UserEvent::Quit => {
-						quited.store(true,atomic::Ordering::Release);
-						stop.store(true,atomic::Ordering::Release);
-						Ok(())
-					},
-					e => Err(EventHandlerError::InvalidState(e.event_kind())),
-				}
-			});
-		}
-
-		event_dispatcher
 	}
 }
 pub struct KyokumenHash {
@@ -675,14 +622,9 @@ impl Search {
 	}
 
 	fn negascout<L,S>(self:&Arc<Self>,
-			solver:&mut Solver<CommonError>,
-			event_queue:&Arc<Mutex<UserEventQueue>>,
-								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
-								solver_event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-													UserEvent,Solver<CommonError>,L,CommonError>,
-								evalutor:&Arc<Intelligence>,
-								info_sender:&mut S,
-								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+								env:&mut Environment<L,S>,
+					  			event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
+					  			solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								teban:Teban,state:&Arc<State>,
@@ -696,46 +638,41 @@ impl Search {
 								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,
-								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								stop:&Arc<AtomicBool>,
-								quited:&Arc<AtomicBool>,
 								strategy:Strategy<L,S>,
-								kyokumen_score_map:&mut KyokumenMap<u64,i64>
 	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		if current_depth > base_depth {
-			self.send_seldepth(info_sender, on_error_handler, base_depth, current_depth);
+			self.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
 		}
 
 		if let Some(ObtainKind::Ou) = obtained {
 			return Evaluation::Result(Score::NEGINFINITE, None);
 		}
 
-		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
+		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None, None);
 		}
 
 		if depth == 0 || current_depth == self.max_depth {
-			if let Some(&s) = kyokumen_score_map.get(teban, &mhash, &shash) {
+			if let Some(&s) = env.kyokumen_score_map.get(teban, &mhash, &shash) {
 				return Evaluation::Result(Score::Value(s), None);
 			}
 		}
 
 		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
-			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(evalutor,
+			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
 																					  &opponent_nn_snapshot,
 																					  &self_nn_snapshot,
 																					  teban.opposite(),
 																					  &prev_state.as_ref(), &prev_mc.as_ref(),
-																					  &m, info_sender, on_error_handler) {
+																					  &m, &mut env.info_sender, &env.on_error_handler) {
 				Ok((_, oss, sss)) => {
 					(Arc::new(oss), Arc::new(sss))
 				},
 				Err(ref e) => {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
@@ -755,10 +692,10 @@ impl Search {
 		};
 
 		{
-			let s = self.evalute_by_snapshot(evalutor, opponent_nn_snapshot, self_nn_snapshot);
+			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot, self_nn_snapshot);
 
 			if let Score::Value(s) = s {
-				kyokumen_score_map.insert(teban, mhash, shash, s);
+				env.kyokumen_score_map.insert(teban, mhash, shash, s);
 			}
 
 			if depth == 0 || current_depth == self.max_depth {
@@ -766,17 +703,17 @@ impl Search {
 			}
 		}
 
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
 
-		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
+		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None,None);
 		}
 
 		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),&*state) {
 			if depth == 0 || current_depth == self.max_depth {
-				if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-					self.send_message(info_sender, on_error_handler, "think timeout!");
+				if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+					self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 					return Evaluation::Timeout(None,None);
 				}
 			}
@@ -786,13 +723,13 @@ impl Search {
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				return Evaluation::Result(-self.evalute_by_snapshot(evalutor,opponent_nn_snapshot,self_nn_snapshot),None);
+				return Evaluation::Result(-self.evalute_by_snapshot(&env.evalutor,opponent_nn_snapshot,self_nn_snapshot),None);
 			} else {
 				(mvs,true)
 			}
 		} else {
 			let network_delay = self.network_delay;
-			let limit = limit.clone();
+			let limit = env.limit.clone();
 			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
 
 			let mut check_timelimit = move || {
@@ -806,11 +743,14 @@ impl Search {
 			{
 				let this = self.clone();
 
+				let mut info_sender = env.info_sender.clone();
+				let on_error_handler = env.on_error_handler.clone();
+
 				let mut on_searchstart = |depth,_| {
-					this.send_seldepth(info_sender, on_error_handler, base_depth, current_depth + depth);
+					this.send_seldepth(&mut info_sender, &on_error_handler, base_depth, current_depth + depth);
 				};
 
-				match solver.checkmate(false,teban, state, mc,
+				match env.solver.checkmate(false,teban, state, mc,
 											self.max_ply,
 											None,
 											&mut oute_kyokumen_map.clone(),
@@ -819,9 +759,9 @@ impl Search {
 											&*this.clone(),
 											mhash, shash,
 											&mut check_timelimit,
-											stop,
+											&env.stop,
 											&mut on_searchstart,
-											event_queue,
+											&env.event_queue,
 											solver_event_dispatcher) {
 					MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
 						return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_move()));
@@ -833,8 +773,8 @@ impl Search {
 				}
 			}
 
-			if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-				self.send_message(info_sender, on_error_handler, "think timeout!");
+			if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+				self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None,None);
 			}
 
@@ -845,23 +785,23 @@ impl Search {
 
 		if mvs.len() == 0 {
 			return Evaluation::Result(Score::NEGINFINITE,None);
-		} else if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
+		} else if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
 		} else if mvs.len() == 1 {
-			let r = match self.evalute_by_diff(evalutor,
+			let r = match self.evalute_by_diff(&env.evalutor,
 											   &self_nn_snapshot,
 											   &opponent_nn_snapshot,
 											   teban,
 											   &Some(&state),
 											   &Some(&mc),
 											   &Some(mvs[0].to_move()),
-											   info_sender, on_error_handler) {
+											   &mut env.info_sender, &env.on_error_handler) {
 				Ok((r,_,_)) => {
 					r
 				},
 				Err(ref e) => {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
@@ -869,10 +809,10 @@ impl Search {
 			return r
 		}
 
-		let _ = event_dispatcher.dispatch_events(self,&*event_queue);
+		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
 
-		if self.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-			self.send_message(info_sender, on_error_handler, "think timeout!");
+		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
 		}
 
@@ -916,13 +856,10 @@ impl Search {
 
 		mvs.sort_by(|a,b| b.0.cmp(&a.0));
 
-		strategy(self,solver,
-					event_queue,
+		strategy(self,
+					env,
 					event_dispatcher,
 					solver_event_dispatcher,
-					evalutor,
-					info_sender,
-					on_error_handler,
 					&self_nn_snapshot,
 					&opponent_nn_snapshot,
 					teban,state,
@@ -931,15 +868,12 @@ impl Search {
 					self_already_oute_map,
 					opponent_already_oute_map,
 					oute_kyokumen_map,
-					mhash,shash,limit,
-					current_limit,
+					mhash,shash,
 					depth,
 					current_depth,base_depth,
 					node_count,
-					stop,quited,
 					&mvs,
-					responded_oute,
-					kyokumen_score_map)
+					responded_oute)
 	}
 
 	fn startup_strategy(&self,teban:Teban,state:&State,mc:&MochigomaCollections,
@@ -1003,13 +937,9 @@ impl Search {
 	}
 
 	fn single_search<L,S>(search:&Arc<Search>,
-								solver:&mut Solver<CommonError>,
-								event_queue:&Arc<Mutex<UserEventQueue>>,
-								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
-								solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-								evalutor:&Arc<Intelligence>,
-								info_sender:&mut S,
-								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+								env:&mut Environment<L,S>,
+						  		event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
+						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								teban:Teban,state:&Arc<State>,
@@ -1020,15 +950,10 @@ impl Search {
 								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,
-								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								stop:&Arc<AtomicBool>,
-								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
-								responded_oute:bool,
-								kyokumen_score_map:&mut KyokumenMap<u64,i64>)
+								responded_oute:bool)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
@@ -1100,13 +1025,9 @@ impl Search {
 								};
 
 								match search.negascout(
-									solver,
-									event_queue,
+									env,
 									event_dispatcher,
 									solver_event_dispatcher,
-									evalutor,
-									info_sender,
-									on_error_handler,
 									opponent_nn_snapshot,
 									self_nn_snapshot,
 									teban.opposite(),&state,
@@ -1117,12 +1038,10 @@ impl Search {
 									self_already_oute_map,
 									&oute_kyokumen_map,
 									mhash,shash,
-									limit,current_limit,
 									depth-1,
 									current_depth+1,base_depth,
 									nodes,
-									stop,quited,Search::single_search,
-									kyokumen_score_map) {
+									Search::single_search) {
 
 									Evaluation::Timeout(s,_) => {
 										if let Some(s) = s {
@@ -1160,17 +1079,17 @@ impl Search {
 						}
 					}
 
-					let _ = event_dispatcher.dispatch_events(search,&*event_queue);
+					let _ = event_dispatcher.dispatch_events(search,&*env.event_queue);
 
-					if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-						search.send_message(info_sender, on_error_handler, "think timeout!");
+					if search.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+						search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 						return match best_move {
 							Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
 							None => Evaluation::Timeout(Some(scoreval),Some(m.to_move())),
 						};
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-						current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-					) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+						env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+					) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
 						return Evaluation::Result(scoreval,best_move);
 					}
 				},
@@ -1182,13 +1101,9 @@ impl Search {
 	}
 
 	fn parallel_search<L,S>(search:&Arc<Search>,
-								_:& mut Solver<CommonError>,
-								event_queue:&Arc<Mutex<UserEventQueue>>,
+								env:&mut Environment<L,S>,
 								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
 								_:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-								evalutor:&Arc<Intelligence>,
-								info_sender:&mut S,
-								on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
 								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								teban:Teban,state:&Arc<State>,
@@ -1199,15 +1114,10 @@ impl Search {
 								opponent_already_oute_map:&mut Option<KyokumenMap<u64,bool>>,
 								oute_kyokumen_map:&KyokumenMap<u64,()>,
 								mhash:u64,shash:u64,
-								limit:Option<Instant>,
-								current_limit:Option<Instant>,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								stop:&Arc<AtomicBool>,
-								quited:&Arc<AtomicBool>,
 								mvs:&Vec<(u32,LegalMove)>,
-								responded_oute:bool,
-								kyokumen_score_map:&mut KyokumenMap<u64,i64>)
+								responded_oute:bool)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
@@ -1227,8 +1137,8 @@ impl Search {
 				let r = match receiver.recv() {
 					Ok(r) => r,
 					Err(ref e) => {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-						let _ = search.termination(receiver, threads, stop, scoreval, best_move);
+						let _ = env.on_error_handler.lock().map(|h| h.call(e));
+						let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				};
@@ -1247,12 +1157,12 @@ impl Search {
 
 						match best_move {
 							Some(best_move) => {
-								let r = search.termination(receiver, threads, stop, scoreval, Some(best_move));
+								let r = search.termination(receiver, threads, &env.stop, scoreval, Some(best_move));
 								let (scoreval,best_move) = r;
 								return Evaluation::Timeout(scoreval,best_move);
 							},
 							None => {
-								let r = search.termination(receiver, threads, stop, scoreval, best_move);
+								let r = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 								let (scoreval,best_move) = r;
 								return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
 							},
@@ -1266,20 +1176,20 @@ impl Search {
 								alpha = scoreval;
 							}
 							if scoreval >= beta {
-								let (scoreval,best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+								let (scoreval,best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 							}
 						}
 
 						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-							current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-						) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-							let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+							env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+						) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+							let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 							return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 						}
 					},
 					(Evaluation::Error,_) => {
-						let _ = search.termination(receiver, threads, stop, scoreval, best_move);
+						let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				}
@@ -1317,7 +1227,7 @@ impl Search {
 											alpha = scoreval;
 										}
 										if scoreval >= beta {
-											let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+											let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 											return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 										}
 									}
@@ -1325,32 +1235,21 @@ impl Search {
 								}
 
 								let search = search.clone();
-								let event_queue = event_queue.clone();
-								let evalutor = evalutor.clone();
-								let mut info_sender = info_sender.clone();
-								let on_error_handler = on_error_handler.clone();
 								let opponent_nn_snapshot = opponent_nn_snapshot.clone();
 								let self_nn_snapshot = self_nn_snapshot.clone();
 								let state = Arc::new(state);
 								let mc = Arc::new(mc);
 								let mut self_already_oute_map = self_already_oute_map.clone();
 								let mut opponent_already_oute_map = opponent_already_oute_map.clone();
-								let limit = limit.clone();
-								let stop = stop.clone();
-								let quited = quited.clone();
-								let mut kyokumen_score_map = kyokumen_score_map.clone();
+								let mut env = env.clone();
 
 								let sender = sender.clone();
 
 								let b = thread::Builder::new();
 								let _ = b.stack_size(1024 * 1024 * 200).spawn(move || {
-									let mut event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
-									let mut solver_event_dispatcher = search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 									let search = search.clone();
 
 									let mut r = Evaluation::Result(Score::NEGINFINITE,None);
-
-									let evalutor = evalutor;
 
 									let repeat = match alpha {
 										Score::NEGINFINITE | Score::INFINITE => 1,
@@ -1369,14 +1268,13 @@ impl Search {
 											}
 										};
 
+										let mut event_dispatcher = search.create_event_dispatcher(&env.on_error_handler,&env.stop,&env.quited);
+										let mut solver_event_dispatcher = search.create_event_dispatcher(&env.on_error_handler,&env.stop,&env.quited);
+
 										r = search.negascout(
-											&mut Solver::new(),
-											&event_queue,
+											&mut env,
 											&mut event_dispatcher,
 											&mut solver_event_dispatcher,
-											&evalutor,
-											&mut info_sender,
-											&on_error_handler,
 											&opponent_nn_snapshot,
 											&self_nn_snapshot,
 											teban.opposite(),&state,
@@ -1387,11 +1285,9 @@ impl Search {
 											&mut self_already_oute_map,
 											&oute_kyokumen_map,
 											mhash,shash,
-											limit,current_limit,
 											depth-1,current_depth+1,base_depth,
 											node_count,
-											&stop,&quited,Search::single_search,
-											&mut kyokumen_score_map);
+											Search::single_search);
 
 										match r {
 											Evaluation::Result(s,_) => {
@@ -1413,10 +1309,10 @@ impl Search {
 							}
 						}
 
-						let _ = event_dispatcher.dispatch_events(search,&*event_queue);
+						let _ = event_dispatcher.dispatch_events(search,&*env.event_queue);
 
-						if search.timelimit_reached(&limit) || stop.load(atomic::Ordering::Acquire) {
-							let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+						if search.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+							let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 
 							return match best_move {
 								Some(best_move) => Evaluation::Timeout(scoreval,Some(best_move)),
@@ -1447,11 +1343,11 @@ impl Search {
 
 							match best_move {
 								Some(best_move) => {
-									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, Some(best_move));
+									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, Some(best_move));
 									return Evaluation::Timeout(scoreval,best_move);
 								},
 								None => {
-									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 									return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
 								},
 							};
@@ -1464,7 +1360,7 @@ impl Search {
 									alpha = scoreval;
 								}
 								if scoreval >= beta {
-									let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 									return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 								}
 							}
@@ -1472,22 +1368,22 @@ impl Search {
 							let nodes = node_count * mvs_count - processed_nodes as u64;
 
 							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-								current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-							) || current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-								let (scoreval, best_move) = search.termination(receiver, threads, stop, scoreval, best_move);
+								env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
+							) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+								let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
 							}
 						},
 						(Evaluation::Error,_) => {
-							let _ = search.termination(receiver, threads, stop, scoreval, best_move);
+							let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 							return Evaluation::Error;
 						}
 					}
 				},
 				Err(ref e) => {
 					threads += 1;
-					let _ = on_error_handler.lock().map(|h| h.call(e));
-					let _ = search.termination(receiver, threads, stop, scoreval, best_move);
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
+					let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 					return Evaluation::Error;
 				}
 			};
@@ -1858,8 +1754,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		let oute_kyokumen_map = self.oute_kyokumen_map.clone();
 		let base_depth = self.search.base_depth;
 
-		let mut info_sender = info_sender;
-
 		match self.evalutor {
 			Some(ref evalutor) => {
 				let self_nn_snapshot = self.search.make_snapshot(false,evalutor,teban,state,mc)?;
@@ -1868,24 +1762,26 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				let prev_state:Option<Arc<State>> = None;
 				let prev_mc:Option<Arc<MochigomaCollections>> = None;
 
-				let stop = Arc::new(AtomicBool::new(false));
-				let quited = Arc::new(AtomicBool::new(false));
-
-				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
-				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 				let strategy = if self.search.max_threads > 1 {
 					Search::parallel_search
 				} else {
 					Search::single_search
 				};
 
+				let mut env = Environment::new(
+													event_queue,
+													evalutor.clone(),
+													info_sender.clone(),
+													on_error_handler.clone(),
+													limit,current_limit);
+
+				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
+				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
+
 				let result = match self.search.negascout(
-							&mut Solver::new(),
-							&event_queue,
+							&mut env,
 							&mut event_dispatcher,
 							&mut solver_event_dispatcher,
-							evalutor,
-							&mut info_sender, &on_error_handler,
 							&Arc::new(self_nn_snapshot),&Arc::new(opponent_nn_snapshot),
 							teban,&Arc::new(state.clone()), Score::NEGINFINITE,
 							Score::INFINITE, None,&Arc::new(mc.clone()),
@@ -1896,14 +1792,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&mut Some(KyokumenMap::new()),
 							&oute_kyokumen_map,
 							mhash,shash,
-							limit,
-							current_limit,
 							base_depth, 1, base_depth,
 							1,
-							&stop,
-							&quited,
-							strategy,
-							&mut KyokumenMap::new()) {
+							strategy) {
 					Evaluation::Result(_,None) => {
 						BestMove::Resign
 					},
@@ -1919,7 +1810,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 					Evaluation::Timeout(_,Some(m)) => {
 						BestMove::Move(m,None)
 					}
-					Evaluation::Timeout(_,None) if quited.load(atomic::Ordering::Acquire) => {
+					Evaluation::Timeout(_,None) if env.quited.load(atomic::Ordering::Acquire) => {
 						BestMove::Abort
 					},
 					Evaluation::Timeout(_,None) => {
