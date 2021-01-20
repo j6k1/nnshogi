@@ -121,6 +121,104 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&Arc<AtomicBool>,&Arc<AtomicBool>,
 						&Vec<(u32,LegalMove)>,bool,
 						&mut KyokumenMap<u64,i64>) -> Evaluation;
+pub struct Environment<'a,L,S> where L: Logger, S: InfoSender {
+	solver:Solver<CommonError>,
+	event_queue:Arc<Mutex<UserEventQueue>>,
+	event_dispatcher:UserEventDispatcher<'a,Search,CommonError,L>,
+	solver_event_dispatcher:USIEventDispatcher<'a,UserEventKind,
+		UserEvent,Solver<CommonError>,L,CommonError>,
+	evalutor:Arc<Intelligence>,
+	info_sender:S,
+	on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
+	limit:Option<Instant>,
+	current_limit:Option<Instant>,
+	stop:Arc<AtomicBool>,
+	quited:Arc<AtomicBool>,
+	kyokumen_score_map:KyokumenMap<u64,i64>
+}
+impl<'a,L,S> Clone for Environment<'a,L,S> where L: Logger, S: InfoSender {
+	fn clone(&self) -> Self {
+		Environment {
+			solver:Solver::new(),
+			event_queue:self.event_queue.clone(),
+			event_dispatcher:Self::create_event_dispatcher(&self.on_error_handler,&self.stop,&self.quited),
+			solver_event_dispatcher:Self::create_event_dispatcher(&self.on_error_handler,&self.stop,&self.quited),
+			evalutor:self.evalutor.clone(),
+			info_sender:self.info_sender.clone(),
+			on_error_handler:self.on_error_handler.clone(),
+			limit:self.limit.clone(),
+			current_limit:self.current_limit.clone(),
+			stop:self.stop.clone(),
+			quited:self.quited.clone(),
+			kyokumen_score_map:self.kyokumen_score_map.clone()
+		}
+	}
+}
+impl<'a,L,S> Environment<'a,L,S> where L: Logger, S: InfoSender {
+	pub fn new(solver:Solver<CommonError>,
+			   event_queue:Arc<Mutex<UserEventQueue>>,
+			   evalutor:Arc<Intelligence>,
+			   info_sender:S,
+			   on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
+			   limit:Option<Instant>,
+			   current_limit:Option<Instant>) -> Environment<'a,L,S> {
+		let stop = Arc::new(AtomicBool::new(false));
+		let quited = Arc::new(AtomicBool::new(false));
+
+		Environment {
+			solver:solver,
+			event_queue:event_queue,
+			event_dispatcher:Self::create_event_dispatcher(&on_error_handler,&stop,&quited),
+			solver_event_dispatcher:Self::create_event_dispatcher(&on_error_handler,&stop,&quited),
+			evalutor:evalutor,
+			info_sender:info_sender,
+			on_error_handler:on_error_handler,
+			limit:limit,
+			current_limit:current_limit,
+			stop:stop,
+			quited:quited,
+			kyokumen_score_map:KyokumenMap::new()
+		}
+	}
+
+	fn create_event_dispatcher<T>(on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,stop:&Arc<AtomicBool>,quited:&Arc<AtomicBool>)
+									-> UserEventDispatcher<'a,T,CommonError,L> where L: Logger {
+
+		let mut event_dispatcher = USIEventDispatcher::new(&on_error_handler.clone());
+
+		{
+			let stop = stop.clone();
+
+			event_dispatcher.add_handler(UserEventKind::Stop, move |_,e| {
+				match e {
+					&UserEvent::Stop => {
+						stop.store(true,atomic::Ordering::Release);
+						Ok(())
+					},
+					e => Err(EventHandlerError::InvalidState(e.event_kind())),
+				}
+			});
+		}
+
+		{
+			let stop = stop.clone();
+			let quited = quited.clone();
+
+			event_dispatcher.add_handler(UserEventKind::Quit, move |_,e| {
+				match e {
+					&UserEvent::Quit => {
+						quited.store(true,atomic::Ordering::Release);
+						stop.store(true,atomic::Ordering::Release);
+						Ok(())
+					},
+					e => Err(EventHandlerError::InvalidState(e.event_kind())),
+				}
+			});
+		}
+
+		event_dispatcher
+	}
+}
 pub struct KyokumenHash {
 	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
 	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
