@@ -1,6 +1,6 @@
 [package]
 name = "nnshogi"
-version = "0.4.0"
+version = "0.6.1"
 authors = ["jinpu"]
 [dependencies.usiagent]
 git = "https://github.com/j6k1/USIAgent.git"

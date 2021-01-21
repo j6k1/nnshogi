@@ -1,6 +1,10 @@
 BaseDepth	基本探索深度
 MaxDepth	最大探索深度
 DispEvaluteScore	盤面の評価値を表示する
+AdjustDepth	残り思考時間に応じて探索深さの自動調整を行う
 Threads	使用スレッド数
 MAX_PLY	詰めろ探索の最大深さ
+MAX_PLY_MATE	詰め将棋回答時の詰めろ探索の最大深さ
 MAX_PLY_TIMELIMIT	詰めろ探索を打ち切る時間
+TURN_COUNT	終局までの予想ターン数
+MIN_TURN_COUNT	残りターン数下限値

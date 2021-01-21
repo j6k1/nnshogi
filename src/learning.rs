@@ -21,6 +21,7 @@ use csaparser::EndState;
 use error::ApplicationError;
 use error::CommonError;
 use nn::Intelligence;
+use rand::Rng;
 
 pub struct CsaLearnener {
 
@@ -32,7 +33,7 @@ impl CsaLearnener {
 		}
 	}
 
-	pub fn learning(&mut self,kifudir:String,lowerrate:f64) -> Result<(),ApplicationError> {
+	pub fn learning(&mut self,kifudir:String,lowerrate:f64,bias_shake_shake:bool) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -69,7 +70,7 @@ impl CsaLearnener {
 
 		let mut evalutor = Intelligence::new(String::from("data"),
 															String::from("nn.a.bin"),
-															String::from("nn.b.bin"),true);
+															String::from("nn.b.bin"),false);
 
 		print!("learning start... kifudir = {}\n", kifudir);
 
@@ -165,7 +166,6 @@ impl CsaLearnener {
 					}
 				});
 				let teban = p.teban_at_start;
-				let teban_at_start = teban;
 				let banmen = p.initial_position;
 				let state = State::new(banmen);
 				let mc = p.initial_mochigoma;
@@ -184,20 +184,50 @@ impl CsaLearnener {
 					history
 				});
 
-				let s = if teban.opposite() == teban_at_start {
-					GameEndState::Win
+				let (a,b) = if bias_shake_shake {
+					let mut rnd = rand::thread_rng();
+
+					let a: f64 = rnd.gen();
+					let b: f64 = 1f64 - a;
+
+					(a,b)
 				} else {
-					GameEndState::Lose
+					(1f64,1f64)
 				};
 
-				match evalutor.learning(false,teban_at_start,teban,history,&s,&*user_event_queue) {
+				let teban = teban.opposite();
+
+				match evalutor.learning_by_training_data(
+					teban,
+					history,
+					&GameEndState::Win,&move |s,t, ab| {
+
+					match s {
+						&GameEndState::Win if t == teban => {
+							ab
+						}
+						&GameEndState::Win => {
+							0f64
+						},
+						&GameEndState::Lose if t == teban => {
+							0f64
+						},
+						&GameEndState::Lose => {
+							ab
+						},
+						_ => 0.5f64
+					}
+				}, a,b, &*user_event_queue) {
 					Err(_) => {
 						return Err(ApplicationError::LearningError(String::from(
 							"An error occurred while learning the neural network."
 						)));
 					},
-					_ => (),
-				}
+					Ok((msa,moa,msb,mob)) => {
+						println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
+						println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+					}
+				};
 
 				count += 1;
 

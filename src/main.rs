@@ -44,13 +44,21 @@ use learning::CsaLearnener;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
+	max_threads:Option<u32>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
+	max_ply:Option<u32>,
+	max_ply_timelimit:Option<u32>,
+	turn_count:Option<u32>,
+	min_turn_count:Option<u32>,
+	adjust_depth:Option<bool>,
 	time_limit:Option<u32>,
+	time_limit_byoyomi:Option<u32>,
 	uptime:Option<String>,
 	number_of_games:Option<u32>,
 	silent:bool,
 	initial_position:Option<InitialPositionKifu>,
+	bias_shake_shake_with_kifu:bool
 }
 #[derive(Debug, Deserialize)]
 pub struct InitialPositionKifu {
@@ -120,8 +128,9 @@ fn run() -> Result<(),ApplicationError> {
 	};
 
 	if let Some(kifudir) = matches.opt_str("kifudir") {
+		let config = ConfigLoader::new("settings.toml")?.load()?;
 		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-		CsaLearnener::new().learning(kifudir,lowerrate)
+		CsaLearnener::new().learning(kifudir,lowerrate,config.bias_shake_shake_with_kifu)
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
@@ -168,20 +177,40 @@ fn run() -> Result<(),ApplicationError> {
 		}
 
 		let time_limit = config.time_limit.map_or(UsiGoTimeLimit::Infinite, |l| {
-			if l == 0 {
+			if l == 0 && config.time_limit_byoyomi.unwrap_or(0) ==0 {
 				UsiGoTimeLimit::Infinite
+			} else if config.time_limit_byoyomi.unwrap_or(0) == 0 {
+				UsiGoTimeLimit::Limit(Some((l,l)),None)
+			} else if l == 0 {
+				UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(config.time_limit_byoyomi.unwrap_or(0))))
 			} else {
-				UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
+				UsiGoTimeLimit::Limit(Some((l,l)),Some(UsiGoByoyomiOrInc::Byoyomi(config.time_limit_byoyomi.unwrap_or(0))))
 			}
 		});
 
 		let time_limit:UsiGoTimeLimit = match matches.opt_str("timelimit") {
 			Some(time_limit) => {
 				let l = time_limit.parse()?;
-				if l == 0 {
-					UsiGoTimeLimit::Infinite
+				let b = matches.opt_str("timelimit_byoyomi");
+
+				if let Some(b) = b {
+					let b = b.parse()?;
+
+					if l == 0 && b ==0 {
+						UsiGoTimeLimit::Infinite
+					} else if b == 0 {
+						UsiGoTimeLimit::Limit(Some((l,l)),None)
+					} else if l == 0 {
+						UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(b)))
+					} else {
+						UsiGoTimeLimit::Limit(Some((l,l)),Some(UsiGoByoyomiOrInc::Byoyomi(b)))
+					}
 				} else {
-					UsiGoTimeLimit::Limit(None,Some(UsiGoByoyomiOrInc::Byoyomi(l)))
+					if l == 0 {
+						UsiGoTimeLimit::Infinite
+					} else {
+						UsiGoTimeLimit::Limit(Some((l,l)),None)
+					}
 				}
 			}
 			None => time_limit,
@@ -505,6 +534,13 @@ fn run() -> Result<(),ApplicationError> {
 													};
 													print!("{}の反則負けです（王手に応じなかった）\n",t);
 												},
+												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Foul(t,FoulKind::Suicide)) => {
+													let t = match t {
+														Teban::Sente => String::from("先手"),
+														Teban::Gote => String::from("後手"),
+													};
+													print!("{}の反則負けです（王の自滅手）\n",t);
+												},
 												SelfMatchEvent::GameEnd(SelfMatchGameEndState::Timeover(t)) => {
 													let t = match t {
 														Teban::Sente => String::from("先手"),
@@ -536,15 +572,27 @@ fn run() -> Result<(),ApplicationError> {
 								NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
 								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
 								[
+									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
-								].into_iter().map(|&(ref k,ref v)| {
+									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
+									("MAX_PLY_TIMELIMIT",SysEventOption::Num(config.max_ply_timelimit.unwrap_or(0) as i64)),
+									("TURN_COUNT",SysEventOption::Num(config.turn_count.unwrap_or(0) as i64)),
+									("MIN_TURN_COUNT",SysEventOption::Num(config.min_turn_count.unwrap_or(0) as i64)),
+									("AdjustDepth",SysEventOption::Bool(config.adjust_depth.unwrap_or(false))),
+								].iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								[
+									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
-								].into_iter().map(|&(ref k,ref v)| {
+									("MAX_PLY",SysEventOption::Num(config.max_ply.unwrap_or(0) as i64)),
+									("MAX_PLY_TIMELIMIT",SysEventOption::Num(config.max_ply_timelimit.unwrap_or(0) as i64)),
+									("TURN_COUNT",SysEventOption::Num(config.turn_count.unwrap_or(0) as i64)),
+									("MIN_TURN_COUNT",SysEventOption::Num(config.min_turn_count.unwrap_or(0) as i64)),
+									("AdjustDepth",SysEventOption::Bool(config.adjust_depth.unwrap_or(false))),
+								].iter().map(|&(ref k,ref v)| {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								info_sender,
