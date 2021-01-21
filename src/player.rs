@@ -1427,14 +1427,17 @@ impl Search {
 		}
 	}
 
+	#[inline]
 	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_main_hash(h,t,b,mc,m,obtained)
 	}
 
+	#[inline]
 	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_sub_hash(h,t,b,mc,m,obtained)
 	}
 
+	#[inline]
 	fn calc_initial_hash(&self,b:&Banmen,
 		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
 		self.kyokumenhash.calc_initial_hash(b,ms,mg)
