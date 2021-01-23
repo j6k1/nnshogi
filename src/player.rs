@@ -1937,10 +1937,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		)?;
 
 		if self.count_of_move_started > 0 {
-			let (teban,last_teban) = if self.moved {
-				(teban,teban.opposite())
+			let teban = if self.moved {
+				teban.opposite()
 			} else {
-				(teban,teban)
+				teban
 			};
 
 			match self.evalutor {
@@ -1958,7 +1958,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 								(1f64,1f64)
 							};
 
-							evalutor.learning_by_training_data(last_teban,
+							evalutor.learning_by_training_data(teban,
 															   self.history.clone(),
 															   s,
 															   self.learn_max_threads,
