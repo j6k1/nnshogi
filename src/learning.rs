@@ -33,7 +33,7 @@ impl CsaLearnener {
 		}
 	}
 
-	pub fn learning(&mut self,kifudir:String,lowerrate:f64,bias_shake_shake:bool,learn_max_threads:usize) -> Result<(),ApplicationError> {
+	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));

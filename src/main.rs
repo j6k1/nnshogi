@@ -131,10 +131,10 @@ fn run() -> Result<(),ApplicationError> {
 	if let Some(kifudir) = matches.opt_str("kifudir") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-		CsaLearnener::new().learning(kifudir,
-									 lowerrate,
-									 config.bias_shake_shake_with_kifu,
-									 config.learn_max_threads.unwrap_or(1))
+		CsaLearnener::new().learning_from_csa(kifudir,
+											  lowerrate,
+											  config.bias_shake_shake_with_kifu,
+											  config.learn_max_threads.unwrap_or(1))
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
