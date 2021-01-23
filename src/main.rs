@@ -45,6 +45,7 @@ use learning::CsaLearnener;
 #[derive(Debug, Deserialize)]
 pub struct Config {
 	max_threads:Option<u32>,
+	learn_max_threads:Option<usize>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,
@@ -130,7 +131,10 @@ fn run() -> Result<(),ApplicationError> {
 	if let Some(kifudir) = matches.opt_str("kifudir") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-		CsaLearnener::new().learning(kifudir,lowerrate,config.bias_shake_shake_with_kifu)
+		CsaLearnener::new().learning(kifudir,
+									 lowerrate,
+									 config.bias_shake_shake_with_kifu,
+									 config.learn_max_threads.unwrap_or(1))
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
@@ -569,8 +573,14 @@ fn run() -> Result<(),ApplicationError> {
 								initial_position_creator,
 								Some(Box::new(move |sfen,mvs| kifuwriter.write(sfen,mvs))),
 								input_read_handler,
-								NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),true),
-								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),String::from("nn_opponent.b.bin"),true),
+								NNShogiPlayer::new(String::from("nn.a.bin"),
+												   		  String::from("nn.b.bin"),
+												   	   true,
+												   	  config.learn_max_threads.unwrap_or(1)),
+								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),
+												   		  String::from("nn_opponent.b.bin"),
+												   		true,
+												   					  config.learn_max_threads.unwrap_or(1)),
 								[
 									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
@@ -620,7 +630,11 @@ fn run() -> Result<(),ApplicationError> {
 					secs / (60 * 60), secs  % (60 * 60) / 60, secs % 60, r.elapsed.subsec_nanos() / 1_000_000);
 		})
 	} else {
-		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),String::from("nn.b.bin"),false));
+		let config = ConfigLoader::new("settings.toml")?.load()?;
+		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),
+													 						   String::from("nn.b.bin"),
+													 						 false,
+																						  config.learn_max_threads.unwrap_or(1)));
 
 		let r = agent.start_default(|on_error_handler,e| {
 			match on_error_handler {

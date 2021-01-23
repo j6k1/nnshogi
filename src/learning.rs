@@ -33,7 +33,7 @@ impl CsaLearnener {
 		}
 	}
 
-	pub fn learning(&mut self,kifudir:String,lowerrate:f64,bias_shake_shake:bool) -> Result<(),ApplicationError> {
+	pub fn learning(&mut self,kifudir:String,lowerrate:f64,bias_shake_shake:bool,learn_max_threads:usize) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -200,7 +200,9 @@ impl CsaLearnener {
 				match evalutor.learning_by_training_data(
 					teban,
 					history,
-					&GameEndState::Win,&move |s,t, ab| {
+					&GameEndState::Win,
+					learn_max_threads,
+					&move |s,t, ab| {
 
 					match s {
 						&GameEndState::Win if t == teban => {
