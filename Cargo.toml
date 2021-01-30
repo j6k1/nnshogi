@@ -12,7 +12,9 @@ git = "https://github.com/j6k1/simplenn.git"
 git = "https://github.com/j6k1/CsaParser.git"
 #path = "../CsaParser"
 [dependencies.packedsfen]
-path = "../packedsfen"
+git = "https://github.com/j6k1/packedsfen.git"
+branch = "main"
+#path = "../packedsfen"
 [dependencies]
 rand = "0.5"
 rand_xorshift = "0.1.1"
