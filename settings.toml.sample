@@ -1,0 +1,18 @@
+max_threads = 16
+learn_max_threads = 64
+base_depth = 2
+max_depth = 3
+max_ply = 1
+max_ply_timelimit = 0
+turn_count = 50
+min_turn_count = 5
+adjust_depth = true
+time_limit = 180000
+time_limit_byoyomi = 10000
+uptime = "0s"
+number_of_games = 0
+silent = true
+bias_shake_shake_with_kifu = false
+[initial_position]
+path = "kifu.txt"
+from_last = 3

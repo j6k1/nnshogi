@@ -1427,14 +1427,17 @@ impl Search {
 		}
 	}
 
+	#[inline]
 	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_main_hash(h,t,b,mc,m,obtained)
 	}
 
+	#[inline]
 	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_sub_hash(h,t,b,mc,m,obtained)
 	}
 
+	#[inline]
 	fn calc_initial_hash(&self,b:&Banmen,
 		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
 		self.kyokumenhash.calc_initial_hash(b,ms,mg)
@@ -1451,6 +1454,7 @@ pub struct NNShogiPlayer {
 	nna_filename:String,
 	nnb_filename:String,
 	bias_shake_shake:bool,
+	learn_max_threads: usize,
 	evalutor:Option<Arc<Intelligence>>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
@@ -1462,7 +1466,7 @@ impl fmt::Debug for NNShogiPlayer {
 	}
 }
 impl NNShogiPlayer {
-	pub fn new(nna_filename:String, nnb_filename:String, bias_shake_shake:bool) -> NNShogiPlayer {
+	pub fn new(nna_filename:String, nnb_filename:String, bias_shake_shake:bool,learn_max_threads:usize) -> NNShogiPlayer {
 		NNShogiPlayer {
 			search:Arc::new(Search::new()),
 			kyokumen:None,
@@ -1474,6 +1478,7 @@ impl NNShogiPlayer {
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			bias_shake_shake,
+			learn_max_threads:learn_max_threads,
 			evalutor:None,
 			history:Vec::new(),
 			count_of_move_started:0,
@@ -1932,10 +1937,10 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		)?;
 
 		if self.count_of_move_started > 0 {
-			let (teban,last_teban) = if self.moved {
-				(teban,teban.opposite())
+			let teban = if self.moved {
+				teban.opposite()
 			} else {
-				(teban,teban)
+				teban
 			};
 
 			match self.evalutor {
@@ -1953,9 +1958,11 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 								(1f64,1f64)
 							};
 
-							evalutor.learning_by_training_data(last_teban,
+							evalutor.learning_by_training_data(teban,
 															   self.history.clone(),
-															   s,&move |s,t, ab| {
+															   s,
+															   self.learn_max_threads,
+															   &move |s,t, ab| {
 									match s {
 										&GameEndState::Win if t == teban => {
 											ab

@@ -250,6 +250,7 @@ impl Intelligence {
 						last_teban:Teban,
 						history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 						s:&GameEndState,
+					    learn_max_threads:usize,
 						training_data_generator:&D,
 						a:f64,b:f64,
 						_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
@@ -258,7 +259,7 @@ impl Intelligence {
 
 		let mut teban = last_teban;
 
-		let msa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+		let msa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
@@ -270,7 +271,7 @@ impl Intelligence {
 
 		let mut teban = last_teban.opposite();
 
-		let moa = self.nna.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+		let moa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
@@ -282,7 +283,7 @@ impl Intelligence {
 
 		let mut teban = last_teban;
 
-		let msb = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+		let msb = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
@@ -294,7 +295,7 @@ impl Intelligence {
 
 		let mut teban = last_teban.opposite();
 
-		let mob = self.nnb.learn_batch(history.iter().rev().map(move |(banmen,mc,_,_)| {
+		let mob = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
