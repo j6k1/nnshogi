@@ -29,6 +29,9 @@ use usiagent::event::GameEndState;
 use usiagent::TryFrom;
 
 use error::*;
+use packedsfen::yaneuraou::haffman_code::ExtendFields;
+use packedsfen::yaneuraou::reader::PackedSfenReader;
+use packedsfen::traits::Reader;
 
 pub struct Intelligence {
 	nna:NN<SGD,CrossEntropy>,
@@ -36,6 +39,7 @@ pub struct Intelligence {
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
+	packed_sfen_reader:PackedSfenReader,
 	bias_shake_shake:bool,
 	quited:bool,
 }
@@ -152,6 +156,7 @@ impl Intelligence {
 			nnb:nnb,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
+			packed_sfen_reader:PackedSfenReader::new(),
 			nnsavedir:savedir,
 			bias_shake_shake:enable_shake_shake,
 			quited:false,
@@ -301,6 +306,100 @@ impl Intelligence {
 			let t = training_data_generator(s,teban,b);
 
 			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		self.save()?;
+
+		Ok((msa,moa,msb,mob))
+	}
+
+	pub fn learning_by_packed_sfens<'a,D>(&mut self,
+										   packed_sfens:Vec<Vec<u8>>,
+										   learn_max_threads:usize,
+										   training_data_generator:&D,
+										   a:f64,b:f64,
+										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+										   -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
+		where D: Fn(&GameEndState,Teban,f64) -> f64 {
+
+		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
+
+		for entry in packed_sfens.into_iter() {
+			let ((teban,banmen,mc),ExtendFields {
+				value: _,
+				best_move: _,
+				end_ply: _,
+				game_result
+			}) = self.packed_sfen_reader.read_sfen_with_extended(entry).map_err(|e| {
+				CommonError::Fail(format!("{}",e))
+			})?;
+
+			sfens_with_extended.push((teban,banmen,mc,game_result));
+		}
+
+		let msa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転
+			let teban = teban.opposite();
+			let es = match es {
+				&GameEndState::Win => GameEndState::Lose,
+				&GameEndState::Lose => GameEndState::Win,
+				&GameEndState::Draw => GameEndState::Draw
+			};
+
+			let input = Intelligence::make_input(true,teban, banmen, mc);
+
+			let t = training_data_generator(&es,teban,a);
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+
+		let moa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転する必要があるが、
+			// ここで評価したいのは非手番側であるため、そのままとする。
+			let teban = *teban;
+			let input = Intelligence::make_input(false,teban, banmen, mc);
+
+			let t = training_data_generator(es,teban,a);
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+
+		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転
+			let teban = teban.opposite();
+			let es = match es {
+				&GameEndState::Win => GameEndState::Lose,
+				&GameEndState::Lose => GameEndState::Win,
+				&GameEndState::Draw => GameEndState::Draw
+			};
+
+			let input = Intelligence::make_input(true,teban, banmen, mc);
+
+			let t = training_data_generator(&es,teban,b);
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+
+		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転する必要があるが、
+			// ここで評価したいのは非手番側であるため、そのままとする。
+			let teban = *teban;
+			let input = Intelligence::make_input(false,teban, banmen, mc);
+
+			let t = training_data_generator(es,teban,b);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;

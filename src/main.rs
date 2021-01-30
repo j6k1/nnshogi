@@ -9,6 +9,7 @@ extern crate serde_derive;
 extern crate usiagent;
 extern crate simplenn;
 extern crate csaparser;
+extern crate packedsfen;
 
 pub mod player;
 pub mod solver;
