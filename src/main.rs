@@ -1,4 +1,5 @@
 extern crate rand;
+extern crate rand_core;
 extern crate rand_xorshift;
 extern crate statrs;
 extern crate getopts;
@@ -24,7 +25,7 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 use rand::Rng;
-use rand::SeedableRng;
+use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
