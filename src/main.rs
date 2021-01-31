@@ -45,7 +45,7 @@ use error::ApplicationError;
 use learning::CsaLearnener;
 
 const LEAN_SFEN_READ_SIZE:usize = 1000 * 1000 * 10;
-const LEAN_BATCH_SIZE:usize = 1000 * 1000;
+const LEAN_BATCH_SIZE:usize = 256;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
