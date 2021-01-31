@@ -48,6 +48,8 @@ use learning::CsaLearnener;
 pub struct Config {
 	max_threads:Option<u32>,
 	learn_max_threads:Option<usize>,
+	learn_sfen_read_size:Option<usize>,
+	learn_batch_size:Option<usize>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,

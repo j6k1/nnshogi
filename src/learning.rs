@@ -3,6 +3,8 @@ use std::sync::Mutex;
 use std::sync::Arc;
 use std::fs;
 
+use rand::seq::SliceRandom;
+
 use usiagent::OnErrorHandler;
 use usiagent::shogi::Banmen;
 use usiagent::shogi::MochigomaCollections;
@@ -22,6 +24,7 @@ use error::ApplicationError;
 use error::CommonError;
 use nn::Intelligence;
 use rand::Rng;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct CsaLearnener {
 
@@ -33,50 +36,29 @@ impl CsaLearnener {
 		}
 	}
 
-	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
-		let logger = FileLogger::new(String::from("logs/log.txt"))?;
-
-		let logger = Arc::new(Mutex::new(logger));
-		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
-
-		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
-		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+	fn create_event_dispatcher(&self, notify_quit:Arc<AtomicBool>,
+							   		  on_error_handler:Arc<Mutex<OnErrorHandler<FileLogger>>>) -> USIEventDispatcher<SystemEventKind,
+		SystemEvent,(),FileLogger,CommonError> {
 
 		let mut system_event_dispatcher:USIEventDispatcher<SystemEventKind,
-														SystemEvent,(),FileLogger,CommonError> = USIEventDispatcher::new(&on_error_handler_arc);
-
-		let notify_quit_arc = Arc::new(Mutex::new(false));
-
-		let on_error_handler = on_error_handler_arc.clone();
-
-		let notify_quit = notify_quit_arc.clone();
+			SystemEvent,(),FileLogger,CommonError> = USIEventDispatcher::new(&on_error_handler);
 
 		system_event_dispatcher.add_handler(SystemEventKind::Quit, move |_,e| {
 			match e {
 				&SystemEvent::Quit => {
-					match notify_quit.lock() {
-						Ok(mut notify_quit) => {
-							*notify_quit = true;
-						},
-						Err(ref e) => {
-							let _ = on_error_handler.lock().map(|h| h.call(e));
-						}
-					};
+					notify_quit.store(true,Ordering::Release);
 					Ok(())
 				},
 				e => Err(EventHandlerError::InvalidState(e.event_kind())),
 			}
 		});
 
-		let mut evalutor = Intelligence::new(String::from("data"),
-															String::from("nn.a.bin"),
-															String::from("nn.b.bin"),false);
+		system_event_dispatcher
+	}
 
-		print!("learning start... kifudir = {}\n", kifudir);
-
-		let on_error_handler = on_error_handler_arc.clone();
-		let system_event_queue = system_event_queue_arc.clone();
-
+	fn start_read_stdinput_thread(&self,
+								  system_event_queue:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>>,
+								  on_error_handler:Arc<Mutex<OnErrorHandler<FileLogger>>>) {
 		thread::spawn(move || {
 			let mut input_reader = USIStdInputReader::new();
 
@@ -114,6 +96,35 @@ impl CsaLearnener {
 				}
 			}
 		});
+	}
+
+	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
+		let logger = FileLogger::new(String::from("logs/log.txt"))?;
+
+		let logger = Arc::new(Mutex::new(logger));
+		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
+
+		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+
+		let notify_quit_arc = Arc::new(AtomicBool::new(false));
+
+		let on_error_handler = on_error_handler_arc.clone();
+
+		let notify_quit = notify_quit_arc.clone();
+
+		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
+
+		let mut evalutor = Intelligence::new(String::from("data"),
+															String::from("nn.a.bin"),
+															String::from("nn.b.bin"),false);
+
+		print!("learning start... kifudir = {}\n", kifudir);
+
+		let on_error_handler = on_error_handler_arc.clone();
+		let system_event_queue = system_event_queue_arc.clone();
+
+		self.start_read_stdinput_thread(system_event_queue,on_error_handler);
 
 		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
@@ -123,6 +134,11 @@ impl CsaLearnener {
 
 		'files: for entry in fs::read_dir(kifudir)? {
 			let path = entry?.path();
+
+			if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
+				continue;
+			}
+
 			print!("{}\n", path.display());
 			let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
 
@@ -237,19 +253,9 @@ impl CsaLearnener {
 					let _ = on_error_handler.lock().map(|h| h.call(e));
 				}
 
-				match notify_quit.lock() {
-					Ok(notify_quit) => {
-						if *notify_quit {
-							break 'files;
-						}
-					},
-					Err(ref e) => {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-						return Err(ApplicationError::LearningError(String::from(
-							"End notification flag's exclusive lock could not be secured"
-						)));
-					}
-				};
+				if notify_quit.load(Ordering::Acquire) {
+					break 'files;
+				}
 			}
 
 			print!("done... \n");
