@@ -25,6 +25,8 @@ use error::CommonError;
 use nn::Intelligence;
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{BufReader, Read};
+use std::fs::File;
 
 pub struct CsaLearnener {
 
@@ -264,5 +266,218 @@ impl CsaLearnener {
 		print!("{}件の棋譜を学習しました。\n",count);
 
 		Ok(())
+	}
+
+	pub fn learning_from_yaneuraou_bin(&mut self, kifudir:String,
+									   bias_shake_shake:bool,
+									   learn_max_threads:usize,
+									   learn_sfen_read_size:usize,
+									   learn_batch_size:usize) -> Result<(),ApplicationError> {
+		let logger = FileLogger::new(String::from("logs/log.txt"))?;
+
+		let logger = Arc::new(Mutex::new(logger));
+		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
+
+		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
+
+		let notify_quit_arc = Arc::new(AtomicBool::new(false));
+
+		let on_error_handler = on_error_handler_arc.clone();
+
+		let notify_quit = notify_quit_arc.clone();
+
+		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
+
+		let mut evalutor = Intelligence::new(String::from("data"),
+											 String::from("nn.a.bin"),
+											 String::from("nn.b.bin"),false);
+
+		print!("learning start... kifudir = {}\n", kifudir);
+
+		let on_error_handler = on_error_handler_arc.clone();
+		let system_event_queue = system_event_queue_arc.clone();
+
+		self.start_read_stdinput_thread(system_event_queue,on_error_handler);
+
+		let on_error_handler = on_error_handler_arc.clone();
+		let system_event_queue = system_event_queue_arc.clone();
+		let notify_quit = notify_quit_arc.clone();
+
+		let mut count = 0;
+
+		let mut packed_sfens = Vec::with_capacity(learn_sfen_read_size);
+		let mut record = Vec::with_capacity(40);
+
+		'files: for entry in fs::read_dir(kifudir)? {
+			let path = entry?.path();
+
+			if !path.as_path().extension().map(|e| e == "bin").unwrap_or(false) {
+				continue;
+			}
+
+			print!("{}\n", path.display());
+
+			for b in BufReader::new(File::open(path)?).bytes() {
+				let b = b?;
+
+				record.push(b);
+
+				if record.len() == 40 {
+					packed_sfens.push(record);
+					record = Vec::with_capacity(40);
+				} else {
+					continue;
+				}
+
+				if packed_sfens.len() == learn_sfen_read_size {
+					let mut rng = rand::thread_rng();
+					packed_sfens.shuffle(&mut rng);
+
+					let mut batch = Vec::with_capacity(learn_batch_size);
+
+					let it = packed_sfens.into_iter();
+					packed_sfens = Vec::with_capacity(learn_sfen_read_size);
+
+					for sfen in it {
+						batch.push(sfen);
+
+						if batch.len() == learn_batch_size {
+							self.learning_from_yaneuraou_bin_batch(&mut evalutor,
+																   		batch,
+																	    bias_shake_shake,
+																   		learn_max_threads,
+																   		&user_event_queue)?;
+							batch = Vec::with_capacity(learn_batch_size);
+							count += learn_batch_size;
+						}
+
+						if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
+							let _ = on_error_handler.lock().map(|h| h.call(e));
+						}
+
+						if notify_quit.load(Ordering::Acquire) {
+							break 'files;
+						}
+					}
+
+					let remaing = batch.len();
+
+					if remaing > 0 {
+						self.learning_from_yaneuraou_bin_batch(&mut evalutor,
+															   		batch,
+																    bias_shake_shake,
+																	learn_max_threads,
+															   		&user_event_queue)?;
+						count += remaing;
+					}
+
+					if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
+						let _ = on_error_handler.lock().map(|h| h.call(e));
+					}
+
+					if notify_quit.load(Ordering::Acquire) {
+						break 'files;
+					}
+				}
+			}
+		}
+
+		if record.len() > 0 {
+			return Err(ApplicationError::LearningError(String::from(
+				"The data size of the teacher phase is invalid."
+			)));
+		}
+
+		if !notify_quit.load(Ordering::Acquire) && packed_sfens.len() > 0 {
+			let mut rng = rand::thread_rng();
+			packed_sfens.shuffle(&mut rng);
+
+			let mut batch = Vec::with_capacity(learn_batch_size);
+
+			for sfen in packed_sfens.into_iter() {
+				batch.push(sfen);
+
+				if batch.len() == learn_batch_size {
+					self.learning_from_yaneuraou_bin_batch(&mut evalutor,
+														   		batch,
+															    bias_shake_shake,
+														   		learn_max_threads,
+																&user_event_queue)?;
+					batch = Vec::with_capacity(learn_batch_size);
+					count += learn_batch_size;
+				}
+
+
+				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
+					let _ = on_error_handler.lock().map(|h| h.call(e));
+				}
+
+				if notify_quit.load(Ordering::Acquire) {
+					print!("{}局面を学習しました。\n",count);
+					return Ok(());
+				}
+			}
+
+			let remaing = batch.len();
+
+			if !notify_quit.load(Ordering::Acquire) && remaing > 0 {
+				self.learning_from_yaneuraou_bin_batch(&mut evalutor,
+													   		batch,
+													   		bias_shake_shake,
+													   		learn_max_threads,
+													   		&user_event_queue)?;
+				count += remaing;
+			}
+		}
+
+		print!("{}局面を学習しました。\n",count);
+
+		Ok(())
+	}
+
+	fn learning_from_yaneuraou_bin_batch(&self,evalutor:&mut Intelligence,
+										 batch:Vec<Vec<u8>>,
+										 bias_shake_shake:bool,
+										 learn_max_threads:usize,
+										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
+	) -> Result<(),ApplicationError> {
+		let (a,b) = if bias_shake_shake {
+			let mut rnd = rand::thread_rng();
+
+			let a: f64 = rnd.gen();
+			let b: f64 = 1f64 - a;
+
+			(a,b)
+		} else {
+			(1f64,1f64)
+		};
+
+		match evalutor.learning_by_packed_sfens(
+			batch,
+			learn_max_threads,
+			&move |s, ab| {
+
+				match s {
+					&GameEndState::Win => {
+						ab
+					}
+					&GameEndState::Lose => {
+						0f64
+					},
+					_ => 0.5f64
+				}
+			}, a,b, &*user_event_queue) {
+			Err(_) => {
+				return Err(ApplicationError::LearningError(String::from(
+					"An error occurred while learning the neural network."
+				)));
+			},
+			Ok((msa,moa,msb,mob)) => {
+				println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
+				println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+				Ok(())
+			}
+		}
 	}
 }

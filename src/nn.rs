@@ -322,7 +322,7 @@ impl Intelligence {
 										   a:f64,b:f64,
 										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 										   -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
-		where D: Fn(&GameEndState,Teban,f64) -> f64 {
+		where D: Fn(&GameEndState,f64) -> f64 {
 
 		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
 
@@ -352,7 +352,7 @@ impl Intelligence {
 
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
-			let t = training_data_generator(&es,teban,a);
+			let t = training_data_generator(&es,a);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
@@ -366,7 +366,7 @@ impl Intelligence {
 			let teban = *teban;
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(es,teban,a);
+			let t = training_data_generator(es,a);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
@@ -385,7 +385,7 @@ impl Intelligence {
 
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
-			let t = training_data_generator(&es,teban,b);
+			let t = training_data_generator(&es,b);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
@@ -399,7 +399,7 @@ impl Intelligence {
 			let teban = *teban;
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(es,teban,b);
+			let t = training_data_generator(es,b);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
