@@ -34,8 +34,8 @@ use packedsfen::yaneuraou::reader::PackedSfenReader;
 use packedsfen::traits::Reader;
 
 pub struct Intelligence {
-	nna:NN<SGD,CrossEntropy>,
-	nnb:NN<SGD,CrossEntropy>,
+	nna:NN<MomentumSGD,CrossEntropy>,
+	nnb:NN<MomentumSGD,CrossEntropy>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -132,7 +132,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nna = NN::new(model,|_| SGD::new(0.01),CrossEntropy::new());
+		let nna = NN::new(model,|m| MomentumSGD::new(m,0.01),CrossEntropy::new());
 
 		let mut rnd = rand::thread_rng();
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
@@ -149,7 +149,7 @@ impl Intelligence {
 										move || {
 											n.sample(&mut rnd) * 0.025
 										}).unwrap();
-		let nnb = NN::new(model,|_| SGD::new(0.01),CrossEntropy::new());
+		let nnb = NN::new(model,|m| MomentumSGD::new(m,0.01),CrossEntropy::new());
 
 		Intelligence {
 			nna:nna,
