@@ -1,5 +1,7 @@
 max_threads = 16
 learn_max_threads = 64
+learn_sfen_read_size = 10000000
+learn_batch_size = 1000000
 base_depth = 2
 max_depth = 3
 max_ply = 1

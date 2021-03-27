@@ -1,4 +1,5 @@
 extern crate rand;
+extern crate rand_core;
 extern crate rand_xorshift;
 extern crate statrs;
 extern crate getopts;
@@ -9,6 +10,7 @@ extern crate serde_derive;
 extern crate usiagent;
 extern crate simplenn;
 extern crate csaparser;
+extern crate packedsfen;
 
 pub mod player;
 pub mod solver;
@@ -23,7 +25,7 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 use rand::Rng;
-use rand::SeedableRng;
+use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
@@ -42,10 +44,15 @@ use player::NNShogiPlayer;
 use error::ApplicationError;
 use learning::CsaLearnener;
 
+const LEAN_SFEN_READ_SIZE:usize = 1000 * 1000 * 10;
+const LEAN_BATCH_SIZE:usize = 256;
+
 #[derive(Debug, Deserialize)]
 pub struct Config {
 	max_threads:Option<u32>,
 	learn_max_threads:Option<usize>,
+	learn_sfen_read_size:Option<usize>,
+	learn_batch_size:Option<usize>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,
@@ -120,6 +127,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "fromlast", "Number of moves of from the end.", "move count.");
 	opts.optopt("", "kifudir", "Directory of game data to be used of learning.", "path string.");
 	opts.optopt("", "lowerrate", "Lower limit of the player rate value of learning target games.", "number of rate.");
+	opts.optflag("", "yaneuraou", "YaneuraOu format teacher phase.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -130,11 +138,20 @@ fn run() -> Result<(),ApplicationError> {
 
 	if let Some(kifudir) = matches.opt_str("kifudir") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
-		let lowerrate:f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-		CsaLearnener::new().learning_from_csa(kifudir,
-											  lowerrate,
-											  config.bias_shake_shake_with_kifu,
-											  config.learn_max_threads.unwrap_or(1))
+
+		if matches.opt_present("yaneuraou") {
+			CsaLearnener::new().learning_from_yaneuraou_bin(kifudir,
+												  config.bias_shake_shake_with_kifu,
+												  config.learn_max_threads.unwrap_or(1),
+												  config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+												  config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+		} else {
+			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
+			CsaLearnener::new().learning_from_csa(kifudir,
+												  lowerrate,
+												  config.bias_shake_shake_with_kifu,
+												  config.learn_max_threads.unwrap_or(1))
+		}
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 

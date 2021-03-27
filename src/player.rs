@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use rand;
 use rand::Rng;
-use rand::SeedableRng;
+use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use std::thread;
 use std::sync::Arc;
