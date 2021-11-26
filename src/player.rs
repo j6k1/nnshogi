@@ -685,10 +685,6 @@ impl Search {
 								node_count:u64,
 								strategy:Strategy<L,S>,
 	) -> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-		if current_depth > base_depth {
-			self.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
-		}
-
 		if let None = env.kyokumen_score_map.get(teban,&mhash,&shash) {
 			env.nodes.fetch_add(1,atomic::Ordering::Release);
 		}
@@ -1119,6 +1115,10 @@ impl Search {
 										}
 
 										if -s > scoreval {
+											if current_depth > base_depth {
+												search.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
+											}
+
 											search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
 											search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
@@ -1242,6 +1242,10 @@ impl Search {
 						}
 
 						if -s > scoreval {
+							if current_depth > base_depth {
+								search.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
+							}
+
 							search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
 							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
