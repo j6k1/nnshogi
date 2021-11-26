@@ -1063,6 +1063,8 @@ impl Search {
 											 if d < depth {
 												env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
 											}
+										} else {
+											env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
 										}
 
 										if -s > scoreval {
@@ -1181,6 +1183,8 @@ impl Search {
 							if d < depth {
 								env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
 							}
+						} else {
+							env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
 						}
 
 						if -s > scoreval {
