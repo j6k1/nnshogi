@@ -532,7 +532,7 @@ impl Search {
 
 		if pv.len() > 0 {
 			let mut commands: Vec<UsiInfoSubCommand> = Vec::new();
-			commands.push(UsiInfoSubCommand::CurMove(pv[0].to_move()));
+			commands.push(UsiInfoSubCommand::CurrMove(pv[0].to_move()));
 			commands.push(UsiInfoSubCommand::Pv(pv.clone().into_iter().map(|m| m.to_move()).collect()));
 
 			match info_sender.send(commands) {
