@@ -689,6 +689,10 @@ impl Search {
 			self.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
 		}
 
+		if let None = env.kyokumen_score_map.get(teban,&mhash,&shash) {
+			env.nodes.fetch_add(1,atomic::Ordering::Release);
+		}
+
 		if let Some(ObtainKind::Ou) = obtained {
 			return Evaluation::Result(Score::NEGINFINITE, None);
 		}
