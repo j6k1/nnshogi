@@ -124,7 +124,7 @@ pub struct Environment<L,S> where L: Logger, S: InfoSender {
 	current_limit:Option<Instant>,
 	stop:Arc<AtomicBool>,
 	quited:Arc<AtomicBool>,
-	kyokumen_score_map:KyokumenMap<u64,i64>
+	kyokumen_score_map:KyokumenMap<u64,(Score,u32)>
 }
 impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 	fn clone(&self) -> Self {
@@ -655,9 +655,15 @@ impl Search {
 			return Evaluation::Timeout(None, None);
 		}
 
-		if depth == 0 || current_depth == self.max_depth {
-			if let Some(&s) = env.kyokumen_score_map.get(teban, &mhash, &shash) {
-				return Evaluation::Result(Score::Value(s), None);
+		if let Some(&(s,d)) = env.kyokumen_score_map.get(teban, &mhash, &shash) {
+			match s {
+				Score::INFINITE | Score::NEGINFINITE => {
+					return Evaluation::Result(s, None);
+				},
+				_ if d >= depth => {
+					return Evaluation::Result(s, None);
+				},
+				_ => ()
 			}
 		}
 
@@ -693,10 +699,6 @@ impl Search {
 
 		{
 			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot, self_nn_snapshot);
-
-			if let Score::Value(s) = s {
-				env.kyokumen_score_map.insert(teban, mhash, shash, s);
-			}
 
 			if depth == 0 || current_depth == self.max_depth {
 				return Evaluation::Result(-s, None);
@@ -1057,6 +1059,12 @@ impl Search {
 										};
 									},
 									Evaluation::Result(s,_) => {
+										if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
+											 if d < depth {
+												env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+											}
+										}
+
 										if -s > scoreval {
 											scoreval = -s;
 											best_move = Some(m.to_move());
@@ -1169,6 +1177,12 @@ impl Search {
 						};
 					},
 					(Evaluation::Result(s,_),m) => {
+						if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
+							if d < depth {
+								env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+							}
+						}
+
 						if -s > scoreval {
 							scoreval = -s;
 							best_move = Some(m.to_move());
