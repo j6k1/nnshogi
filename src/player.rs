@@ -1861,46 +1861,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
 				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
-				let working = Arc::new(AtomicBool::new(true));
-
-				let nodes = env.nodes.clone();
-				{
-					let mut info_sender = info_sender.clone();
-					let think_start_time = think_start_time.clone();
-					let working = working.clone();
-
-					thread::spawn(move || {
-						let mut count = 0;
-						let mut old_nodes:u64 = 0;
-
-						while working.load(atomic::Ordering::Acquire) {
-							thread::sleep(Duration::from_millis(100));
-
-							count += 1;
-
-							let elapsed = think_start_time.elapsed();
-							let time = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
-							let nodes = nodes.load(atomic::Ordering::Acquire);
-
-							let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
-							commands.push(UsiInfoSubCommand::Nodes(nodes));
-							commands.push(UsiInfoSubCommand::Time(time));
-
-							if count == 10 {
-								commands.push(UsiInfoSubCommand::Nps(nodes - old_nodes));
-								old_nodes = nodes;
-								count = 0;
-							}
-
-							match info_sender.send(commands) {
-								Ok(_) => (),
-								Err(ref e) => {
-									let _ = on_error_handler.lock().map(|h| h.call(e));
-								}
-							}
-						}
-					});
-				}
 
 				let result = match self.search.negascout(
 							&mut env,
@@ -1945,8 +1905,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					}
 				};
-
-				working.store(false,atomic::Ordering::Release);
 
 				if self.remaining_turns > self.search.min_turn_count {
 					self.remaining_turns -= 1;
