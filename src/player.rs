@@ -19,6 +19,7 @@ use std::ops::Add;
 use std::ops::Sub;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 
 use usiagent::player::*;
 use usiagent::event::*;
@@ -105,7 +106,9 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&mut UserEventDispatcher<Search,CommonError,L>,
 						&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
-						Teban,&Arc<State>,Score,Score,
+						Teban,&Arc<State>,
+						Pv:&Vec<LegalMove>,
+						Score,Score,
 						&Arc<MochigomaCollections>,
 						&KyokumenMap<u64,u32>,
 						&mut Option<KyokumenMap<u64,bool>>,
@@ -124,7 +127,8 @@ pub struct Environment<L,S> where L: Logger, S: InfoSender {
 	current_limit:Option<Instant>,
 	stop:Arc<AtomicBool>,
 	quited:Arc<AtomicBool>,
-	kyokumen_score_map:KyokumenMap<u64,(Score,u32)>
+	kyokumen_score_map:KyokumenMap<u64,(Score,u32)>,
+	nodes:Arc<AtomicU64>
 }
 impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 	fn clone(&self) -> Self {
@@ -138,7 +142,8 @@ impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 			current_limit:self.current_limit.clone(),
 			stop:self.stop.clone(),
 			quited:self.quited.clone(),
-			kyokumen_score_map:self.kyokumen_score_map.clone()
+			kyokumen_score_map:self.kyokumen_score_map.clone(),
+			nodes:self.nodes.clone()
 		}
 	}
 }
@@ -162,7 +167,8 @@ impl<L,S> Environment<L,S> where L: Logger, S: InfoSender {
 			current_limit:current_limit,
 			stop:stop,
 			quited:quited,
-			kyokumen_score_map:KyokumenMap::new()
+			kyokumen_score_map:KyokumenMap::new(),
+			nodes:Arc::new(AtomicU64::new(0))
 		}
 	}
 }
@@ -518,6 +524,50 @@ impl Search {
 			}
 		}
 	}
+
+	fn send_moves<L,S>(&self, info_sender:&mut S,
+						  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+						  pv:&Vec<LegalMove>)
+		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+
+		if pv.len() > 0 {
+			let mut commands: Vec<UsiInfoSubCommand> = Vec::new();
+			commands.push(UsiInfoSubCommand::CurMove(pv[0].to_move()));
+			commands.push(UsiInfoSubCommand::Pv(pv.clone().into_iter().map(|m| m.to_move()).collect()));
+
+			match info_sender.send(commands) {
+				Ok(_) => (),
+				Err(ref e) => {
+					let _ = on_error_handler.lock().map(|h| h.call(e));
+				}
+			}
+		}
+	}
+
+	fn send_score<L,S>(&self, info_sender:&mut S,
+				  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+				  teban:Teban,
+				  s:Score)
+		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+
+		if self.display_evalute_score {
+			let teban_str = match teban {
+				Teban::Sente => "sente",
+				Teban::Gote =>  "gote"
+			};
+			match &s {
+				Score::INFINITE => {
+					self.send_message(info_sender, on_error_handler, &format!("evalute score = inifinite. ({0})",teban_str));
+				},
+				Score::NEGINFINITE => {
+					self.send_message(info_sender, on_error_handler, &format!("evalute score = neginifinite. ({0})",teban_str));
+				},
+				Score::Value(s) => {
+					self.send_message(info_sender, on_error_handler, &format!("evalute score =  {0: >17} ({1})",s,teban_str));
+				}
+			}
+		}
+	}
 	/*
 	fn send_depth<L>(&self, info_sender:&USIInfoSender,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32)
@@ -599,14 +649,6 @@ impl Search {
 		let (os,opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot,false,teban.opposite(),state.get_banmen(),mc,m)?;
 		let s = ss - os;
 
-		if self.display_evalute_score {
-			let teban_str = match teban {
-				Teban::Sente => "sente",
-				Teban::Gote =>  "gote"
-			};
-			self.send_message(info_sender, on_error_handler, &format!("evalute score =  {0: >17} ({1})",s,teban_str));
-		}
-
 		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),self_snapshot,opponent_snapshot))
 	}
 
@@ -630,6 +672,7 @@ impl Search {
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
 								m:Option<Move>,mc:&Arc<MochigomaCollections>,
+								pv:&Vec<LegalMove>,
 								prev_state:&Option<Arc<State>>,
 								prev_mc:&Option<Arc<MochigomaCollections>>,
 								obtained:Option<ObtainKind>,
@@ -864,7 +907,7 @@ impl Search {
 					solver_event_dispatcher,
 					&self_nn_snapshot,
 					&opponent_nn_snapshot,
-					teban,state,
+					teban,state,pv,
 					alpha,beta,mc,
 					current_kyokumen_map,
 					self_already_oute_map,
@@ -944,7 +987,7 @@ impl Search {
 						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
-								teban:Teban,state:&Arc<State>,
+								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
@@ -965,6 +1008,9 @@ impl Search {
 		let start_time = Instant::now();
 
 		for (priority,m) in mvs {
+			let mut pv = pv.clone();
+			pv.push(m.clone());
+
 			processed_nodes += 1;
 			let nodes = node_count * mvs.len() as u64 - processed_nodes as u64;
 
@@ -1034,6 +1080,7 @@ impl Search {
 									self_nn_snapshot,
 									teban.opposite(),&state,
 									-b,-alpha,Some(m.to_move()),&mc,
+									&pv,
 									&prev_state,&prev_mc,
 									obtained,&current_kyokumen_map,
 									opponent_already_oute_map,
@@ -1068,6 +1115,9 @@ impl Search {
 										}
 
 										if -s > scoreval {
+											search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
+											search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
+
 											scoreval = -s;
 											best_move = Some(m.to_move());
 											if alpha < scoreval {
@@ -1116,7 +1166,7 @@ impl Search {
 								_:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
-								teban:Teban,state:&Arc<State>,
+								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
@@ -1188,6 +1238,9 @@ impl Search {
 						}
 
 						if -s > scoreval {
+							search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
+							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
+
 							scoreval = -s;
 							best_move = Some(m.to_move());
 							if alpha < scoreval {
@@ -1212,6 +1265,9 @@ impl Search {
 					}
 				}
 			} else if let Some((priority,m)) = it.next() {
+				let mut pv = pv.clone();
+				pv.push(m.clone());
+
 				match search.startup_strategy(teban,state,mc,m,
 												mhash,shash,
 											 	*priority,
@@ -1297,6 +1353,7 @@ impl Search {
 											&self_nn_snapshot,
 											teban.opposite(),&state,
 											-b,-a,Some(m.to_move()),&mc,
+											&pv,
 											&prev_state,&prev_mc,
 											obtained,&current_kyokumen_map,
 											&mut opponent_already_oute_map,
@@ -1800,6 +1857,46 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
 				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
+				let working = Arc::new(AtomicBool::new(true));
+
+				let nodes = env.nodes.clone();
+				{
+					let mut info_sender = info_sender.clone();
+					let think_start_time = think_start_time.clone();
+					let working = working.clone();
+
+					thread::spawn(move || {
+						let mut count = 0;
+						let mut old_nodes:u64 = 0;
+
+						while working.load(atomic::Ordering::Acquire) {
+							thread::sleep(Duration::from_millis(100));
+
+							count += 1;
+
+							let elapsed = think_start_time.elapsed();
+							let time = elapsed.as_secs() * 1000 + elapsed.subsec_millis() as u64;
+							let nodes = nodes.load(atomic::Ordering::Acquire);
+
+							let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
+							commands.push(UsiInfoSubCommand::Nodes(nodes));
+							commands.push(UsiInfoSubCommand::Time(time));
+
+							if count == 10 {
+								commands.push(UsiInfoSubCommand::Nps(nodes - old_nodes));
+								old_nodes = nodes;
+								count = 0;
+							}
+
+							match info_sender.send(commands) {
+								Ok(_) => (),
+								Err(ref e) => {
+									let _ = on_error_handler.lock().map(|h| h.call(e));
+								}
+							}
+						}
+					});
+				}
 
 				let result = match self.search.negascout(
 							&mut env,
@@ -1808,6 +1905,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							&Arc::new(self_nn_snapshot),&Arc::new(opponent_nn_snapshot),
 							teban,&Arc::new(state.clone()), Score::NEGINFINITE,
 							Score::INFINITE, None,&Arc::new(mc.clone()),
+							&Vec::new(),
 							&prev_state,
 							&prev_mc,
 							None, &kyokumen_map,
@@ -1843,6 +1941,8 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					}
 				};
+
+				working.store(false,atomic::Ordering::Release);
 
 				if self.remaining_turns > self.search.min_turn_count {
 					self.remaining_turns -= 1;
