@@ -525,21 +525,25 @@ impl Search {
 		}
 	}
 
-	fn send_moves<L,S>(&self, info_sender:&mut S,
-						  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-						  pv:&Vec<LegalMove>)
+	fn send_info<L,S>(&self, info_sender:&mut S,
+					  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+					  depth:u32, seldepth:u32, pv:&Vec<LegalMove>)
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
-		if pv.len() > 0 {
-			let mut commands: Vec<UsiInfoSubCommand> = Vec::new();
-			commands.push(UsiInfoSubCommand::CurrMove(pv[0].to_move()));
-			commands.push(UsiInfoSubCommand::Pv(pv.clone().into_iter().map(|m| m.to_move()).collect()));
+		let mut commands: Vec<UsiInfoSubCommand> = Vec::new();
 
-			match info_sender.send(commands) {
-				Ok(_) => (),
-				Err(ref e) => {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
-				}
+		if depth < seldepth {
+			commands.push(UsiInfoSubCommand::Depth(depth));
+			commands.push(UsiInfoSubCommand::SelDepth(seldepth));
+		}
+
+		commands.push(UsiInfoSubCommand::CurrMove(pv[0].to_move()));
+		commands.push(UsiInfoSubCommand::Pv(pv.clone().into_iter().map(|m| m.to_move()).collect()));
+
+		match info_sender.send(commands) {
+			Ok(_) => (),
+			Err(ref e) => {
+				let _ = on_error_handler.lock().map(|h| h.call(e));
 			}
 		}
 	}
@@ -1115,11 +1119,7 @@ impl Search {
 										}
 
 										if -s > scoreval {
-											if current_depth > base_depth {
-												search.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
-											}
-
-											search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
+											search.send_info(&mut env.info_sender, &env.on_error_handler, base_depth,current_depth,&pv);
 											search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 											scoreval = -s;
@@ -1242,11 +1242,7 @@ impl Search {
 						}
 
 						if -s > scoreval {
-							if current_depth > base_depth {
-								search.send_seldepth(&mut env.info_sender, &env.on_error_handler, base_depth, current_depth);
-							}
-
-							search.send_moves(&mut env.info_sender,&env.on_error_handler,&pv);
+							search.send_info(&mut env.info_sender, &env.on_error_handler, base_depth,current_depth,&pv);
 							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 							scoreval = -s;
