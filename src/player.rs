@@ -4,15 +4,12 @@ use std::collections::BTreeMap;
 use std::fmt;
 use rand;
 use rand::Rng;
-use rand_core::SeedableRng;
-use rand_xorshift::XorShiftRng;
 use std::thread;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use error::*;
-use std::num::Wrapping;
 use std::time::{Instant,Duration};
 use std::ops::Neg;
 use std::ops::Add;
@@ -38,16 +35,10 @@ use simplenn::SnapShot;
 use nn::Intelligence;
 use solver::*;
 
-const KOMA_KIND_MAX:usize = KomaKind::Blank as usize;
-const MOCHIGOMA_KIND_MAX:usize = MochigomaKind::Hisha as usize;
-const MOCHIGOMA_MAX:usize = 18;
-const SUJI_MAX:usize = 9;
-const DAN_MAX:usize = 9;
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Evaluation {
-	Result(Score,Option<Move>),
-	Timeout(Option<Score>,Option<Move>),
+	Result(Score,Option<AppliedMove>),
+	Timeout(Option<Score>,Option<AppliedMove>),
 	Error,
 }
 #[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
@@ -172,246 +163,8 @@ impl<L,S> Environment<L,S> where L: Logger, S: InfoSender {
 		}
 	}
 }
-pub struct KyokumenHash {
-	kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1],
-	mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2],
-}
-impl KyokumenHash {
-	pub fn new() -> KyokumenHash {
-		let mut rnd = rand::thread_rng();
-		let mut rnd = XorShiftRng::from_seed(rnd.gen());
-
-		let mut kyokumen_hash_seeds:[[u64; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1] = [[0; SUJI_MAX * DAN_MAX]; KOMA_KIND_MAX + 1];
-		let mut mochigoma_hash_seeds:[[[u64; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2] = [[[0; MOCHIGOMA_KIND_MAX + 1]; MOCHIGOMA_MAX]; 2];
-
-		for i in 0..(KOMA_KIND_MAX + 1) {
-			for j in 0..(SUJI_MAX * DAN_MAX) {
-				kyokumen_hash_seeds[i][j] = rnd.gen();
-			}
-		}
-
-		for i in 0..MOCHIGOMA_MAX {
-			for j in 0..(MOCHIGOMA_KIND_MAX + 1) {
-				mochigoma_hash_seeds[0][i][j] = rnd.gen();
-				mochigoma_hash_seeds[1][i][j] = rnd.gen();
-			}
-		}
-
-		KyokumenHash {
-			kyokumen_hash_seeds:kyokumen_hash_seeds,
-			mochigoma_hash_seeds:mochigoma_hash_seeds,
-		}
-	}
-
-	fn calc_hash<AF,PF>(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,
-						m:&Move,obtained:&Option<MochigomaKind>,add:AF,pull:PF)
-						-> u64 where AF: Fn(u64,u64) -> u64, PF: Fn(u64,u64) -> u64 {
-		match b {
-			&Banmen(ref kinds) => {
-				match m {
-					&Move::To(KomaSrcPosition(sx,sy), KomaDstToPosition(dx, dy, n)) => {
-						let sx = (9 - sx) as usize;
-						let sy = (sy - 1) as usize;
-						let dx = (9 - dx) as usize;
-						let dy = dy as usize - 1;
-
-						let mut hash = h;
-						let k = kinds[sy][sx];
-
-						hash =  pull(hash,self.kyokumen_hash_seeds[k as usize][sy * 8 + sx]);
-						hash = add(hash,self.kyokumen_hash_seeds[KomaKind::Blank as usize][sy * 8 + sx]);
-
-						let dk = kinds[dy][dx] as usize;
-
-						hash =  pull(hash,self.kyokumen_hash_seeds[dk][dy * 8 + dx]);
-
-						let k = if n {
-							match k {
-								KomaKind::SFu => KomaKind::SFuN,
-								KomaKind::SKyou => KomaKind::SKyouN,
-								KomaKind::SKei => KomaKind::SKeiN,
-								KomaKind::SGin => KomaKind::SGinN,
-								KomaKind::SKaku => KomaKind::SKakuN,
-								KomaKind::SHisha => KomaKind::SHishaN,
-								KomaKind::GFu => KomaKind::GFuN,
-								KomaKind::GKyou => KomaKind::GKyouN,
-								KomaKind::GKei => KomaKind::GKeiN,
-								KomaKind::GGin => KomaKind::GGinN,
-								KomaKind::GKaku => KomaKind::GKakuN,
-								KomaKind::GHisha => KomaKind::GHishaN,
-								k => k,
-							}
-						} else {
-							k
-						} as usize;
-
-						hash = add(hash,self.kyokumen_hash_seeds[k][dy * 8 + dx]);
-
-						hash = match obtained  {
-							&None => hash,
-							&Some(ref obtained) => {
-								let c =  match t {
-									&Teban::Sente => {
-										match mc {
-											&MochigomaCollections::Pair(ref mc,_) => {
-												match mc.get(obtained) {
-													Some(c) => *c as usize,
-													None => 0,
-												}
-											},
-											&MochigomaCollections::Empty => 0,
-										}
-									},
-									&Teban::Gote => {
-										match mc {
-											&MochigomaCollections::Pair(_,ref mc) => {
-												match mc.get(obtained) {
-													Some(c) => *c as usize,
-													None => 0,
-												}
-											},
-											&MochigomaCollections::Empty => 0,
-										}
-									}
-								};
-
-								let k = *obtained as usize;
-
-								match t {
-									&Teban::Sente => {
-										hash = add(hash,self.mochigoma_hash_seeds[0][c][k]);
-									},
-									&Teban::Gote => {
-										hash = add(hash,self.mochigoma_hash_seeds[1][c][k]);
-									}
-								}
-								hash
-							}
-						};
-
-						hash
-					},
-					&Move::Put(ref mk, ref md) => {
-						let mut hash = h;
-
-						let c = match t {
-							&Teban::Sente => {
-								match mc {
-									&MochigomaCollections::Pair(ref mc,_) => {
-										match mc.get(&mk) {
-											None | Some(&0) => {
-												return hash;
-											}
-											Some(c) => *c as usize,
-										}
-									},
-									&MochigomaCollections::Empty => {
-										return hash;
-									}
-								}
-							},
-							&Teban::Gote => {
-								match mc {
-									&MochigomaCollections::Pair(_,ref mc) => {
-										match mc.get(&mk) {
-											None | Some(&0) => {
-												return hash;
-											}
-											Some(c) => *c as usize,
-										}
-									},
-									&MochigomaCollections::Empty => {
-										return hash;
-									}
-								}
-							}
-						};
-
-						let k = *mk as usize;
-
-						match t {
-							&Teban::Sente => {
-								hash = pull(hash,self.mochigoma_hash_seeds[0][c-1][k]);
-							},
-							&Teban::Gote => {
-								hash = pull(hash,self.mochigoma_hash_seeds[1][c-1][k]);
-							}
-						}
-
-						let dx = 9 - md.0 as usize;
-						let dy = md.1 as usize - 1;
-						let dk = kinds[dy][dx] as usize;
-
-						hash = pull(hash,self.kyokumen_hash_seeds[dk as usize][dy * 8 + dx]);
-
-						let k = KomaKind::from((*t,*mk)) as usize;
-
-						hash = add(hash,self.kyokumen_hash_seeds[k as usize][dy * 8 + dx]);
-						hash
-					}
-				}
-			}
-		}
-	}
-
-	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,t,b,mc,m,obtained,|h,v| h ^ v, |h,v| h ^ v)
-	}
-
-	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
-		self.calc_hash(h,t,b,mc,m,obtained,|h,v| {
-			let h = Wrapping(h);
-			let v = Wrapping(v);
-			(h + v).0
-		}, |h,v| {
-			let h = Wrapping(h);
-			let v = Wrapping(v);
-			(h - v).0
-		})
-	}
-
-	fn calc_initial_hash(&self,b:&Banmen,
-						 ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
-		let mut mhash:u64 = 0;
-		let mut shash:Wrapping<u64> = Wrapping(0u64);
-
-		match b {
-			&Banmen(ref kinds) => {
-				for y in 0..9 {
-					for x in 0..9 {
-						let k = kinds[y][x] as usize;
-						mhash = mhash ^ self.kyokumen_hash_seeds[k][y * 8 + x];
-						shash = shash + Wrapping(self.kyokumen_hash_seeds[k][y * 8 + x]);
-					}
-				}
-			}
-		}
-		for k in &MOCHIGOMA_KINDS {
-			match ms.get(&k) {
-				Some(c) => {
-					for i in 0..(*c as usize) {
-						mhash = mhash ^ self.mochigoma_hash_seeds[0][i][*k as usize];
-						shash = shash + Wrapping(self.mochigoma_hash_seeds[0][i][*k as usize]);
-					}
-				},
-				None => (),
-			}
-			match mg.get(&k) {
-				Some(c) => {
-					for i in 0..(*c as usize) {
-						mhash = mhash ^ self.mochigoma_hash_seeds[1][i][*k as usize];
-						shash = shash + Wrapping(self.mochigoma_hash_seeds[1][i][*k as usize]);
-					}
-				},
-				None => (),
-			}
-		}
-
-		(mhash,shash.0)
-	}
-}
 pub struct Search {
-	kyokumenhash:KyokumenHash,
+	kyokumenhash:KyokumenHash<u64>,
 	base_depth:u32,
 	max_depth:u32,
 	max_threads:u32,
@@ -620,7 +373,7 @@ impl Search {
 								self_snapshot:&Arc<(SnapShot,SnapShot)>,
 								opponent_snapshot:&Arc<(SnapShot,SnapShot)>,
 								teban:Teban,state:&Option<&Arc<State>>,
-								mc:&Option<&Arc<MochigomaCollections>>,m:&Option<Move>,
+								mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<(Evaluation,(SnapShot,SnapShot),(SnapShot,SnapShot)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let state = match state {
@@ -640,7 +393,7 @@ impl Search {
 		};
 
 		let m = match m {
-			Some(ref m) => {
+			Some(m) => {
 				m
 			},
 			None => {
@@ -649,11 +402,14 @@ impl Search {
 			}
 		};
 
-		let (ss,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot,true,teban,state.get_banmen(),mc,m)?;
-		let (os,opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot,false,teban.opposite(),state.get_banmen(),mc,m)?;
-		let s = ss - os;
+		let (s,self_snapshot,opponent_snapshot) = {
+			let m = m.to_move();
+			let (ss, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
+			let (os, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
+			(ss - os,self_snapshot,opponent_snapshot)
+		};
 
-		Ok((Evaluation::Result(Score::Value(s),Some(m.clone())),self_snapshot,opponent_snapshot))
+		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot,opponent_snapshot))
 	}
 
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,
@@ -675,7 +431,7 @@ impl Search {
 								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
-								m:Option<Move>,mc:&Arc<MochigomaCollections>,
+								m:Option<AppliedMove>,mc:&Arc<MochigomaCollections>,
 								pv:&Vec<LegalMove>,
 								prev_state:&Option<Arc<State>>,
 								prev_mc:&Option<Arc<MochigomaCollections>>,
@@ -720,7 +476,7 @@ impl Search {
 																					  &self_nn_snapshot,
 																					  teban.opposite(),
 																					  &prev_state.as_ref(), &prev_mc.as_ref(),
-																					  &m, &mut env.info_sender, &env.on_error_handler) {
+																					  m, &mut env.info_sender, &env.on_error_handler) {
 				Ok((_, oss, sss)) => {
 					(Arc::new(oss), Arc::new(sss))
 				},
@@ -813,7 +569,7 @@ impl Search {
 											&env.event_queue,
 											solver_event_dispatcher) {
 					MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
-						return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_move()));
+						return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_applied_move()));
 					},
 					MaybeMate::MateMoves(_,_) => {
 						return Evaluation::Result(Score::INFINITE,None);
@@ -836,7 +592,7 @@ impl Search {
 			return Evaluation::Result(Score::NEGINFINITE,None);
 		} else if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
 			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
+			return Evaluation::Timeout(None,Some(mvs[0].to_applied_move()));
 		} else if mvs.len() == 1 {
 			let r = match self.evalute_by_diff(&env.evalutor,
 											   &self_nn_snapshot,
@@ -844,7 +600,7 @@ impl Search {
 											   teban,
 											   &Some(&state),
 											   &Some(&mc),
-											   &Some(mvs[0].to_move()),
+											   Some(mvs[0].to_applied_move()),
 											   &mut env.info_sender, &env.on_error_handler) {
 				Ok((r,_,_)) => {
 					r
@@ -862,7 +618,7 @@ impl Search {
 
 		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
 			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None,Some(mvs[0].to_move()));
+			return Evaluation::Timeout(None,Some(mvs[0].to_applied_move()));
 		}
 
 		let mut mvs = mvs.into_iter().map(|m| {
@@ -926,7 +682,7 @@ impl Search {
 	}
 
 	fn startup_strategy(&self,teban:Teban,state:&State,mc:&MochigomaCollections,
-						m:&LegalMove,mhash:u64,shash:u64,
+						m:LegalMove,mhash:u64,shash:u64,
 						priority:u32,
 						oute_kyokumen_map:&KyokumenMap<u64,()>,
 						current_kyokumen_map:&KyokumenMap<u64,u32>,
@@ -944,8 +700,8 @@ impl Search {
 		let (mhash,shash) = {
 			let o = obtained.and_then(|o| MochigomaKind::try_from(o).ok());
 
-			let mhash = self.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-			let shash = self.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+			let mhash = self.calc_main_hash(mhash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
+			let shash = self.calc_sub_hash(shash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 
 			if priority == 10 {
 				match oute_kyokumen_map.get(teban,&mhash,&shash) {
@@ -1006,12 +762,12 @@ impl Search {
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
-		let mut best_move:Option<Move> = None;
+		let mut best_move:Option<AppliedMove> = None;
 
 		let mut processed_nodes:u32 = 0;
 		let start_time = Instant::now();
 
-		for (priority,m) in mvs {
+		for &(priority,m) in mvs {
 			let mut pv = pv.clone();
 			pv.push(m.clone());
 
@@ -1020,7 +776,7 @@ impl Search {
 
 			match search.startup_strategy(teban,state,mc,m,
 											mhash,shash,
-										 	*priority,
+										 	priority,
 											oute_kyokumen_map,
 											current_kyokumen_map,
 											depth,responded_oute) {
@@ -1030,11 +786,10 @@ impl Search {
 						 current_kyokumen_map,
 						 is_sennichite) = r;
 
-					let m = m.to_applied_move();
 					let prev_state = Some(state.clone());
 					let prev_mc = Some(mc.clone());
 
-					let next = Rule::apply_move_none_check(&state,teban,mc,m);
+					let next = Rule::apply_move_none_check(&state,teban,mc,m.to_applied_move());
 
 					match next {
 						(state,mc,_) => {
@@ -1047,7 +802,7 @@ impl Search {
 
 								if s > scoreval {
 									scoreval = s;
-									best_move = Some(m.to_move());
+									best_move = Some(m.to_applied_move());
 									if alpha < scoreval {
 										alpha = scoreval;
 									}
@@ -1083,7 +838,7 @@ impl Search {
 									opponent_nn_snapshot,
 									self_nn_snapshot,
 									teban.opposite(),&state,
-									-b,-alpha,Some(m.to_move()),&mc,
+									-b,-alpha,Some(m.to_applied_move()),&mc,
 									&pv,
 									&prev_state,&prev_mc,
 									obtained,&current_kyokumen_map,
@@ -1100,13 +855,13 @@ impl Search {
 										if let Some(s) = s {
 											if -s > scoreval {
 												scoreval = -s;
-												best_move = Some(m.to_move());
+												best_move = Some(m.to_applied_move());
 											}
 										}
 
 										return match best_move {
 											Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
-											None => Evaluation::Timeout(Some(scoreval),Some(m.to_move())),
+											None => Evaluation::Timeout(Some(scoreval),Some(m.to_applied_move())),
 										};
 									},
 									Evaluation::Result(s,_) => {
@@ -1123,7 +878,7 @@ impl Search {
 											search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 											scoreval = -s;
-											best_move = Some(m.to_move());
+											best_move = Some(m.to_applied_move());
 											if alpha < scoreval {
 												alpha = scoreval;
 											}
@@ -1149,7 +904,7 @@ impl Search {
 						search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 						return match best_move {
 							Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
-							None => Evaluation::Timeout(Some(scoreval),Some(m.to_move())),
+							None => Evaluation::Timeout(Some(scoreval),Some(m.to_applied_move())),
 						};
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
@@ -1185,7 +940,7 @@ impl Search {
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut scoreval = Score::NEGINFINITE;
-		let mut best_move:Option<Move> = None;
+		let mut best_move:Option<AppliedMove> = None;
 
 		let (sender,receiver):(_,Receiver<(Evaluation,AppliedMove)>) = mpsc::channel();
 		let mut threads = search.max_threads;
@@ -1215,7 +970,7 @@ impl Search {
 						if let Some(s) = s {
 							if -s > scoreval {
 								scoreval = -s;
-								best_move = Some(m.to_move());
+								best_move = Some(m);
 							}
 						}
 
@@ -1228,7 +983,7 @@ impl Search {
 							None => {
 								let r = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 								let (scoreval,best_move) = r;
-								return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
+								return Evaluation::Timeout(scoreval,best_move.or(Some(m)));
 							},
 						};
 					},
@@ -1246,7 +1001,7 @@ impl Search {
 							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 							scoreval = -s;
-							best_move = Some(m.to_move());
+							best_move = Some(m);
 							if alpha < scoreval {
 								alpha = scoreval;
 							}
@@ -1268,13 +1023,13 @@ impl Search {
 						return Evaluation::Error;
 					}
 				}
-			} else if let Some((priority,m)) = it.next() {
+			} else if let Some(&(priority,m)) = it.next() {
 				let mut pv = pv.clone();
 				pv.push(m.clone());
 
 				match search.startup_strategy(teban,state,mc,m,
 												mhash,shash,
-											 	*priority,
+											 	priority,
 												oute_kyokumen_map,
 												current_kyokumen_map,
 												depth,responded_oute) {
@@ -1300,7 +1055,7 @@ impl Search {
 									};
 									if s > scoreval {
 										scoreval = s;
-										best_move = Some(m.to_move());
+										best_move = Some(m);
 										if alpha < scoreval {
 											alpha = scoreval;
 										}
@@ -1356,7 +1111,7 @@ impl Search {
 											&opponent_nn_snapshot,
 											&self_nn_snapshot,
 											teban.opposite(),&state,
-											-b,-a,Some(m.to_move()),&mc,
+											-b,-a,Some(m),&mc,
 											&pv,
 											&prev_state,&prev_mc,
 											obtained,&current_kyokumen_map,
@@ -1395,7 +1150,7 @@ impl Search {
 
 							return match best_move {
 								Some(best_move) => Evaluation::Timeout(scoreval,Some(best_move)),
-								None => Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move()))),
+								None => Evaluation::Timeout(scoreval,best_move.or(Some(m))),
 							};
 						}
 					},
@@ -1416,7 +1171,7 @@ impl Search {
 							if let Some(s) = s {
 								if -s > scoreval {
 									scoreval = -s;
-									best_move = Some(m.to_move());
+									best_move = Some(m);
 								}
 							}
 
@@ -1427,14 +1182,14 @@ impl Search {
 								},
 								None => {
 									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-									return Evaluation::Timeout(scoreval,best_move.or(Some(m.to_move())));
+									return Evaluation::Timeout(scoreval,best_move.or(Some(m)));
 								},
 							};
 						},
 						(Evaluation::Result(s,_),m) => {
 							if -s > scoreval {
 								scoreval = -s;
-								best_move = Some(m.to_move());
+								best_move = Some(m);
 								if alpha < scoreval {
 									alpha = scoreval;
 								}
@@ -1473,7 +1228,7 @@ impl Search {
 
 	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,
 				   threads:u32,stop:&Arc<AtomicBool>,
-				   score:Score,best_move:Option<Move>) -> (Option<Score>,Option<Move>) {
+				   score:Score,best_move:Option<AppliedMove>) -> (Option<Score>,Option<AppliedMove>) {
 		stop.store(true,atomic::Ordering::Release);
 
 		let mut score = score;
@@ -1485,13 +1240,13 @@ impl Search {
 					Evaluation::Result(s, _) => {
 						if -s > score {
 							score = -s;
-							best_move = Some(m.to_move());
+							best_move = Some(m);
 						}
 					},
 					Evaluation::Timeout(Some(s), _) => {
 						if -s > score {
 							score = -s;
-							best_move = Some(m.to_move());
+							best_move = Some(m);
 						}
 					},
 					_ => ()
@@ -1507,12 +1262,12 @@ impl Search {
 	}
 
 	#[inline]
-	pub fn calc_main_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+	pub fn calc_main_hash(&self,h:u64,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:AppliedMove,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_main_hash(h,t,b,mc,m,obtained)
 	}
 
 	#[inline]
-	pub fn calc_sub_hash(&self,h:u64,t:&Teban,b:&Banmen,mc:&MochigomaCollections,m:&Move,obtained:&Option<MochigomaKind>) -> u64 {
+	pub fn calc_sub_hash(&self,h:u64,t:Teban,b:&Banmen,mc:&MochigomaCollections,m:AppliedMove,obtained:&Option<MochigomaKind>) -> u64 {
 		self.kyokumenhash.calc_sub_hash(h,t,b,mc,m,obtained)
 	}
 
@@ -1760,9 +1515,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			let (prev_mhash,prev_shash,mut kyokumen_map,mut history) = r;
 
 			let (mhash,shash) = match m {
-				&Some(ref m) => {
-					let mhash = s.search.calc_main_hash(prev_mhash,&t,&banmen,&mc,&m.to_move(),&o);
-					let shash = s.search.calc_sub_hash(prev_shash,&t,&banmen,&mc,&m.to_move(),&o);
+				&Some(m) => {
+					let mhash = s.search.calc_main_hash(prev_mhash,t,&banmen,&mc,m,&o);
+					let shash = s.search.calc_sub_hash(prev_shash,t,&banmen,&mc,m,&o);
 
 					match kyokumen_map.get(t,&mhash,&shash).unwrap_or(&0) {
 						&c => {
@@ -1887,13 +1642,13 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 						BestMove::Resign
 					},
 					Evaluation::Result(_,Some(m)) => {
-						BestMove::Move(m,None)
+						BestMove::Move(m.to_move(),None)
 					},
 					Evaluation::Timeout(Some(Score::NEGINFINITE),_) => {
 						BestMove::Resign
 					}
 					Evaluation::Timeout(_,Some(m)) => {
-						BestMove::Move(m,None)
+						BestMove::Move(m.to_move(),None)
 					}
 					Evaluation::Timeout(_,None) if env.quited.load(atomic::Ordering::Acquire) => {
 						BestMove::Abort
@@ -1913,10 +1668,12 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 				if let BestMove::Move(m,_) = result {
 					let h = match self.history.last() {
 						Some(&(ref banmen,ref mc,mhash,shash)) => {
-							let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m.to_applied_move());
+							let m = m.to_applied_move();
+
+							let (next,nmc,o) = Rule::apply_move_none_check(&State::new(banmen.clone()),teban,mc,m);
 							self.moved = true;
-							let mhash = self.search.calc_main_hash(mhash,&teban,banmen,mc,&m,&o);
-							let shash = self.search.calc_sub_hash(shash,&teban,banmen,mc,&m,&o);
+							let mhash = self.search.calc_main_hash(mhash,teban,banmen,mc,m,&o);
+							let shash = self.search.calc_sub_hash(shash,teban,banmen,mc,m,&o);
 							(next.get_banmen().clone(),nmc.clone(),mhash,shash)
 						},
 						None => {

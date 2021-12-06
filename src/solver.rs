@@ -446,8 +446,8 @@ mod checkmate {
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let mhash = hasher.calc_main_hash(mhash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 
 				let completed = already_oute_kyokumen_map.as_ref().and_then(|m| {
 					m.get(teban,&mhash,&shash)
@@ -549,12 +549,12 @@ mod checkmate {
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,
+				let mhash = hasher.calc_main_hash(mhash,teban,
 													self.current_frame.state.get_banmen(),
-													& self.current_frame.mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,
+													& self.current_frame.mc,m.to_applied_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,teban,
 													self.current_frame.state.get_banmen(),
-													& self.current_frame.mc,&m.to_move(),&o);
+													& self.current_frame.mc,m.to_applied_move(),&o);
 
 				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
@@ -691,8 +691,8 @@ mod checkmate {
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,state.get_banmen(),mc,&m.to_move(),&o);
+				let mhash = hasher.calc_main_hash(mhash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 
 				let completed = already_oute_kyokumen_map.as_ref().and_then(|m| {
 					m.get(teban,&mhash,&shash)
@@ -802,12 +802,12 @@ mod checkmate {
 					_ => None,
 				};
 
-				let mhash = hasher.calc_main_hash(mhash,&teban,
+				let mhash = hasher.calc_main_hash(mhash,teban,
 													self.current_frame.state.get_banmen(),
-													&self.current_frame.mc,&m.to_move(),&o);
-				let shash = hasher.calc_sub_hash(shash,&teban,
+													&self.current_frame.mc,m.to_applied_move(),&o);
+				let shash = hasher.calc_sub_hash(shash,teban,
 													self.current_frame.state.get_banmen(),
-													&self.current_frame.mc,&m.to_move(),&o);
+													&self.current_frame.mc,m.to_applied_move(),&o);
 
 				ignore_kyokumen_map.insert(teban,mhash,shash,());
 
