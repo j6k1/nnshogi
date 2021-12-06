@@ -503,7 +503,7 @@ impl Search {
 		{
 			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot, self_nn_snapshot);
 
-			if depth == 0 || current_depth == self.max_depth {
+			if depth == 0 || current_depth > self.max_depth {
 				return Evaluation::Result(-s, None);
 			}
 		}
