@@ -207,7 +207,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		Ok(i16::from(answer) as i64)
+		Ok(((i16::from(answer) as i32) << 23) as i64)
 	}
 
 	pub fn evalute_by_diff(&self, snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
@@ -234,7 +234,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		Ok((i16::from(answer) as i64,(ssa,ssb)))
+		Ok((((i16::from(answer) as i32) << 23) as i64,(ssa,ssb)))
 	}
 
 	pub fn evalute_by_snapshot(&self,snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>)) -> i64 {
@@ -258,7 +258,7 @@ impl Intelligence {
 
 		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		i16::from(answer) as i64
+		((i16::from(answer) as i32) << 23) as i64
 	}
 
 	pub fn learning_by_training_data<'a,D>(&mut self,
