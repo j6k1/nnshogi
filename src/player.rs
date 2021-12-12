@@ -42,7 +42,7 @@ enum Evaluation {
 	Timeout(Option<Score>,Option<AppliedMove>),
 	Error,
 }
-#[derive(Clone, Copy, PartialEq, PartialOrd, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Score {
 	NEGINFINITE,
 	Value(i64),
@@ -108,7 +108,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&KyokumenMap<u64,()>,
 						u64,u64,
 						u32,u32,u32,u64,
-						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
+						&Vec<(Score,u32,LegalMove)>,bool) -> Evaluation;
 pub struct Environment<L,S> where L: Logger, S: InfoSender {
 	solver:Solver<CommonError>,
 	event_queue:Arc<Mutex<UserEventQueue>>,
@@ -413,6 +413,49 @@ impl Search {
 		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot,opponent_snapshot))
 	}
 
+	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,
+							self_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+							opponent_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+							teban:Teban,state:&Option<&Arc<State>>,
+							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
+							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
+		-> Result<Score,CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		let state = match state {
+			&Some(ref state) => state,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_state is none!");
+				return Err(CommonError::Fail(String::from("prev_state is none!")));
+			}
+		};
+
+		let mc = match mc {
+			&Some(ref mc) => mc,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_mc is none!");
+				return Err(CommonError::Fail(String::from("prev_mc is none!")));
+			}
+		};
+
+		let m = match m {
+			Some(m) => {
+				m
+			},
+			None => {
+				self.send_message(info_sender, on_error_handler, "m is none!");
+				return Err(CommonError::Fail(String::from("m is none!")));
+			}
+		};
+
+		let s = {
+			let m = m.to_move();
+			let (ss, _) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
+			let (os, _) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
+			ss - os
+		};
+
+		Ok(Score::Value(s))
+	}
+
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,
 						   self_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 						   opponent_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>)
@@ -623,6 +666,15 @@ impl Search {
 		}
 
 		let mut mvs = mvs.into_iter().map(|m| {
+			let s = self.evalute_score_by_diff(&env.evalutor,
+											   					&self_nn_snapshot,
+											   				&&opponent_nn_snapshot,
+																		teban,
+																		&Some(&state),
+																		&Some(&mc),
+																		Some(m.to_applied_move()),
+																		&mut env.info_sender,
+																		&env.on_error_handler).unwrap();
 			let ps = Rule::apply_move_to_partial_state_none_check(&*state,teban,&*mc,m.to_applied_move());
 
 			let (x,y,kind) = match m {
@@ -649,18 +701,18 @@ impl Search {
 			};
 			if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,kind) ||
 			   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
-				(10,m)
+				(s,10,m)
 			} else {
 				match m {
 					LegalMove::To(ref mv) if mv.obtained().is_some() => {
-						(5,m)
+						(s,5,m)
 					},
-					_ => (1,m),
+					_ => (s,1,m),
 				}
 			}
-		}).collect::<Vec<(u32,LegalMove)>>();
+		}).collect::<Vec<(Score,u32,LegalMove)>>();
 
-		mvs.sort_by(|a,b| b.0.cmp(&a.0));
+		mvs.sort_by(|a,b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
 
 		strategy(self,
 					env,
@@ -758,7 +810,7 @@ impl Search {
 								mhash:u64,shash:u64,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								mvs:&Vec<(u32,LegalMove)>,
+								mvs:&Vec<(Score,u32,LegalMove)>,
 								responded_oute:bool)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -768,7 +820,7 @@ impl Search {
 		let mut processed_nodes:u32 = 0;
 		let start_time = Instant::now();
 
-		for &(priority,m) in mvs {
+		for &(_,priority,m) in mvs {
 			let mut pv = pv.clone();
 			pv.push(m.clone());
 
@@ -936,7 +988,7 @@ impl Search {
 								mhash:u64,shash:u64,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								mvs:&Vec<(u32,LegalMove)>,
+								mvs:&Vec<(Score,u32,LegalMove)>,
 								responded_oute:bool)
 		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -1024,7 +1076,7 @@ impl Search {
 						return Evaluation::Error;
 					}
 				}
-			} else if let Some(&(priority,m)) = it.next() {
+			} else if let Some(&(_,priority,m)) = it.next() {
 				let mut pv = pv.clone();
 				pv.push(m.clone());
 
