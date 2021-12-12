@@ -419,6 +419,14 @@ impl Intelligence {
 		Ok((msa,moa,msb,mob))
 	}
 
+	pub fn quantization(&mut self) {
+		let nnqa = Quantization::quantization(&self.nna,UnitsConverter::conv_to_fxs16).unwrap();
+		let nnqb = Quantization::quantization(&self.nnb,UnitsConverter::conv_to_fxs16).unwrap();
+
+		self.nnqa = nnqa;
+		self.nnqb = nnqb;
+	}
+
 	fn save(&mut self) -> Result<(),CommonError>{
 		self.nna.save(
 			PersistenceWithBinFile::new(

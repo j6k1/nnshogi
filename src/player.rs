@@ -1869,6 +1869,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 										_ => 0.5f64
 									}
 								}, a,b,&*event_queue)?;
+							evalutor.quantization();
 						},
 						None => {
 							return Err(CommonError::Fail(String::from(
@@ -1876,6 +1877,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 							)));
 						}
 					}
+
 				},
 				None => (),
 			}
