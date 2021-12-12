@@ -723,7 +723,7 @@ impl Search {
 		}
 
 		let depth = match priority {
-			5 => depth + 1,
+			5 | 10 => depth + 1,
 			_ => depth,
 		};
 
