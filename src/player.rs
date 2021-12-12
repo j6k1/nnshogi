@@ -34,6 +34,7 @@ use simplenn::SnapShot;
 
 use nn::Intelligence;
 use solver::*;
+use simplenn::types::FxS16;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Evaluation {
@@ -96,7 +97,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&mut Environment<L,S>,
 						&mut UserEventDispatcher<Search,CommonError,L>,
 						&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-						&Arc<(SnapShot,SnapShot)>,&Arc<(SnapShot,SnapShot)>,
+						&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 						Teban,&Arc<State>,
 						Pv:&Vec<LegalMove>,
 						Score,Score,
@@ -342,7 +343,7 @@ impl Search {
 	*/
 
 	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections)
-		-> Result<(SnapShot,SnapShot),CommonError> {
+		-> Result<(SnapShot<FxS16>,SnapShot<FxS16>),CommonError> {
 
 		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc)?;
 
@@ -370,12 +371,12 @@ impl Search {
 	*/
 
 	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence>,
-								self_snapshot:&Arc<(SnapShot,SnapShot)>,
-								opponent_snapshot:&Arc<(SnapShot,SnapShot)>,
+								self_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+								opponent_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								teban:Teban,state:&Option<&Arc<State>>,
 								mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Result<(Evaluation,(SnapShot,SnapShot),(SnapShot,SnapShot)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		-> Result<(Evaluation,(SnapShot<FxS16>,SnapShot<FxS16>),(SnapShot<FxS16>,SnapShot<FxS16>)),CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		let state = match state {
 			&Some(ref state) => state,
 			&None => {
@@ -413,8 +414,8 @@ impl Search {
 	}
 
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence>,
-						   self_snapshot:&Arc<(SnapShot,SnapShot)>,
-						   opponent_snapshot:&Arc<(SnapShot,SnapShot)>)
+						   self_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+						   opponent_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>)
 		-> Score {
 
 		let ss = evalutor.evalute_by_snapshot(self_snapshot);
@@ -427,8 +428,8 @@ impl Search {
 								env:&mut Environment<L,S>,
 					  			event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
 					  			solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
-								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
+								self_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+								opponent_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
 								m:Option<AppliedMove>,mc:&Arc<MochigomaCollections>,
@@ -745,8 +746,8 @@ impl Search {
 								env:&mut Environment<L,S>,
 						  		event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
 						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
-								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
+								self_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+								opponent_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
@@ -923,8 +924,8 @@ impl Search {
 								env:&mut Environment<L,S>,
 								event_dispatcher:&mut UserEventDispatcher<Search,CommonError,L>,
 								_:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
-								self_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
-								opponent_nn_snapshot:&Arc<(SnapShot,SnapShot)>,
+								self_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
+								opponent_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,

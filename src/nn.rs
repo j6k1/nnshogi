@@ -12,7 +12,7 @@ use std::fs;
 use simplenn::function::activation::*;
 use simplenn::function::optimizer::*;
 use simplenn::function::loss::*;
-use simplenn::Metrics;
+use simplenn::{Metrics, Quantization, UnitsConverter};
 use simplenn::NN;
 use simplenn::NNModel;
 use simplenn::NNUnits;
@@ -32,10 +32,13 @@ use error::*;
 use packedsfen::yaneuraou::haffman_code::ExtendFields;
 use packedsfen::yaneuraou::reader::PackedSfenReader;
 use packedsfen::traits::Reader;
+use simplenn::types::{FxS16, One};
 
 pub struct Intelligence {
-	nna:NN<MomentumSGD,CrossEntropy>,
-	nnb:NN<MomentumSGD,CrossEntropy>,
+	nna:NN<f64,MomentumSGD,CrossEntropy>,
+	nnb:NN<f64,MomentumSGD,CrossEntropy>,
+	nnqa:NN<FxS16,VoidOptimizer,VoidLossFunction>,
+	nnqb:NN<FxS16,VoidOptimizer,VoidLossFunction>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -121,7 +124,7 @@ impl Intelligence {
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 		let n = Normal::new(0.0, 1.0).unwrap();
 
-		let model:NNModel = NNModel::with_unit_initializer(
+		let model:NNModel<f64> = NNModel::with_unit_initializer(
 										NNUnits::new(5514,
 											(256,Box::new(FReLU::new())),
 											(32,Box::new(FReLU::new())))
@@ -138,7 +141,7 @@ impl Intelligence {
 		let mut rnd = XorShiftRng::from_seed(rnd.gen());
 		let n = Normal::new(0.0, 1.0).unwrap();
 
-		let model:NNModel = NNModel::with_unit_initializer(
+		let model:NNModel<f64> = NNModel::with_unit_initializer(
 										NNUnits::new(5514,
 												 (256,Box::new(FReLU::new())),
 												 (32,Box::new(FReLU::new())))
@@ -151,9 +154,14 @@ impl Intelligence {
 										}).unwrap();
 		let nnb = NN::new(model,|m| MomentumSGD::new(m,0.01),CrossEntropy::new());
 
+		let nnqa = Quantization::quantization(&nna,UnitsConverter::conv_to_fxs16).unwrap();
+		let nnqb = Quantization::quantization(&nnb,UnitsConverter::conv_to_fxs16).unwrap();
+
 		Intelligence {
 			nna:nna,
 			nnb:nnb,
+			nnqa,
+			nnqb,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			packed_sfen_reader:PackedSfenReader::new(),
@@ -164,21 +172,23 @@ impl Intelligence {
 	}
 
 	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> Result<(SnapShot,SnapShot),InvalidStateError> {
-		let input = Intelligence::make_input(is_self,t,b,mc);
+		-> Result<(SnapShot<FxS16>,SnapShot<FxS16>),InvalidStateError> {
+		let input = (&Intelligence::make_input(is_self,t,b,mc)).iter()
+								.map(|&i| FxS16::from(i)).collect::<Vec<FxS16>>();
 
-		let ssa = self.nna.solve_shapshot(&input)?;
-		let ssb = self.nnb.solve_shapshot(&input)?;
+		let ssa = self.nnqa.solve_shapshot(&input)?;
+		let ssb = self.nnqb.solve_shapshot(&input)?;
 
 		Ok((ssa,ssb))
 	}
 
 	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> Result<i64,InvalidStateError> {
-		let input = Intelligence::make_input(is_self,t,b,mc);
+		let input = (&Intelligence::make_input(is_self,t,b,mc)).iter()
+							.map(|&i| FxS16::from(i)).collect::<Vec<FxS16>>();
 
-		let nnaanswera = self.nna.solve(&input)?;
-		let nnbanswerb = self.nnb.solve(&input)?;
+		let nnaanswera = self.nnqa.solve(&input)?;
+		let nnbanswerb = self.nnqb.solve(&input)?;
 
 		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -195,17 +205,17 @@ impl Intelligence {
 		let nnaanswera = nnaanswera[0];
 		let nnbanswerb = nnbanswerb[0];
 
-		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
+		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		Ok((answer * F64_FRACTION_MAX as f64) as i64)
+		Ok(i16::from(answer) as i64)
 	}
 
-	pub fn evalute_by_diff(&self, snapshot:&(SnapShot,SnapShot), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
-						   -> Result<(i64,(SnapShot,SnapShot)),CommonError> {
+	pub fn evalute_by_diff(&self, snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
+						   -> Result<(i64,(SnapShot<FxS16>,SnapShot<FxS16>)),CommonError> {
 		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
 
-		let ssa = self.nna.solve_diff(&input,&snapshot.0)?;
-		let ssb = self.nnb.solve_diff(&input,&snapshot.1)?;
+		let ssa = self.nnqa.solve_diff(&input,&snapshot.0)?;
+		let ssb = self.nnqb.solve_diff(&input,&snapshot.1)?;
 
 		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -222,12 +232,12 @@ impl Intelligence {
 		let nnaanswera = ssa.r[0];
 		let nnbanswerb = ssb.r[0];
 
-		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
+		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		Ok(((answer * F64_FRACTION_MAX as f64) as i64,(ssa,ssb)))
+		Ok((i16::from(answer) as i64,(ssa,ssb)))
 	}
 
-	pub fn evalute_by_snapshot(&self,snapshot:&(SnapShot,SnapShot)) -> i64 {
+	pub fn evalute_by_snapshot(&self,snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>)) -> i64 {
 		let ssa = &snapshot.0;
 		let ssb = &snapshot.1;
 
@@ -246,9 +256,9 @@ impl Intelligence {
 		let nnaanswera = ssa.r[0];
 		let nnbanswerb = ssb.r[0];
 
-		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
+		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		(answer * F64_FRACTION_MAX as f64) as i64
+		i16::from(answer) as i64
 	}
 
 	pub fn learning_by_training_data<'a,D>(&mut self,
@@ -521,7 +531,7 @@ impl Intelligence {
 		inputs
 	}
 
-	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, f64)>,CommonError> {
+	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, FxS16)>,CommonError> {
 		let mut d = Vec::new();
 
 		let (addi,subi) = if is_self {
@@ -531,8 +541,8 @@ impl Intelligence {
 		};
 
 		for i in 0..(KOMA_COUNT-1) {
-			d.push((subi + i, -1f64));
-			d.push((addi + i,1f64));
+			d.push((subi + i, -FxS16::one()));
+			d.push((addi + i,FxS16::one()));
 		}
 
 		match m {
@@ -549,30 +559,30 @@ impl Intelligence {
 							let di = Intelligence::input_index_of_banmen(t,sk,dx,dy)?;
 
 							for i in 0..(KOMA_COUNT-1) {
-								d.push((si + i, -1f64));
-								d.push((di + i,1f64));
+								d.push((si + i, -FxS16::one()));
+								d.push((di + i,FxS16::one()));
 							}
 						} else {
-							d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -1f64));
+							d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -FxS16::one()));
 
 							if n {
-								d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1f64));
+								d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,FxS16::one()));
 							} else {
-								d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1f64));
+								d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,FxS16::one()));
 							}
 						}
 
 						let dk = kinds[dy as usize][dx as usize];
 
 						if dk != KomaKind::Blank {
-							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-1f64));
+							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-FxS16::one()));
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
 							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
 
-							d.push((offset, -1f64));
-							d.push((offset+1, 1f64));
+							d.push((offset, -FxS16::one()));
+							d.push((offset+1, FxS16::one()));
 						}
 					}
 				}
@@ -587,10 +597,10 @@ impl Intelligence {
 							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
 						)))
 				} else {
-					d.push((offset, -1f64));
-					d.push((offset - 1, 1f64));
+					d.push((offset, -FxS16::one()));
+					d.push((offset - 1, FxS16::one()));
 
-					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1f64));
+					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, FxS16::one()));
 				}
 			}
 		}
