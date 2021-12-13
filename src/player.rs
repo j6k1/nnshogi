@@ -1289,6 +1289,7 @@ impl Search {
 		let mut score = score;
 		let mut best_move = best_move;
 		let mut is_timeout = false;
+		let mut has_error = false;
 
 		for _ in threads..self.max_threads {
 			match r.recv() {
@@ -1308,6 +1309,9 @@ impl Search {
 								best_move = Some(m);
 							}
 						},
+						Evaluation::Error => {
+							has_error = true;
+						}
 						_ => ()
 					};
 				},
@@ -1318,7 +1322,9 @@ impl Search {
 			}
 		}
 
-		if is_timeout {
+		if has_error {
+			Evaluation::Error
+		} else if is_timeout {
 			Evaluation::Timeout(Some(score), best_move)
 		} else if best_move.is_none() {
 			Evaluation::Result(Score::NEGINFINITE, best_move)
