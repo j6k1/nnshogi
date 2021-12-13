@@ -1010,7 +1010,6 @@ impl Search {
 					Ok(r) => r,
 					Err(ref e) => {
 						let _ = env.on_error_handler.lock().map(|h| h.call(e));
-						let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				};
@@ -1027,18 +1026,18 @@ impl Search {
 							}
 						}
 
-						match best_move {
-							Some(best_move) => {
-								let r = search.termination(receiver, threads, &env.stop, scoreval, Some(best_move));
-								let (scoreval,best_move) = r;
-								return Evaluation::Timeout(scoreval,best_move);
+						match search.termination(receiver, threads, env, scoreval, best_move) {
+							Evaluation::Error => {
+								return Evaluation::Error;
 							},
-							None => {
-								let r = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-								let (scoreval,best_move) = r;
-								return Evaluation::Timeout(scoreval,best_move.or(Some(m)));
+							r @ Evaluation::Timeout(None,_) => {
+								return r;
 							},
-						};
+							Evaluation::Timeout(Some(scoreval),best_move) |
+							Evaluation::Result(scoreval,best_move) => {
+								return Evaluation::Timeout(Some(scoreval),best_move);
+							}
+						}
 					},
 					(Evaluation::Result(s,_),m) => {
 						if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
@@ -1059,20 +1058,18 @@ impl Search {
 								alpha = scoreval;
 							}
 							if scoreval >= beta {
-								let (scoreval,best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
+								return search.termination(receiver, threads, env, scoreval, best_move);
 							}
 						}
 
 						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 							env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-							let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-							return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
+							return search.termination(receiver, threads, env, scoreval, best_move);
 						}
 					},
 					(Evaluation::Error,_) => {
-						let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
+						let _ = search.termination(receiver, threads, env, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				}
@@ -1113,8 +1110,7 @@ impl Search {
 											alpha = scoreval;
 										}
 										if scoreval >= beta {
-											let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-											return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
+											return search.termination(receiver, threads, env, scoreval, best_move);
 										}
 									}
 									continue;
@@ -1199,11 +1195,22 @@ impl Search {
 						let _ = event_dispatcher.dispatch_events(search,&*env.event_queue);
 
 						if search.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-							let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
+							let r = search.termination(receiver, threads, env, scoreval, best_move);
 
-							return match best_move {
-								Some(best_move) => Evaluation::Timeout(scoreval,Some(best_move)),
-								None => Evaluation::Timeout(scoreval,best_move.or(Some(m))),
+							return match r {
+								Evaluation::Result(scoreval,Some(best_move)) => {
+									Evaluation::Timeout(Some(scoreval),Some(best_move))
+								},
+								Evaluation::Timeout(scoreval,Some(best_move)) => {
+									Evaluation::Timeout(scoreval,Some(best_move))
+								},
+								Evaluation::Result(scoreval,None) |
+								Evaluation::Timeout(Some(scoreval),None) => {
+									Evaluation::Timeout(Some(scoreval),best_move.or(Some(m)))
+								},
+								r => {
+									r
+								}
 							};
 						}
 					},
@@ -1228,16 +1235,18 @@ impl Search {
 								}
 							}
 
-							match best_move {
-								Some(best_move) => {
-									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, Some(best_move));
-									return Evaluation::Timeout(scoreval,best_move);
+							match search.termination(receiver, threads, env, scoreval, best_move) {
+								Evaluation::Error => {
+									return Evaluation::Error;
 								},
-								None => {
-									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-									return Evaluation::Timeout(scoreval,best_move.or(Some(m)));
+								r @ Evaluation::Timeout(None,_) => {
+									return r;
 								},
-							};
+								Evaluation::Timeout(Some(scoreval),best_move) |
+								Evaluation::Result(scoreval,best_move) => {
+									return Evaluation::Timeout(Some(scoreval),best_move);
+								}
+							}
 						},
 						(Evaluation::Result(s,_),m) => {
 							if -s > scoreval {
@@ -1247,8 +1256,7 @@ impl Search {
 									alpha = scoreval;
 								}
 								if scoreval >= beta {
-									let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-									return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
+									return search.termination(receiver, threads, env, scoreval, best_move);
 								}
 							}
 
@@ -1257,12 +1265,11 @@ impl Search {
 							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 								env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 							) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-								let (scoreval, best_move) = search.termination(receiver, threads, &env.stop, scoreval, best_move);
-								return Evaluation::Result(scoreval.unwrap_or(Score::NEGINFINITE),best_move);
+								return search.termination(receiver, threads, env, scoreval, best_move);
 							}
 						},
 						(Evaluation::Error,_) => {
-							let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
+							let _ = search.termination(receiver, threads, env, scoreval, best_move);
 							return Evaluation::Error;
 						}
 					}
@@ -1277,38 +1284,52 @@ impl Search {
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn termination(&self,r:Receiver<(Evaluation,AppliedMove)>,
-				   threads:u32,stop:&Arc<AtomicBool>,
-				   score:Score,best_move:Option<AppliedMove>) -> (Option<Score>,Option<AppliedMove>) {
-		stop.store(true,atomic::Ordering::Release);
+	fn termination<L,S>(&self,r:Receiver<(Evaluation,AppliedMove)>,
+				   threads:u32,env:&mut Environment<L,S>,
+				   score:Score,best_move:Option<AppliedMove>) -> Evaluation where L: Logger, S: InfoSender {
+		env.stop.store(true,atomic::Ordering::Release);
 
 		let mut score = score;
 		let mut best_move = best_move;
+		let mut is_timeout = false;
 
 		for _ in threads..self.max_threads {
-			if let Ok((r,m)) = r.recv() {
-				match r {
-					Evaluation::Result(s, _) => {
-						if -s > score {
-							score = -s;
-							best_move = Some(m);
-						}
-					},
-					Evaluation::Timeout(Some(s), _) => {
-						if -s > score {
-							score = -s;
-							best_move = Some(m);
-						}
-					},
-					_ => ()
+			match r.recv() {
+				Ok((r,m)) => {
+					match r {
+						Evaluation::Result(s, _) => {
+							if -s > score {
+								score = -s;
+								best_move = Some(m);
+							}
+						},
+						Evaluation::Timeout(Some(s), m) => {
+							is_timeout = true;
+
+							if -s > score {
+								score = -s;
+								best_move = m;
+							}
+						},
+						Evaluation::Error => {
+							return Evaluation::Error;
+						},
+						_ => ()
+					};
+				},
+				Err(ref e) => {
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
+					return Evaluation::Error;
 				}
 			}
 		}
 
-		if best_move.is_some() {
-			(Some(score), best_move)
+		if is_timeout {
+			Evaluation::Timeout(Some(score), best_move)
+		} else if best_move.is_none() {
+			Evaluation::Result(Score::NEGINFINITE, best_move)
 		} else {
-			(None, best_move)
+			Evaluation::Result(score, best_move)
 		}
 	}
 
