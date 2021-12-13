@@ -1270,7 +1270,6 @@ impl Search {
 				Err(ref e) => {
 					threads += 1;
 					let _ = env.on_error_handler.lock().map(|h| h.call(e));
-					let _ = search.termination(receiver, threads, &env.stop, scoreval, best_move);
 					return Evaluation::Error;
 				}
 			};
