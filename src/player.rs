@@ -1202,7 +1202,7 @@ impl Search {
 								Evaluation::Result(scoreval,_) => {
 									Evaluation::Timeout(Some(scoreval),best_move)
 								},
-								Evaluation::Timeout(scoreval,best_move) => {
+								Evaluation::Timeout(scoreval,_) => {
 									Evaluation::Timeout(scoreval,best_move)
 								},
 								Evaluation::Error => {
