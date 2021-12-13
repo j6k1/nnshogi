@@ -1031,11 +1031,11 @@ impl Search {
 							Evaluation::Error => {
 								return Evaluation::Error;
 							},
-							r @ Evaluation::Timeout(None,_) => {
-								return r;
+							Evaluation::Timeout(None,_) => {
+								return Evaluation::Timeout(None,best_move);
 							},
-							Evaluation::Timeout(Some(scoreval),best_move) |
-							Evaluation::Result(scoreval,best_move) => {
+							Evaluation::Timeout(Some(scoreval),_) |
+							Evaluation::Result(scoreval,_) => {
 								return Evaluation::Timeout(Some(scoreval),best_move);
 							}
 						}
@@ -1199,18 +1199,14 @@ impl Search {
 							let r = search.termination(receiver, threads, env, scoreval, best_move);
 
 							return match r {
-								Evaluation::Result(scoreval,Some(best_move)) => {
-									Evaluation::Timeout(Some(scoreval),Some(best_move))
+								Evaluation::Result(scoreval,_) => {
+									Evaluation::Timeout(Some(scoreval),best_move)
 								},
-								Evaluation::Timeout(scoreval,Some(best_move)) => {
-									Evaluation::Timeout(scoreval,Some(best_move))
+								Evaluation::Timeout(scoreval,best_move) => {
+									Evaluation::Timeout(scoreval,best_move)
 								},
-								Evaluation::Result(scoreval,None) |
-								Evaluation::Timeout(Some(scoreval),None) => {
-									Evaluation::Timeout(Some(scoreval),best_move.or(Some(m)))
-								},
-								r => {
-									r
+								Evaluation::Error => {
+									Evaluation::Error
 								}
 							};
 						}
@@ -1237,15 +1233,15 @@ impl Search {
 							}
 
 							match search.termination(receiver, threads, env, scoreval, best_move) {
+								Evaluation::Timeout(None,_) => {
+									return Evaluation::Timeout(None,best_move)
+								},
+								Evaluation::Timeout(Some(scoreval),_) |
+								Evaluation::Result(scoreval,_) => {
+									return Evaluation::Timeout(Some(scoreval),best_move);
+								},
 								Evaluation::Error => {
 									return Evaluation::Error;
-								},
-								r @ Evaluation::Timeout(None,_) => {
-									return r;
-								},
-								Evaluation::Timeout(Some(scoreval),best_move) |
-								Evaluation::Result(scoreval,best_move) => {
-									return Evaluation::Timeout(Some(scoreval),best_move);
 								}
 							}
 						},
@@ -1304,12 +1300,12 @@ impl Search {
 								best_move = Some(m);
 							}
 						},
-						Evaluation::Timeout(Some(s), m) => {
+						Evaluation::Timeout(Some(s), _) => {
 							is_timeout = true;
 
 							if -s > score {
 								score = -s;
-								best_move = m;
+								best_move = Some(m);
 							}
 						},
 						Evaluation::Error => {
