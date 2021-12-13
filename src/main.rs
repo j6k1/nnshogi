@@ -6,6 +6,7 @@ extern crate getopts;
 extern crate toml;
 #[macro_use]
 extern crate serde_derive;
+extern crate crossbeam_channel;
 
 extern crate usiagent;
 extern crate simplenn;

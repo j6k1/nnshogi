@@ -7,8 +7,6 @@ use rand::Rng;
 use std::thread;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
 use error::*;
 use std::time::{Instant,Duration};
 use std::ops::Neg;
@@ -17,6 +15,9 @@ use std::ops::Sub;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
+
+use crossbeam_channel::unbounded;
+use crossbeam_channel::Receiver;
 
 use usiagent::player::*;
 use usiagent::event::*;
@@ -995,7 +996,7 @@ impl Search {
 		let mut scoreval = Score::NEGINFINITE;
 		let mut best_move:Option<AppliedMove> = None;
 
-		let (sender,receiver):(_,Receiver<(Evaluation,AppliedMove)>) = mpsc::channel();
+		let (sender,receiver):(_,Receiver<(Evaluation,AppliedMove)>) = unbounded();
 		let mut threads = search.max_threads;
 
 		let mvs_count = mvs.len() as u64;
