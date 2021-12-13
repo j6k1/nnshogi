@@ -1027,7 +1027,7 @@ impl Search {
 							}
 						}
 
-						match search.termination(receiver, threads, env, scoreval, best_move) {
+						match search.termination(&receiver, threads, env, scoreval, best_move) {
 							Evaluation::Error => {
 								return Evaluation::Error;
 							},
@@ -1059,18 +1059,18 @@ impl Search {
 								alpha = scoreval;
 							}
 							if scoreval >= beta {
-								return search.termination(receiver, threads, env, scoreval, best_move);
+								return search.termination(&receiver, threads, env, scoreval, best_move);
 							}
 						}
 
 						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 							env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-							return search.termination(receiver, threads, env, scoreval, best_move);
+							return search.termination(&receiver, threads, env, scoreval, best_move);
 						}
 					},
 					(Evaluation::Error,_) => {
-						let _ = search.termination(receiver, threads, env, scoreval, best_move);
+						let _ = search.termination(&receiver, threads, env, scoreval, best_move);
 						return Evaluation::Error;
 					}
 				}
@@ -1111,7 +1111,7 @@ impl Search {
 											alpha = scoreval;
 										}
 										if scoreval >= beta {
-											return search.termination(receiver, threads, env, scoreval, best_move);
+											return search.termination(&receiver, threads, env, scoreval, best_move);
 										}
 									}
 									continue;
@@ -1196,7 +1196,7 @@ impl Search {
 						let _ = event_dispatcher.dispatch_events(search,&*env.event_queue);
 
 						if search.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-							let r = search.termination(receiver, threads, env, scoreval, best_move);
+							let r = search.termination(&receiver, threads, env, scoreval, best_move);
 
 							return match r {
 								Evaluation::Result(scoreval,_) => {
@@ -1232,7 +1232,7 @@ impl Search {
 								}
 							}
 
-							match search.termination(receiver, threads, env, scoreval, best_move) {
+							match search.termination(&receiver, threads, env, scoreval, best_move) {
 								Evaluation::Timeout(None,_) => {
 									return Evaluation::Timeout(None,best_move)
 								},
@@ -1253,7 +1253,7 @@ impl Search {
 									alpha = scoreval;
 								}
 								if scoreval >= beta {
-									return search.termination(receiver, threads, env, scoreval, best_move);
+									return search.termination(&receiver, threads, env, scoreval, best_move);
 								}
 							}
 
@@ -1262,11 +1262,11 @@ impl Search {
 							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 								env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 							) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
-								return search.termination(receiver, threads, env, scoreval, best_move);
+								return search.termination(&receiver, threads, env, scoreval, best_move);
 							}
 						},
 						(Evaluation::Error,_) => {
-							let _ = search.termination(receiver, threads, env, scoreval, best_move);
+							let _ = search.termination(&receiver, threads, env, scoreval, best_move);
 							return Evaluation::Error;
 						}
 					}
@@ -1281,7 +1281,7 @@ impl Search {
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn termination<L,S>(&self,r:Receiver<(Evaluation,AppliedMove)>,
+	fn termination<L,S>(&self,r:&Receiver<(Evaluation,AppliedMove)>,
 				   threads:u32,env:&mut Environment<L,S>,
 				   score:Score,best_move:Option<AppliedMove>) -> Evaluation where L: Logger, S: InfoSender {
 		env.stop.store(true,atomic::Ordering::Release);
