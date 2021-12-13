@@ -1268,7 +1268,6 @@ impl Search {
 					}
 				},
 				Err(ref e) => {
-					threads += 1;
 					let _ = env.on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
