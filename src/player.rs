@@ -1308,9 +1308,6 @@ impl Search {
 								best_move = Some(m);
 							}
 						},
-						Evaluation::Error => {
-							return Evaluation::Error;
-						},
 						_ => ()
 					};
 				},
