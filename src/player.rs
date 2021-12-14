@@ -100,7 +100,7 @@ type Strategy<L,S> = fn (&Arc<Search>,
 						&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 						&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 						Teban,&Arc<State>,
-						Pv:&Vec<LegalMove>,
+						&Vec<AppliedMove>,
 						Score,Score,
 						&Arc<MochigomaCollections>,
 						&KyokumenMap<u64,u32>,
@@ -282,7 +282,7 @@ impl Search {
 
 	fn send_info<L,S>(&self, info_sender:&mut S,
 					  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
-					  depth:u32, seldepth:u32, pv:&Vec<LegalMove>)
+					  depth:u32, seldepth:u32, pv:&Vec<AppliedMove>)
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		let mut commands: Vec<UsiInfoSubCommand> = Vec::new();
@@ -477,7 +477,7 @@ impl Search {
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
 								m:Option<AppliedMove>,mc:&Arc<MochigomaCollections>,
-								pv:&Vec<LegalMove>,
+								pv:&Vec<AppliedMove>,
 								prev_state:&Option<Arc<State>>,
 								prev_mc:&Option<Arc<MochigomaCollections>>,
 								obtained:Option<ObtainKind>,
@@ -801,7 +801,7 @@ impl Search {
 						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								opponent_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
-								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
+								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
@@ -823,7 +823,7 @@ impl Search {
 
 		for &(_,priority,m) in mvs {
 			let mut pv = pv.clone();
-			pv.push(m.clone());
+			pv.push(m.to_applied_move());
 
 			processed_nodes += 1;
 			let nodes = node_count * mvs.len() as u64 - processed_nodes as u64;
@@ -857,15 +857,15 @@ impl Search {
 								if s > scoreval {
 									scoreval = s;
 									best_move = Some(m.to_applied_move());
-									if alpha < scoreval {
-										alpha = scoreval;
-									}
 									if scoreval >= beta {
 										return Evaluation::Result(scoreval,best_move);
 									}
 								}
 
-								continue;
+								if alpha < scoreval {
+									alpha = scoreval;
+									continue;
+								}
 							}
 
 							let repeat = match alpha {
@@ -933,14 +933,13 @@ impl Search {
 
 											scoreval = -s;
 											best_move = Some(m.to_applied_move());
-											if alpha < scoreval {
-												alpha = scoreval;
-											}
 											if scoreval >= beta {
 												return Evaluation::Result(scoreval,best_move);
 											}
 										}
-										if -s < alpha {
+										if alpha < -s {
+											alpha = -s;
+										} else {
 											break;
 										}
 									},
@@ -979,7 +978,7 @@ impl Search {
 								_:&mut UserEventDispatcher<Solver<CommonError>,CommonError,L>,
 								self_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
 								opponent_nn_snapshot:&Arc<(SnapShot<FxS16>,SnapShot<FxS16>)>,
-								teban:Teban,state:&Arc<State>,pv:&Vec<LegalMove>,
+								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
 								current_kyokumen_map:&KyokumenMap<u64,u32>,
@@ -1050,16 +1049,19 @@ impl Search {
 						}
 
 						if -s > scoreval {
+							let mut pv = pv.clone();
+							pv.push(m);
+
 							search.send_info(&mut env.info_sender, &env.on_error_handler, base_depth,current_depth,&pv);
 							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 							scoreval = -s;
 							best_move = Some(m);
-							if alpha < scoreval {
-								alpha = scoreval;
-							}
 							if scoreval >= beta {
 								return search.termination(&receiver, threads, env, scoreval, best_move);
+							}
+							if alpha < scoreval {
+								alpha = scoreval;
 							}
 						}
 
@@ -1076,7 +1078,7 @@ impl Search {
 				}
 			} else if let Some(&(_,priority,m)) = it.next() {
 				let mut pv = pv.clone();
-				pv.push(m.clone());
+				pv.push(m.to_applied_move());
 
 				match search.startup_strategy(teban,state,mc,m,
 												mhash,shash,
