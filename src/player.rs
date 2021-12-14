@@ -962,6 +962,7 @@ impl Search {
 					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 						env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 					) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+						search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 						return Evaluation::Result(scoreval,best_move);
 					}
 				},
@@ -1068,6 +1069,7 @@ impl Search {
 						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 							env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 						) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+							search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 							return search.termination(&receiver, threads, env, scoreval, best_move);
 						}
 					},
@@ -1264,6 +1266,7 @@ impl Search {
 							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
 								env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
 							) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+								search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 								return search.termination(&receiver, threads, env, scoreval, best_move);
 							}
 						},
