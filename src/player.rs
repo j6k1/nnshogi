@@ -505,11 +505,17 @@ impl Search {
 
 		if let Some(&(s,d)) = env.kyokumen_score_map.get(teban, &mhash, &shash) {
 			match s {
-				Score::INFINITE | Score::NEGINFINITE => {
+				Score::INFINITE => {
+					self.send_message(&mut env.info_sender, &env.on_error_handler, "score corresponding to the hash was found in the map. value is infinite.");
 					return Evaluation::Result(s, None);
 				},
-				_ if d >= depth => {
+				Score::NEGINFINITE => {
+					self.send_message(&mut env.info_sender, &env.on_error_handler, "score corresponding to the hash was found in the map. value is neginfinite.");
 					return Evaluation::Result(s, None);
+				},
+				Score::Value(s) if d >= depth => {
+					self.send_message(&mut env.info_sender, &env.on_error_handler, &format!("score corresponding to the hash was found in the map. value is {}.",s));
+					return Evaluation::Result(Score::Value(s), None);
 				},
 				_ => ()
 			}
