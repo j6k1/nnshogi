@@ -129,7 +129,7 @@ impl<E> Solver<E> where E: PlayerError {
 	}
 }
 pub trait Comparator<T>: Clone {
-	fn cmp(&mut self,&T,&T) -> Ordering;
+	fn cmp(&mut self,l:&T,r:&T) -> Ordering;
 }
 mod checkmate {
 	use usiagent::TryFrom;
