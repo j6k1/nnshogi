@@ -927,10 +927,10 @@ impl Search {
 									Evaluation::Result(s,_) => {
 										if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
 											 if d < depth {
-												env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+												env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
 											}
 										} else {
-											env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+											env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
 										}
 
 										if -s > scoreval {
@@ -1049,10 +1049,10 @@ impl Search {
 					(Evaluation::Result(s,_),m) => {
 						if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
 							if d < depth {
-								env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+								env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
 							}
 						} else {
-							env.kyokumen_score_map.insert(teban, mhash, shash, (s,depth));
+							env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
 						}
 
 						if -s > scoreval {
@@ -1299,22 +1299,14 @@ impl Search {
 
 		let mut score = score;
 		let mut best_move = best_move;
-		let mut is_timeout = false;
 		let mut has_error = false;
 
 		for _ in threads..self.max_threads {
 			match r.recv() {
 				Ok((r,m)) => {
 					match r {
-						Evaluation::Result(s, _) => {
-							if -s > score {
-								score = -s;
-								best_move = Some(m);
-							}
-						},
+						Evaluation::Result(s, _) |
 						Evaluation::Timeout(Some(s), _) => {
-							is_timeout = true;
-
 							if -s > score {
 								score = -s;
 								best_move = Some(m);
@@ -1335,8 +1327,6 @@ impl Search {
 
 		if has_error {
 			Evaluation::Error
-		} else if is_timeout {
-			Evaluation::Timeout(Some(score), best_move)
 		} else if best_move.is_none() {
 			Evaluation::Result(Score::NEGINFINITE, best_move)
 		} else {
