@@ -925,6 +925,14 @@ impl Search {
 										};
 									},
 									Evaluation::Result(s,_) => {
+										if let Some(&(_,d)) = env.kyokumen_score_map.get(teban.opposite(),&mhash,&shash) {
+											if d < depth {
+												env.kyokumen_score_map.insert(teban.opposite(), mhash, shash, (s,depth));
+											}
+										} else {
+											env.kyokumen_score_map.insert(teban.opposite(), mhash, shash, (s,depth));
+										}
+
 										if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
 											 if d < depth {
 												env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
@@ -1047,6 +1055,14 @@ impl Search {
 						}
 					},
 					(Evaluation::Result(s,_),m) => {
+						if let Some(&(_,d)) = env.kyokumen_score_map.get(teban.opposite(),&mhash,&shash) {
+							if d < depth {
+								env.kyokumen_score_map.insert(teban.opposite(), mhash, shash, (s,depth));
+							}
+						} else {
+							env.kyokumen_score_map.insert(teban.opposite(), mhash, shash, (s,depth));
+						}
+
 						if let Some(&(_,d)) = env.kyokumen_score_map.get(teban,&mhash,&shash) {
 							if d < depth {
 								env.kyokumen_score_map.insert(teban, mhash, shash, (-s,depth));
