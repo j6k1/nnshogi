@@ -119,7 +119,8 @@ pub struct Environment<L,S> where L: Logger, S: InfoSender {
 	stop:Arc<AtomicBool>,
 	quited:Arc<AtomicBool>,
 	kyokumen_score_map:KyokumenMap<u64,(Score,u32)>,
-	nodes:Arc<AtomicU64>
+	nodes:Arc<AtomicU64>,
+	think_start_time:Instant
 }
 impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 	fn clone(&self) -> Self {
@@ -134,7 +135,8 @@ impl<L,S> Clone for Environment<L,S> where L: Logger, S: InfoSender {
 			stop:self.stop.clone(),
 			quited:self.quited.clone(),
 			kyokumen_score_map:self.kyokumen_score_map.clone(),
-			nodes:self.nodes.clone()
+			nodes:self.nodes.clone(),
+			think_start_time:self.think_start_time.clone()
 		}
 	}
 }
@@ -143,6 +145,7 @@ impl<L,S> Environment<L,S> where L: Logger, S: InfoSender {
 			   evalutor:Arc<Intelligence>,
 			   info_sender:S,
 			   on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
+			   think_start_time:Instant,
 			   limit:Option<Instant>,
 			   current_limit:Option<Instant>) -> Environment<L,S> {
 		let stop = Arc::new(AtomicBool::new(false));
@@ -154,6 +157,7 @@ impl<L,S> Environment<L,S> where L: Logger, S: InfoSender {
 			evalutor:evalutor,
 			info_sender:info_sender,
 			on_error_handler:on_error_handler,
+			think_start_time:think_start_time,
 			limit:limit,
 			current_limit:current_limit,
 			stop:stop,
@@ -278,8 +282,7 @@ impl Search {
 		}
 	}
 
-	fn send_info<L,S>(&self, info_sender:&mut S,
-					  on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>,
+	fn send_info<L,S>(&self, env:&mut Environment<L,S>,
 					  depth:u32, seldepth:u32, pv:&Vec<AppliedMove>)
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -292,11 +295,12 @@ impl Search {
 
 		commands.push(UsiInfoSubCommand::CurrMove(pv[0].to_move()));
 		commands.push(UsiInfoSubCommand::Pv(pv.clone().into_iter().map(|m| m.to_move()).collect()));
+		commands.push(UsiInfoSubCommand::Time((Instant::now() - env.think_start_time).as_millis() as u64));
 
-		match info_sender.send(commands) {
+		match env.info_sender.send(commands) {
 			Ok(_) => (),
 			Err(ref e) => {
-				let _ = on_error_handler.lock().map(|h| h.call(e));
+				let _ = env.on_error_handler.lock().map(|h| h.call(e));
 			}
 		}
 	}
@@ -940,7 +944,7 @@ impl Search {
 										}
 
 										if -s > scoreval {
-											search.send_info(&mut env.info_sender, &env.on_error_handler, base_depth,current_depth,&pv);
+											search.send_info(env, base_depth,current_depth,&pv);
 											search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 											scoreval = -s;
@@ -1073,7 +1077,7 @@ impl Search {
 							let mut pv = pv.clone();
 							pv.push(m);
 
-							search.send_info(&mut env.info_sender, &env.on_error_handler, base_depth,current_depth,&pv);
+							search.send_info(env, base_depth,current_depth,&pv);
 							search.send_score(&mut env.info_sender,&env.on_error_handler,teban,-s);
 
 							scoreval = -s;
@@ -1699,6 +1703,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 													evalutor.clone(),
 													info_sender.clone(),
 													on_error_handler.clone(),
+																think_start_time.clone(),
 													limit,current_limit);
 
 				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
