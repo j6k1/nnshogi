@@ -519,20 +519,24 @@ impl Intelligence {
 		for &k in &MOCHIGOMA_KINDS {
 			match ms.get(&k).unwrap_or(&0) {
 				&c => {
-					let offset = SELF_INDEX_MAP[k as usize];
+					for i in 0..c {
+						let offset = SELF_INDEX_MAP[k as usize];
 
-					let offset = offset as usize;
+						let offset = offset as usize;
 
-					inputs[offset + c as usize] = 1f64;
+						inputs[offset + i as usize] = 1f64;
+					}
 				}
 			}
 			match mg.get(&k).unwrap_or(&0) {
 				&c => {
-					let offset = OPPONENT_INDEX_MAP[k as usize];
+					for i in 0..c {
+						let offset = OPPONENT_INDEX_MAP[k as usize];
 
-					let offset = offset as usize;
+						let offset = offset as usize;
 
-					inputs[offset + c as usize] = 1f64;
+						inputs[offset + i as usize] = 1f64;
+					}
 				}
 			}
 		}
@@ -589,7 +593,6 @@ impl Intelligence {
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
 							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
 
-							d.push((offset, -FxS16::one()));
 							d.push((offset+1, FxS16::one()));
 						}
 					}
@@ -606,7 +609,6 @@ impl Intelligence {
 						)))
 				} else {
 					d.push((offset, -FxS16::one()));
-					d.push((offset - 1, FxS16::one()));
 
 					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, FxS16::one()));
 				}
