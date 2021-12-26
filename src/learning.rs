@@ -389,7 +389,39 @@ impl CsaLearnener {
 									   bias_shake_shake:bool,
 									   learn_max_threads:usize,
 									   learn_sfen_read_size:usize,
-									   learn_batch_size:usize) -> Result<(),ApplicationError> {
+									   learn_batch_size:usize,
+									   ) -> Result<(),ApplicationError> {
+		self.learning_batch(kifudir,
+							bias_shake_shake,
+							learn_max_threads,
+							learn_sfen_read_size,
+							learn_batch_size,
+							| evalutor,
+							  batch,
+							  bias_shake_shake,
+							  learn_max_threads,
+							  user_event_queue | {
+				Self::learning_from_yaneuraou_bin_batch(evalutor,
+													   batch,
+													   bias_shake_shake,
+													   learn_max_threads,
+													   user_event_queue)
+			})
+	}
+
+	pub fn learning_batch<F>(&mut self,kifudir:String,
+							   bias_shake_shake:bool,
+							   learn_max_threads:usize,
+							   learn_sfen_read_size:usize,
+							   learn_batch_size:usize,
+							   learning_process:F)
+		-> Result<(),ApplicationError> where F: FnMut(
+			&mut Intelligence,
+			Vec<Vec<u8>>,
+			bool,
+			usize,
+			&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>) -> Result<(),ApplicationError> {
+		let mut learning_process = learning_process;
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -502,11 +534,11 @@ impl CsaLearnener {
 						batch.push(sfen);
 
 						if batch.len() == learn_batch_size {
-							self.learning_from_yaneuraou_bin_batch(&mut evalutor,
-																   		batch,
-																	    bias_shake_shake,
-																   		learn_max_threads,
-																   		&user_event_queue)?;
+							learning_process(&mut evalutor,
+													batch,
+													bias_shake_shake,
+													learn_max_threads,
+													&user_event_queue)?;
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
 							current_item += learn_batch_size;
@@ -534,11 +566,11 @@ impl CsaLearnener {
 					let remaing = batch.len();
 
 					if remaing > 0 {
-						self.learning_from_yaneuraou_bin_batch(&mut evalutor,
-															   		batch,
-																    bias_shake_shake,
-																	learn_max_threads,
-															   		&user_event_queue)?;
+						learning_process(&mut evalutor,
+												batch,
+												bias_shake_shake,
+												learn_max_threads,
+												&user_event_queue)?;
 						count += remaing;
 					}
 
@@ -569,11 +601,11 @@ impl CsaLearnener {
 				batch.push(sfen);
 
 				if batch.len() == learn_batch_size {
-					self.learning_from_yaneuraou_bin_batch(&mut evalutor,
-														   		batch,
-															    bias_shake_shake,
-														   		learn_max_threads,
-																&user_event_queue)?;
+					learning_process(&mut evalutor,
+											batch,
+											bias_shake_shake,
+											learn_max_threads,
+											&user_event_queue)?;
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
 					current_item += learn_batch_size;
@@ -603,11 +635,11 @@ impl CsaLearnener {
 			let remaing = batch.len();
 
 			if !notify_quit.load(Ordering::Acquire) && remaing > 0 {
-				self.learning_from_yaneuraou_bin_batch(&mut evalutor,
-													   		batch,
-													   		bias_shake_shake,
-													   		learn_max_threads,
-													   		&user_event_queue)?;
+				learning_process(&mut evalutor,
+							   		batch,
+							   		bias_shake_shake,
+							   		learn_max_threads,
+							   		&user_event_queue)?;
 				count += remaing;
 			}
 		}
@@ -617,7 +649,7 @@ impl CsaLearnener {
 		Ok(())
 	}
 
-	fn learning_from_yaneuraou_bin_batch(&self,evalutor:&mut Intelligence,
+	fn learning_from_yaneuraou_bin_batch(evalutor:&mut Intelligence,
 										 batch:Vec<Vec<u8>>,
 										 bias_shake_shake:bool,
 										 learn_max_threads:usize,
