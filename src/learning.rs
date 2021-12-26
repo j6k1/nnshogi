@@ -244,7 +244,7 @@ impl CsaLearnener {
 			for p in parsed.into_iter() {
 				if let Some(ref checkpoint) = checkpoint {
 					if skip_items && current_item == checkpoint.item {
-						println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap().clone());
+						println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap());
 						skip_items = false;
 					}
 
@@ -510,7 +510,7 @@ impl CsaLearnener {
 							continue;
 						} else {
 							if skip_items && current_item == checkpoint.item {
-								println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap().clone());
+								println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap());
 								skip_items = false;
 							}
 						}
