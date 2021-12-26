@@ -96,7 +96,8 @@ pub enum ApplicationError {
 	CsaParserError(CsaParserError),
 	LogicError(String),
 	LearningError(String),
-	KifuWriteError(KifuWriteError)
+	KifuWriteError(KifuWriteError),
+	SerdeError(toml::ser::Error)
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -112,6 +113,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::LogicError(ref s) => write!(f,"{}",s),
 			ApplicationError::LearningError(ref s) => write!(f,"{}",s),
 			ApplicationError::KifuWriteError(ref s) => write!(f,"{}",s),
+			ApplicationError::SerdeError(ref e) => write!(f,"{}",e),
 		}
 	}
 }
@@ -129,6 +131,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::LogicError(_) => "Logic error.",
 			ApplicationError::LearningError(_) => "An error occurred while learning the neural network.",
 			ApplicationError::KifuWriteError(_) => "An error occurred when recording kifu or initialize KifuWriter.",
+			ApplicationError::SerdeError(_) => "An error occurred during serialization or deserialization."
 		}
 	}
 
@@ -145,6 +148,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::LogicError(_) => None,
 			ApplicationError::LearningError(_) => None,
 			ApplicationError::KifuWriteError(ref e) => Some(e),
+			ApplicationError::SerdeError(ref e) => Some(e),
 		}
 	}
 }
@@ -181,5 +185,10 @@ impl From<KifuWriteError> for ApplicationError {
 impl From<CsaParserError> for ApplicationError {
 	fn from(err: CsaParserError) -> ApplicationError {
 		ApplicationError::CsaParserError(err)
+	}
+}
+impl From<toml::ser::Error> for ApplicationError {
+	fn from(err: toml::ser::Error) -> ApplicationError {
+		ApplicationError::SerdeError(err)
 	}
 }

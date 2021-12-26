@@ -2,6 +2,7 @@ use std::thread;
 use std::sync::Mutex;
 use std::sync::Arc;
 use std::fs;
+use std::io::Write;
 
 use rand::seq::SliceRandom;
 
@@ -25,9 +26,75 @@ use error::CommonError;
 use nn::Intelligence;
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::io::{BufReader, Read};
-use std::fs::File;
+use std::io::{BufReader, Read, BufWriter};
+use std::fs::{File, OpenOptions};
+use std::path::Path;
+use usiagent::output::USIStdErrorWriter;
 
+#[derive(Debug,Deserialize,Serialize)]
+pub struct CheckPoint {
+	filename:String,
+	item:usize
+}
+pub struct CheckPointReader {
+	reader:BufReader<File>
+}
+impl CheckPointReader {
+	pub fn new<P: AsRef<Path>>(file:P) -> Result<CheckPointReader,ApplicationError> {
+		if file.as_ref().exists() {
+			Ok(CheckPointReader {
+				reader: BufReader::new(OpenOptions::new().read(true).create(false).open(file)?)
+			})
+		} else {
+			Err(ApplicationError::StartupError(String::from(
+				"指定されたチェックポイントファイルは存在しません。"
+			)))
+		}
+	}
+	pub fn read(&mut self) -> Result<CheckPoint,ApplicationError> {
+		let mut buf = String::new();
+		self.reader.read_to_string(&mut buf)?;
+		match toml::from_str(buf.as_str()) {
+			Ok(r) => Ok(r),
+			Err(ref e) => {
+				let _ = USIStdErrorWriter::write(&e.to_string());
+				Err(ApplicationError::StartupError(String::from(
+					"チェックポイントファイルのロード時にエラーが発生しました。"
+				)))
+			}
+		}
+	}
+}
+pub struct CheckPointWriter<P: AsRef<Path>> {
+	writer:BufWriter<File>,
+	tmp:P,
+	path:P
+}
+impl<P: AsRef<Path>> CheckPointWriter<P> {
+	pub fn new(tmp:P,file:P) -> Result<CheckPointWriter<P>,ApplicationError> {
+		Ok(CheckPointWriter {
+			writer: BufWriter::new(OpenOptions::new().write(true).create(true).open(&tmp)?),
+			tmp:tmp,
+			path:file
+		})
+	}
+	pub fn save(&mut self,checkpoint:&CheckPoint) -> Result<(),ApplicationError> {
+		let toml_str = toml::to_string(checkpoint)?;
+
+		match write!(self.writer,"{}",toml_str) {
+			Ok(()) => {
+				self.writer.flush()?;
+				fs::rename(&self.tmp,&self.path)?;
+				Ok(())
+			},
+			Err(_) => {
+				Err(ApplicationError::StartupError(String::from(
+					"チェックポイントファイルの保存時にエラーが発生しました。"
+				)))
+			}
+		}
+	}
+}
 pub struct CsaLearnener {
 
 }
@@ -134,8 +201,36 @@ impl CsaLearnener {
 
 		let mut count = 0;
 
+		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
+
+		let checkpoint = if checkpoint_path.exists() {
+			Some(CheckPointReader::new(&checkpoint_path)?.read()?)
+		} else {
+			None
+		};
+
+		let mut current_item:usize;
+		let mut current_filename;
+
+		let mut skip_files = checkpoint.is_some();
+		let mut skip_items = checkpoint.is_some();
+
 		'files: for entry in fs::read_dir(kifudir)? {
 			let path = entry?.path();
+
+			current_filename = Some(path.as_path().file_name().map(|s| {
+				s.to_string_lossy().to_string()
+			}).unwrap_or(String::from("")));
+
+			if let Some(ref checkpoint) = checkpoint {
+				if *current_filename.as_ref().unwrap() == checkpoint.filename {
+					skip_files = false;
+				}
+
+				if skip_files {
+					continue;
+				}
+			}
 
 			if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
 				continue;
@@ -144,7 +239,19 @@ impl CsaLearnener {
 			print!("{}\n", path.display());
 			let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
 
+			current_item = 0;
+
 			for p in parsed.into_iter() {
+				if let Some(ref checkpoint) = checkpoint {
+					if skip_items && current_item == checkpoint.item {
+						println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap().clone());
+						skip_items = false;
+					}
+
+					if skip_items {
+						continue;
+					}
+				}
 				match p.end_state {
 					Some(EndState::Toryo) | Some(EndState::Tsumi) => (),
 					_ => {
@@ -261,6 +368,16 @@ impl CsaLearnener {
 			}
 
 			print!("done... \n");
+
+			let tmp_path = format!("{}.tmp",checkpoint_path.as_path().to_string_lossy());
+			let tmp_path = Path::new(&tmp_path);
+
+			let mut checkpoint_writer = CheckPointWriter::new(tmp_path,checkpoint_path.as_path())?;
+
+			checkpoint_writer.save(&CheckPoint {
+				filename:current_filename.as_ref().unwrap().clone(),
+				item:current_item
+			})?;
 		}
 
 		print!("{}件の棋譜を学習しました。\n",count);
@@ -309,8 +426,36 @@ impl CsaLearnener {
 		let mut packed_sfens = Vec::with_capacity(learn_sfen_read_size);
 		let mut record = Vec::with_capacity(40);
 
+		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
+
+		let checkpoint = if checkpoint_path.exists() {
+			Some(CheckPointReader::new(&checkpoint_path)?.read()?)
+		} else {
+			None
+		};
+
+		let mut current_item:usize = 0;
+		let mut current_filename = None;
+
+		let mut skip_files = checkpoint.is_some();
+		let mut skip_items = checkpoint.is_some();
+
 		'files: for entry in fs::read_dir(kifudir)? {
 			let path = entry?.path();
+
+			current_filename = Some(path.as_path().file_name().map(|s| {
+				s.to_string_lossy().to_string()
+			}).unwrap_or(String::from("")));
+
+			if let Some(ref checkpoint) = checkpoint {
+				if *current_filename.as_ref().unwrap() == checkpoint.filename {
+					skip_files = false;
+				}
+
+				if skip_files {
+					continue;
+				}
+			}
 
 			if !path.as_path().extension().map(|e| e == "bin").unwrap_or(false) {
 				continue;
@@ -318,12 +463,26 @@ impl CsaLearnener {
 
 			print!("{}\n", path.display());
 
+			current_item = 0;
+
 			for b in BufReader::new(File::open(path)?).bytes() {
 				let b = b?;
 
 				record.push(b);
 
 				if record.len() == 40 {
+					if let Some(ref checkpoint) = checkpoint {
+						if skip_items && current_item < checkpoint.item {
+							current_item += 1;
+							record.clear();
+							continue;
+						} else {
+							if skip_items && current_item == checkpoint.item {
+								println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap().clone());
+								skip_items = false;
+							}
+						}
+					}
 					packed_sfens.push(record);
 					record = Vec::with_capacity(40);
 				} else {
@@ -350,6 +509,17 @@ impl CsaLearnener {
 																   		&user_event_queue)?;
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
+							current_item += learn_batch_size;
+
+							let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
+							let tmp_path = Path::new(&tmp_path);
+
+							let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
+
+							checkpoint_writer.save(&CheckPoint {
+								filename:current_filename.as_ref().unwrap().clone(),
+								item:current_item
+							})?;
 						}
 
 						if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
@@ -406,6 +576,17 @@ impl CsaLearnener {
 																&user_event_queue)?;
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
+					current_item += learn_batch_size;
+
+					let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
+					let tmp_path = Path::new(&tmp_path);
+
+					let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
+
+					checkpoint_writer.save(&CheckPoint {
+						filename:current_filename.as_ref().unwrap().clone(),
+						item:current_item
+					})?;
 				}
 
 
