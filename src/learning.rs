@@ -396,32 +396,23 @@ impl CsaLearnener {
 							learn_max_threads,
 							learn_sfen_read_size,
 							learn_batch_size,
-							| evalutor,
-							  batch,
-							  bias_shake_shake,
-							  learn_max_threads,
-							  user_event_queue | {
-				Self::learning_from_yaneuraou_bin_batch(evalutor,
-													   batch,
-													   bias_shake_shake,
-													   learn_max_threads,
-													   user_event_queue)
-			})
+							Self::learning_from_yaneuraou_bin_batch)
+
 	}
 
-	pub fn learning_batch<F>(&mut self,kifudir:String,
+	pub fn learning_batch(&mut self,kifudir:String,
 							   bias_shake_shake:bool,
 							   learn_max_threads:usize,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
-							   learning_process:F)
-		-> Result<(),ApplicationError> where F: FnMut(
-			&mut Intelligence,
-			Vec<Vec<u8>>,
-			bool,
-			usize,
-			&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>) -> Result<(),ApplicationError> {
-		let mut learning_process = learning_process;
+							   learning_process:fn(
+								   &mut Intelligence,
+								   Vec<Vec<u8>>,
+								   bool,
+								   usize,
+								   &Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
+							   ) -> Result<(),ApplicationError>
+	) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
