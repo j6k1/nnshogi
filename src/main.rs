@@ -424,6 +424,7 @@ fn run() -> Result<(),ApplicationError> {
 		);
 
 		let info_sender = ConsoleInfoSender::new(silent);
+		let pinfo_sender = ConsolePeriodicallyInfo::new(silent);
 
 		let mut engine = SelfMatchEngine::new();
 
@@ -624,6 +625,7 @@ fn run() -> Result<(),ApplicationError> {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								info_sender,
+								pinfo_sender,
 								time_limit,
 								uptime,
 								number_of_games,

@@ -13,7 +13,7 @@ use std::ops::Neg;
 use std::ops::Add;
 use std::ops::Sub;
 use std::sync::atomic;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::atomic::AtomicU64;
 
 use usiagent::player::*;
@@ -34,6 +34,7 @@ use nn::Intelligence;
 use solver::*;
 use simplenn::types::FxS16;
 use std::sync::mpsc::Receiver;
+use usiagent::output::USIOutputWriter;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Evaluation {
@@ -1448,7 +1449,9 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 		Ok(options)
 	}
-	fn take_ready(&mut self) -> Result<(),CommonError> {
+	fn take_ready<W,L>(&mut self, _:OnKeepAlive<W,L>)
+		-> Result<(),CommonError> where W: USIOutputWriter + Send + 'static,
+							  L: Logger + Send + 'static {
 		match self.evalutor {
 			Some(_) => (),
 			None => {
@@ -1666,11 +1669,15 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		self.moved = false;
 		Ok(())
 	}
-	fn think<L,S>(&mut self,think_start_time:Instant,
+	fn think<L,S,P>(&mut self,think_start_time:Instant,
 			limit:&UsiGoTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
-			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
+			info_sender:S,periodically_info:P,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<BestMove,CommonError>
-		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		where L: Logger + Send + 'static,
+			  S: InfoSender,
+			  P: PeriodicallyInfo {
+		let mut periodically_info = periodically_info;
+
 		let (teban,state,mc) = self.kyokumen.as_ref().map(|k| (k.teban,&k.state,&k.mc)).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
@@ -1708,6 +1715,25 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 
 				let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
 				let mut solver_event_dispatcher = self.search.create_event_dispatcher(&on_error_handler,&env.stop,&env.quited);
+
+				let _pinfo_sender = {
+					let nodes = env.nodes.clone();
+					let think_start_time = think_start_time.clone();
+					let on_error_handler = env.on_error_handler.clone();
+
+					periodically_info.start(100,move || {
+						let mut commands = vec![];
+						commands.push(UsiInfoSubCommand::Nodes(nodes.load(Ordering::Acquire)));
+
+						let sec = (Instant::now() - think_start_time).as_secs();
+
+						if sec > 0 {
+							commands.push(UsiInfoSubCommand::Nps(nodes.load(Ordering::Acquire) / sec));
+						}
+
+						commands
+					}, &on_error_handler)
+				};
 
 				let result = match self.search.negascout(
 							&mut env,
@@ -1782,16 +1808,19 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 			}
 		}
 	}
-	fn think_ponder<L,S>(&mut self,_:&UsiGoTimeLimit,_:Arc<Mutex<UserEventQueue>>,
-			_:S,_:Arc<Mutex<OnErrorHandler<L>>>)
-			-> Result<BestMove,CommonError> where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+	fn think_ponder<L,S,P>(&mut self,_:&UsiGoTimeLimit,_:Arc<Mutex<UserEventQueue>>,
+			_:S,_:P,_:Arc<Mutex<OnErrorHandler<L>>>)
+			-> Result<BestMove,CommonError> where L: Logger + Send + 'static, S: InfoSender,
+												  P: PeriodicallyInfo + Send + 'static {
 		unimplemented!();
 	}
-	fn think_mate<L,S>(&mut self,limit:&UsiGoMateTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
-			info_sender:S,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
+
+	fn think_mate<L,S,P>(&mut self,limit:&UsiGoMateTimeLimit,event_queue:Arc<Mutex<UserEventQueue>>,
+			info_sender:S,_:P,on_error_handler:Arc<Mutex<OnErrorHandler<L>>>)
 		-> Result<CheckMate,CommonError>
-		where L: Logger, S: InfoSender,
-			Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+		where L: Logger + Send + 'static,
+			  S: InfoSender,
+			  P: PeriodicallyInfo {
 		let (teban,state,mc) = self.kyokumen.as_ref().map(|k| (k.teban,&k.state,&k.mc)).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
