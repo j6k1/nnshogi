@@ -5,7 +5,6 @@ use rand_xorshift::XorShiftRng;
 use rand::distributions::Distribution;
 use statrs::distribution::Normal;
 use std;
-use std::collections::HashMap;
 use std::sync::Mutex;
 use std::fs;
 
@@ -504,8 +503,8 @@ impl Intelligence {
 			}
 		}
 
-		let ms = HashMap::new();
-		let mg = HashMap::new();
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
 		let (ms,mg) = match mc {
 			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
 			&MochigomaCollections::Empty => (&ms,&mg),
@@ -517,27 +516,24 @@ impl Intelligence {
 		};
 
 		for &k in &MOCHIGOMA_KINDS {
-			match ms.get(&k).unwrap_or(&0) {
-				&c => {
-					for i in 0..c {
-						let offset = SELF_INDEX_MAP[k as usize];
+			let c = ms.get(k);
 
-						let offset = offset as usize;
+			for i in 0..c {
+				let offset = SELF_INDEX_MAP[k as usize];
 
-						inputs[offset + i as usize] = 1f64;
-					}
-				}
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f64;
 			}
-			match mg.get(&k).unwrap_or(&0) {
-				&c => {
-					for i in 0..c {
-						let offset = OPPONENT_INDEX_MAP[k as usize];
 
-						let offset = offset as usize;
+			let c = mg.get(k);
 
-						inputs[offset + i as usize] = 1f64;
-					}
-				}
+			for i in 0..c {
+				let offset = OPPONENT_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f64;
 			}
 		}
 		inputs
@@ -706,8 +702,8 @@ impl Intelligence {
 	fn input_index_with_of_mochigoma_get(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
 										 -> Result<usize,CommonError> {
 
-		let ms = HashMap::new();
-		let mg = HashMap::new();
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
 
 		let (ms,mg) = match mc {
 			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
@@ -727,12 +723,9 @@ impl Intelligence {
 			OPPONENT_INDEX_MAP[kind as usize]
 		};
 
-		match mc.get(&kind).unwrap_or(&0) {
-			&c => {
-				let offset = offset as usize;
+		let c = mc.get(kind);
+		let offset = offset as usize;
 
-				Ok(offset + c as usize)
-			}
-		}
+		Ok(offset + c as usize)
 	}
 }

@@ -1,5 +1,4 @@
 use std;
-use std::collections::HashMap;
 use std::collections::BTreeMap;
 use std::fmt;
 use rand;
@@ -1365,7 +1364,7 @@ impl Search {
 
 	#[inline]
 	fn calc_initial_hash(&self,b:&Banmen,
-		ms:&HashMap<MochigomaKind,u32>,mg:&HashMap<MochigomaKind,u32>) -> (u64,u64) {
+		ms:&Mochigoma,mg:&Mochigoma) -> (u64,u64) {
 		self.kyokumenhash.calc_initial_hash(b,ms,mg)
 	}
 }
@@ -1584,7 +1583,7 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		Ok(())
 	}
 	fn set_position(&mut self,teban:Teban,banmen:Banmen,
-					ms:HashMap<MochigomaKind,u32>,mg:HashMap<MochigomaKind,u32>,_:u32,m:Vec<Move>)
+					ms:Mochigoma,mg:Mochigoma,_:u32,m:Vec<Move>)
 		-> Result<(),CommonError> {
 		self.history.clear();
 		self.kyokumen_map = KyokumenMap::new();
@@ -1676,8 +1675,6 @@ impl USIPlayer<CommonError> for NNShogiPlayer {
 		where L: Logger + Send + 'static,
 			  S: InfoSender,
 			  P: PeriodicallyInfo {
-		let mut periodically_info = periodically_info;
-
 		let (teban,state,mc) = self.kyokumen.as_ref().map(|k| (k.teban,&k.state,&k.mc)).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Position information is not initialized."))
