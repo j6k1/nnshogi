@@ -250,6 +250,19 @@ impl Search {
 		})
 	}
 
+	fn timeout_expected<S,L>(&self,search:&Arc<Search>,env:&mut Environment<L,S>,start_time:Instant,
+			current_depth:u32,nodes:u64,processed_nodes:u32
+		) -> bool where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+
+		const RATE:u64 = 2;
+
+		(nodes > u32::MAX as u64) || (current_depth > 1 && search.adjust_depth &&
+			env.current_limit.map(|l| {
+				env.think_start_time + (Instant::now() - start_time) / (processed_nodes as u64 * nodes / RATE.pow(current_depth)) as u32 > l
+			}).unwrap_or(false)
+		) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false)
+	}
+
 	fn send_message<L,S>(&self, info_sender:&mut S,
 			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, message:&str)
 		where L: Logger, S: InfoSender,
@@ -967,9 +980,7 @@ impl Search {
 							Some(best_move) => Evaluation::Timeout(Some(scoreval),Some(best_move)),
 							None => Evaluation::Timeout(Some(scoreval),Some(m.to_applied_move())),
 						};
-					} else if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-						env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-					) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+					} else if search.timeout_expected(search,env,start_time,current_depth,nodes,processed_nodes) {
 						search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 						return Evaluation::Result(scoreval,best_move);
 					}
@@ -1082,9 +1093,7 @@ impl Search {
 							}
 						}
 
-						if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-							env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-						) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+						if search.timeout_expected(search,env,start_time,current_depth,nodes,processed_nodes) {
 							search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 							return search.termination(&receiver, threads, env, scoreval, best_move);
 						}
@@ -1279,9 +1288,7 @@ impl Search {
 
 							let nodes = node_count * mvs_count - processed_nodes as u64;
 
-							if (current_depth > 1 && search.adjust_depth && nodes <= std::u32::MAX as u64 &&
-								env.current_limit.map(|l| Instant::now() + (Instant::now() - start_time) / processed_nodes * nodes as u32 > l).unwrap_or(false)
-							) || env.current_limit.map(|l| Instant::now() >= l).unwrap_or(false) {
+							if search.timeout_expected(search,env,start_time,current_depth,nodes,processed_nodes) {
 								search.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 								return search.termination(&receiver, threads, env, scoreval, best_move);
 							}
