@@ -14,6 +14,7 @@ use usiagent::event::*;
 use usiagent::error::PlayerError;
 use player::Search;
 
+#[derive(Debug)]
 pub enum MaybeMate {
 	Nomate,
 	MateMoves(u32,Vec<LegalMove>),
@@ -305,7 +306,7 @@ mod checkmate {
 					r @ MaybeMate::Continuation => {
 						return r
 					},
-					MaybeMate::MateMoves(d,mvs)=> {
+					MaybeMate::MateMoves(d,mvs) => {
 						if self.stack.len() % 2 == 0 || (!self.current_frame.has_unknown && self.current_frame.mvs.len() == 0) {
 							let mut mvs = mvs;
 							self.current_frame.m.map(|m| mvs.insert(0,m));
@@ -375,7 +376,6 @@ mod checkmate {
 						return MaybeMate::Unknown
 					}
 				}
-
 				r
 			}
 		}
