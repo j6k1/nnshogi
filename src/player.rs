@@ -864,8 +864,8 @@ impl Search {
 
 								if alpha < scoreval {
 									alpha = scoreval;
-									continue;
 								}
+								continue;
 							}
 
 							let repeat = match alpha {
