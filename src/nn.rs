@@ -443,32 +443,32 @@ impl Intelligence {
 		}
 
 		let msa = self.nna.learn_batch_parallel(learn_max_threads,
-		sfens_with_extended.iter()
-			.map(|(teban,banmen,mc,es)| {
-				let teban = *teban;
+			sfens_with_extended.iter()
+				.map(|(teban,banmen,mc,es)| {
+					let teban = *teban;
 
-				let input = Intelligence::make_input(true,teban, banmen, mc);
+					let input = Intelligence::make_input(true,teban, banmen, mc);
 
-				let es = match (es,teban) {
-					(&GameResult::Draw,_) => GameEndState::Draw,
-					(&GameResult::SenteWin,Teban::Sente) |
-					(&GameResult::GoteWin,Teban::Gote) => {
-						GameEndState::Win
-					},
-					(&GameResult::SenteWin,Teban::Gote) |
-					(&GameResult::GoteWin,Teban::Sente) => {
-						GameEndState::Lose
-					}
-				};
+					let es = match (es,teban) {
+						(&GameResult::Draw,_) => GameEndState::Draw,
+						(&GameResult::SenteWin,Teban::Sente) |
+						(&GameResult::GoteWin,Teban::Gote) => {
+							GameEndState::Win
+						},
+						(&GameResult::SenteWin,Teban::Gote) |
+						(&GameResult::GoteWin,Teban::Sente) => {
+							GameEndState::Lose
+						}
+					};
 
-				let t = training_data_generator(&es,a);
+					let t = training_data_generator(&es,a);
 
-				(input.to_vec(),(0..1).map(|_| t).collect())
-			}))?;
+					(input.to_vec(),(0..1).map(|_| t).collect())
+				}))?;
 
 
 		let moa = self.nna.learn_batch_parallel(learn_max_threads,
-		sfens_with_extended.iter()
+			sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
 					// 非手番側であるため、手番と勝敗を反転
 					let teban = teban.opposite();
@@ -494,7 +494,7 @@ impl Intelligence {
 
 
 		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
-		sfens_with_extended.iter()
+			sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
 					let teban = *teban;
 
@@ -519,7 +519,7 @@ impl Intelligence {
 
 
 		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
-		sfens_with_extended.iter()
+			sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
 					// 非手番側であるため、手番と勝敗を反転
 					let teban = teban.opposite();
