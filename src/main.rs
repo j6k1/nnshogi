@@ -142,10 +142,16 @@ fn run() -> Result<(),ApplicationError> {
 
 		if matches.opt_present("yaneuraou") {
 			CsaLearnener::new().learning_from_yaneuraou_bin(kifudir,
-												  config.bias_shake_shake_with_kifu,
-												  config.learn_max_threads.unwrap_or(1),
-												  config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-												  config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+															config.bias_shake_shake_with_kifu,
+															config.learn_max_threads.unwrap_or(1),
+															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+															config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+		} else if matches.opt_present("hcpe") {
+				CsaLearnener::new().learning_from_hcpe(kifudir,
+																config.bias_shake_shake_with_kifu,
+																config.learn_max_threads.unwrap_or(1),
+																config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+																config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
 			CsaLearnener::new().learning_from_csa(kifudir,

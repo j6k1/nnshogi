@@ -401,6 +401,22 @@ impl CsaLearnener {
 
 	}
 
+	pub fn learning_from_hcpe(&mut self, kifudir:String,
+									   bias_shake_shake:bool,
+									   learn_max_threads:usize,
+									   learn_sfen_read_size:usize,
+									   learn_batch_size:usize,
+	) -> Result<(),ApplicationError> {
+		self.learning_batch(kifudir,
+							"hcpe",
+							bias_shake_shake,
+							learn_max_threads,
+							learn_sfen_read_size,
+							learn_batch_size,
+							Self::learning_from_hcpe_batch)
+
+	}
+
 	pub fn learning_batch(&mut self,kifudir:String,
 							   ext:&str,
 							   bias_shake_shake:bool,
@@ -448,7 +464,7 @@ impl CsaLearnener {
 
 		let mut count = 0;
 
-		let mut packed_sfens = Vec::with_capacity(learn_sfen_read_size);
+		let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 		let mut record = Vec::with_capacity(40);
 
 		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
@@ -508,20 +524,20 @@ impl CsaLearnener {
 							}
 						}
 					}
-					packed_sfens.push(record);
+					teachers.push(record);
 					record = Vec::with_capacity(40);
 				} else {
 					continue;
 				}
 
-				if packed_sfens.len() == learn_sfen_read_size {
+				if teachers.len() == learn_sfen_read_size {
 					let mut rng = rand::thread_rng();
-					packed_sfens.shuffle(&mut rng);
+					teachers.shuffle(&mut rng);
 
 					let mut batch = Vec::with_capacity(learn_batch_size);
 
-					let it = packed_sfens.into_iter();
-					packed_sfens = Vec::with_capacity(learn_sfen_read_size);
+					let it = teachers.into_iter();
+					teachers = Vec::with_capacity(learn_sfen_read_size);
 
 					for sfen in it {
 						batch.push(sfen);
@@ -584,13 +600,13 @@ impl CsaLearnener {
 			)));
 		}
 
-		if !notify_quit.load(Ordering::Acquire) && packed_sfens.len() > 0 {
+		if !notify_quit.load(Ordering::Acquire) && teachers.len() > 0 {
 			let mut rng = rand::thread_rng();
-			packed_sfens.shuffle(&mut rng);
+			teachers.shuffle(&mut rng);
 
 			let mut batch = Vec::with_capacity(learn_batch_size);
 
-			for sfen in packed_sfens.into_iter() {
+			for sfen in teachers.into_iter() {
 				batch.push(sfen);
 
 				if batch.len() == learn_batch_size {
@@ -660,6 +676,51 @@ impl CsaLearnener {
 		};
 
 		match evalutor.learning_by_packed_sfens(
+			batch,
+			learn_max_threads,
+			&move |s, ab| {
+
+				match s {
+					&GameEndState::Win => {
+						ab
+					}
+					&GameEndState::Lose => {
+						0f64
+					},
+					_ => 0.5f64
+				}
+			}, a,b, &*user_event_queue) {
+			Err(_) => {
+				return Err(ApplicationError::LearningError(String::from(
+					"An error occurred while learning the neural network."
+				)));
+			},
+			Ok((msa,moa,msb,mob)) => {
+				println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
+				println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+				Ok(())
+			}
+		}
+	}
+
+	fn learning_from_hcpe_batch(evalutor:&mut Intelligence,
+										 batch:Vec<Vec<u8>>,
+										 bias_shake_shake:bool,
+										 learn_max_threads:usize,
+										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
+	) -> Result<(),ApplicationError> {
+		let (a,b) = if bias_shake_shake {
+			let mut rnd = rand::thread_rng();
+
+			let a: f64 = rnd.gen();
+			let b: f64 = 1f64 - a;
+
+			(a,b)
+		} else {
+			(1f64,1f64)
+		};
+
+		match evalutor.learning_by_hcpe(
 			batch,
 			learn_max_threads,
 			&move |s, ab| {
