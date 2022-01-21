@@ -392,6 +392,7 @@ impl CsaLearnener {
 									   learn_batch_size:usize,
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
+							"bin",
 							bias_shake_shake,
 							learn_max_threads,
 							learn_sfen_read_size,
@@ -401,6 +402,7 @@ impl CsaLearnener {
 	}
 
 	pub fn learning_batch(&mut self,kifudir:String,
+							   ext:&str,
 							   bias_shake_shake:bool,
 							   learn_max_threads:usize,
 							   learn_sfen_read_size:usize,
@@ -480,7 +482,7 @@ impl CsaLearnener {
 				}
 			}
 
-			if !path.as_path().extension().map(|e| e == "bin").unwrap_or(false) {
+			if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
 				continue;
 			}
 
