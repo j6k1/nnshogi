@@ -351,13 +351,7 @@ impl Intelligence {
 		let msa = self.nna.learn_batch_parallel(learn_max_threads,
 												sfens_with_extended.iter()
 													.map(|(teban,banmen,mc,es)| {
-			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転
-			let teban = teban.opposite();
-			let es = match es {
-				&GameEndState::Win => GameEndState::Lose,
-				&GameEndState::Lose => GameEndState::Win,
-				&GameEndState::Draw => GameEndState::Draw
-			};
+			let teban = *teban;
 
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
@@ -370,12 +364,16 @@ impl Intelligence {
 		let moa = self.nna.learn_batch_parallel(learn_max_threads,
 												sfens_with_extended.iter()
 													.map(|(teban,banmen,mc,es)| {
-			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転する必要があるが、
-			// ここで評価したいのは非手番側であるため、そのままとする。
-			let teban = *teban;
+			// 非手番側であるため、手番と勝敗を反転
+			let teban = teban.opposite();
+			let es = match es {
+				&GameEndState::Win => GameEndState::Lose,
+				&GameEndState::Lose => GameEndState::Win,
+				&GameEndState::Draw => GameEndState::Draw
+			};
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(es,a);
+			let t = training_data_generator(&es,a);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
@@ -384,13 +382,7 @@ impl Intelligence {
 		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
 												sfens_with_extended.iter()
 													.map(|(teban,banmen,mc,es)| {
-			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転
-			let teban = teban.opposite();
-			let es = match es {
-				&GameEndState::Win => GameEndState::Lose,
-				&GameEndState::Lose => GameEndState::Win,
-				&GameEndState::Draw => GameEndState::Draw
-			};
+			let teban = *teban;
 
 			let input = Intelligence::make_input(true,teban, banmen, mc);
 
@@ -403,12 +395,16 @@ impl Intelligence {
 		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
 												sfens_with_extended.iter()
 													.map(|(teban,banmen,mc,es)| {
-			// この局面になった手を打った側を手番として入力するため、手番と勝敗を反転する必要があるが、
-			// ここで評価したいのは非手番側であるため、そのままとする。
-			let teban = *teban;
+			// 非手番側であるため、手番と勝敗を反転
+			let teban = teban.opposite();
+			let es = match es {
+				&GameEndState::Win => GameEndState::Lose,
+				&GameEndState::Lose => GameEndState::Win,
+				&GameEndState::Draw => GameEndState::Draw
+			};
 			let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let t = training_data_generator(es,b);
+			let t = training_data_generator(&es,b);
 
 			(input.to_vec(),(0..1).map(|_| t).collect())
 		}))?;
