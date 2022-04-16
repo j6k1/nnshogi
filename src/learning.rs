@@ -607,8 +607,43 @@ impl CsaLearnener {
 			let mut batch = Vec::with_capacity(learn_batch_size);
 
 			for sfen in teachers.into_iter() {
-				batch.push(sfen);
+				let (a,b) = if self.bias_shake_shake {
+					let mut rnd = rand::thread_rng();
+					let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
+					let a = rnd.gen();
+					let b = 1f64 - a;
+
+					(a,b)
+				} else {
+					(0.5f64,0.5f64
+					let (a,b) = if self.bias_shake_shake {
+						let mut rnd = rand::thread_rng();
+						let mut rnd = XorShiftRng::from_seed(rnd.gen());
+
+						let a = rnd.gen();
+						let b = 1f64 - a;
+
+						(a,b)
+					} else {
+						(0.5f64,0.5f64)
+					};
+
+					let nnaanswera = ssa.r[0];
+					let nnbanswerb = ssb.r[0];
+
+					let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
+
+					((i16::from(answer) as i32) << 23) as i64
+
+				};
+
+				let nnaanswera = ssa.r[0];
+				let nnbanswerb = ssb.r[0];
+
+				let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
+
+				((i16::from(answer) as i32) << 23) as i64
 				if batch.len() == learn_batch_size {
 					learning_process(&mut evalutor,
 											batch,

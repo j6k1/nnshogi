@@ -5,9 +5,11 @@ use std::fs;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
-use nncombinator::arr::Arr;
+use nncombinator::arr::{Arr, DiffArr};
 use nncombinator::device::DeviceCpu;
-use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, BatchTrain, ForwardAll, InputLayer, LinearLayer, LinearOutputLayer};
+use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer};
+use nncombinator::{Cons, Stack};
+use nncombinator::persistence::TextFilePersistence;
 use rand::{prelude, Rng, SeedableRng};
 use rand::prelude::{Distribution, SliceRandom};
 use rand_distr::Normal;
@@ -41,11 +43,9 @@ use simplenn::types::{FxS16, One};
 use packedsfen::hcpe::reader::HcpeReader;
 use packedsfen::hcpe::haffman_code::GameResult;
 
-pub struct Intelligence {
-	nna:NN<f64,MomentumSGD,CrossEntropy>,
-	nnb:NN<f64,MomentumSGD,CrossEntropy>,
-	nnqa:NN<FxS16,VoidOptimizer,VoidLossFunction>,
-	nnqb:NN<FxS16,VoidOptimizer,VoidLossFunction>,
+pub struct Intelligence<NN> where NN: ForwardDiff<f32> {
+	nna:NN,
+	nnb:NN,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -54,7 +54,6 @@ pub struct Intelligence {
 	bias_shake_shake:bool,
 	quited:bool,
 }
-pub const F64_FRACTION_MAX:u64 = std::u64::MAX >> 12;
 
 const BANMEN_SIZE:usize = 81;
 const KOMA_COUNT:usize = 40;
@@ -125,79 +124,231 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
+pub struct IntelligenceCreator;
+impl IntelligenceCreator {
+	pub fn new(savedir:String,nna_filename:String,nnb_filename:String,enable_shake_shake:bool)
+		-> Trainer<impl ForwardDiff<f32> + AskDiffInput<f32>> {
 
-impl Intelligence {
-	pub fn new (savedir:String,nna_filename:String,nnb_filename:String,enable_shake_shake:bool) -> Intelligence {
-		let mut rnd = rand::thread_rng();
-		let mut rnd = XorShiftRng::from_seed(rnd.gen());
-		let n = Normal::new(0.0, 1.0).unwrap();
+		let mut rnd = prelude::thread_rng();
+		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
-		let model:NNModel<f64> = NNModel::with_unit_initializer(
-										NNUnits::new(5514,
-											(256,Box::new(FReLU::new())),
-											(32,Box::new(FReLU::new())))
-											.add((32,Box::new(FReLU::new())))
-											.add((1,Box::new(FSigmoid::new()))),
-										BinFileInputReader::new(
-											format!("{}/{}",savedir,nna_filename).as_str()).unwrap(),
-										move || {
-											n.sample(&mut rnd) * 0.025
-										}).unwrap();
-		let nna = NN::new(model,|m| MomentumSGD::new(m,0.01),CrossEntropy::new());
+		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
 
-		let mut rnd = rand::thread_rng();
-		let mut rnd = XorShiftRng::from_seed(rnd.gen());
-		let n = Normal::new(0.0, 1.0).unwrap();
+		let device = DeviceCpu::new();
 
-		let model:NNModel<f64> = NNModel::with_unit_initializer(
-										NNUnits::new(5514,
-												 (256,Box::new(FReLU::new())),
-												 (32,Box::new(FReLU::new())))
-											.add((32,Box::new(FReLU::new())))
-											.add((1,Box::new(FSigmoid::new()))),
-										BinFileInputReader::new(
-											format!("{}/{}",savedir,nnb_filename).as_str()).unwrap(),
-										move || {
-											n.sample(&mut rnd) * 0.025
-										}).unwrap();
-		let nnb = NN::new(model,|m| MomentumSGD::new(m,0.01),CrossEntropy::new());
+		let net:InputLayer<f32,DiffInput<DiffArr<f32,2517>,f32,2517,256>,_> = InputLayer::new();
 
-		let nnqa = Quantization::quantization(&nna,UnitsConverter::conv_to_fxs16).unwrap();
-		let nnqb = Quantization::quantization(&nnb,UnitsConverter::conv_to_fxs16).unwrap();
+		let rnd = rnd_base.clone();
 
-		Intelligence {
+		let mut nna = net.add_layer(|l| {
+			let rnd = rnd.clone();
+			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+		}).add_layer_train(|l| {
+			LinearOutputLayer::new(l,&device)
+		});
+
+		let mut rnd = prelude::thread_rng();
+		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
+
+		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
+
+		let device = DeviceCpu::new();
+
+		let net:InputLayer<f32,DiffInput<DiffArr<f32,2517>,f32,2517,256>,_> = InputLayer::new();
+
+		let rnd = rnd_base.clone();
+
+		let mut nnb = net.add_layer(|l| {
+			let rnd = rnd.clone();
+			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+		}).add_layer_train(|l| {
+			LinearOutputLayer::new(l,&device)
+		});
+
+		Trainer {
 			nna:nna,
 			nnb:nnb,
-			nnqa,
-			nnqb,
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
+			nnsavedir:savedir,
 			packed_sfen_reader:PackedSfenReader::new(),
 			hcpe_reader:HcpeReader::new(),
-			nnsavedir:savedir,
 			bias_shake_shake:enable_shake_shake,
 			quited:false,
 		}
 	}
+}
+impl<NN> Intelligence<NN> where NN: ForwardDiff<f32> + AskDiffInput<f32> {
+	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
+		let mut inputs = Arr::new();
+
+		let index = if is_self {
+			SELF_TEBAN_INDEX
+		} else {
+			OPPONENT_TEBAN_INDEX
+		};
+
+		inputs[index] = 1f32;
+
+		match b {
+			&Banmen(ref kinds) => {
+				for y in 0..9 {
+					for x in 0..9 {
+						let kind = kinds[y][x];
+
+						if kind != KomaKind::Blank {
+							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+
+							inputs[index] = 1f32;
+						}
+					}
+				}
+			}
+		}
+
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let (ms,mg) = match t {
+			Teban::Sente => (ms,mg),
+			Teban::Gote => (mg,ms),
+		};
+
+		for &k in &MOCHIGOMA_KINDS {
+			let c = ms.get(k);
+
+			for i in 0..c {
+				let offset = SELF_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+
+			let c = mg.get(k);
+
+			for i in 0..c {
+				let offset = OPPONENT_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+		}
+		inputs
+	}
+
+	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, f32)>,CommonError> {
+		let mut d = Vec::new();
+
+		let (addi,subi) = if is_self {
+			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
+		} else {
+			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
+		};
+
+		d.push((subi + i,1.));
+		d.push((addi + i,1.));
+
+		match m {
+			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
+				match b {
+					&Banmen(ref kinds) => {
+						let (sx,sy) = (9-sx,sy-1);
+						let (dx,dy) = (9-dx,dy-1);
+
+						let sk = kinds[sy as usize][sx as usize];
+
+						d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -1.));
+
+						if n {
+							d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1.));
+						} else {
+							d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1.));
+						}
+
+						let dk = kinds[dy as usize][dx as usize];
+
+						if dk != KomaKind::Blank {
+							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-1.));
+						}
+
+						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
+							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
+
+							d.push((offset+1, 1.));
+						}
+					}
+				}
+			},
+			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
+				let (dx,dy) = (9-dx,dy-1);
+				let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
+
+				if offset < 1 {
+					return Err(CommonError::Fail(
+						String::from(
+							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
+						)))
+				} else {
+					d.push((offset, -1.));
+
+					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1.));
+				}
+			}
+		}
+
+		Ok(d)
+	}
 
 	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> Result<(SnapShot<FxS16>,SnapShot<FxS16>),InvalidStateError> {
-		let input = (&Intelligence::make_input(is_self,t,b,mc)).iter()
-								.map(|&i| FxS16::from(i)).collect::<Vec<FxS16>>();
+		-> (impl Stack,impl Stack) {
 
-		let ssa = self.nnqa.solve_shapshot(&input)?;
-		let ssb = self.nnqb.solve_shapshot(&input)?;
+		let sa = self.nna.forward_diff(DiffInput::NotDiff(Self::make_input(
+			is_self,t,b,mc
+		)));
 
-		Ok((ssa,ssb))
+		let sb = self.nnb.forward_diff(DiffInput::NotDiff(Self::make_input(
+			is_self,t,b,mc
+		)));
+
+		(sa,sb)
 	}
 
 	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> Result<i64,InvalidStateError> {
-		let input = (&Intelligence::make_input(is_self,t,b,mc)).iter()
-							.map(|&i| FxS16::from(i)).collect::<Vec<FxS16>>();
+		-> i32 {
+		let input = Self::make_input(is_self,t,b,mc);
 
-		let nnaanswera = self.nnqa.solve(&input)?;
-		let nnbanswerb = self.nnqb.solve(&input)?;
+		let nnaanswera = self.nna.forward_all(input.clone());
+		let nnaanswerb = self.nnb.forward_all(input.clone());
 
 		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -216,39 +367,21 @@ impl Intelligence {
 
 		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
 
-		Ok(((i16::from(answer) as i32) << 23) as i64)
+		(answer * (1 << 29) as f32) as i32
 	}
 
-	pub fn evalute_by_diff(&self, snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
-						   -> Result<(i64,(SnapShot<FxS16>,SnapShot<FxS16>)),CommonError> {
+	pub fn evalute_by_diff<SA,SB>(&self, snapshot:&(Cons<SA,Arr<f32,1>>,Cons<SB,Arr<f32,1>>), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
+		-> Result<(i32,(Cons<SA,f32>,Cons<SB,f32>)),CommonError> where SA: Stack, SB: Stack {
+		let (sa,sb) = snapshot;
+
 		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
+		let o = self.nna.ask_diff_input(sa);
 
-		let ssa = self.nnqa.solve_diff(&input,&snapshot.0)?;
-		let ssb = self.nnqb.solve_diff(&input,&snapshot.1)?;
+		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
 
-		let (a,b) = if self.bias_shake_shake {
-			let mut rnd = rand::thread_rng();
-			let mut rnd = XorShiftRng::from_seed(rnd.gen());
+		let o = self.nnb.ask_diff_input(sb);
 
-			let a = rnd.gen();
-			let b = 1f64 - a;
-
-			(a,b)
-		} else {
-			(0.5f64,0.5f64)
-		};
-
-		let nnaanswera = ssa.r[0];
-		let nnbanswerb = ssb.r[0];
-
-		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
-
-		Ok((((i16::from(answer) as i32) << 23) as i64,(ssa,ssb)))
-	}
-
-	pub fn evalute_by_snapshot(&self,snapshot:&(SnapShot<FxS16>,SnapShot<FxS16>)) -> i64 {
-		let ssa = &snapshot.0;
-		let ssb = &snapshot.1;
+		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
 
 		let (a,b) = if self.bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -262,317 +395,34 @@ impl Intelligence {
 			(0.5f64,0.5f64)
 		};
 
-		let nnaanswera = ssa.r[0];
-		let nnbanswerb = ssb.r[0];
+		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
 
-		let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
-
-		((i16::from(answer) as i32) << 23) as i64
+		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
 	}
 
-	pub fn learning_by_training_data<'a,D>(&mut self,
-						last_teban:Teban,
-						history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
-						s:&GameEndState,
-					    learn_max_threads:usize,
-						training_data_generator:&D,
-						a:f64,b:f64,
-						_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-						-> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
-		where D: Fn(&GameEndState,Teban,f64) -> f64 {
+	pub fn evalute_by_snapshot<SA,SB>(&self,snapshot:&(Cons<SA,Arr<f32,1>>,Cons<SB,Arr<f32,1>>)) -> i32 where SA: Stack, SB: Stack {
+		match snapshot {
+			&(sa,sb) => {
+				let (a,b) = if self.bias_shake_shake {
+					let mut rnd = rand::thread_rng();
+					let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
-		let mut teban = last_teban;
+					let a = rnd.gen();
+					let b = 1f64 - a;
 
-		let msa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(true,teban, banmen, mc);
+					(a,b)
+				} else {
+					(0.5f64,0.5f64)
+				};
 
-			let t = training_data_generator(s,teban,a);
+				let nnaanswera = sa.1;
+				let nnbanswerb = sb.1;
 
-			teban = teban.opposite();
+				let answer = nnaanswera * a+ nnbanswerb * b - 0.5;
 
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-		let mut teban = last_teban.opposite();
-
-		let moa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(false,teban, banmen, mc);
-
-			let t = training_data_generator(s,teban,a);
-
-			teban = teban.opposite();
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-		let mut teban = last_teban;
-
-		let msb = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(true,teban, banmen, mc);
-
-			let t = training_data_generator(s,teban,b);
-
-			teban = teban.opposite();
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-		let mut teban = last_teban.opposite();
-
-		let mob = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(false,teban, banmen, mc);
-
-			let t = training_data_generator(s,teban,b);
-
-			teban = teban.opposite();
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-		self.save()?;
-
-		Ok((msa,moa,msb,mob))
-	}
-
-	pub fn learning_by_packed_sfens<'a,D>(&mut self,
-										   packed_sfens:Vec<Vec<u8>>,
-										   learn_max_threads:usize,
-										   training_data_generator:&D,
-										   a:f64,b:f64,
-										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-										   -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
-		where D: Fn(&GameEndState,f64) -> f64 {
-
-		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
-
-		for entry in packed_sfens.into_iter() {
-			let ((teban,banmen,mc),yaneuraou::haffman_code::ExtendFields {
-				value: _,
-				best_move: _,
-				end_ply: _,
-				game_result
-			}) = self.packed_sfen_reader.read_sfen_with_extended(entry).map_err(|e| {
-				CommonError::Fail(format!("{}",e))
-			})?;
-
-			sfens_with_extended.push((teban,banmen,mc,game_result));
+				(answer * (1 << 29) as f32) as i32
+			}
 		}
-
-		let msa = self.nna.learn_batch_parallel(learn_max_threads,
-												sfens_with_extended.iter()
-													.map(|(teban,banmen,mc,es)| {
-			let teban = *teban;
-
-			let input = Intelligence::make_input(true,teban, banmen, mc);
-
-			let t = training_data_generator(&es,a);
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-
-		let moa = self.nna.learn_batch_parallel(learn_max_threads,
-												sfens_with_extended.iter()
-													.map(|(teban,banmen,mc,es)| {
-			// 非手番側であるため、手番と勝敗を反転
-			let teban = teban.opposite();
-			let es = match es {
-				&GameEndState::Win => GameEndState::Lose,
-				&GameEndState::Lose => GameEndState::Win,
-				&GameEndState::Draw => GameEndState::Draw
-			};
-			let input = Intelligence::make_input(false,teban, banmen, mc);
-
-			let t = training_data_generator(&es,a);
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-
-		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
-												sfens_with_extended.iter()
-													.map(|(teban,banmen,mc,es)| {
-			let teban = *teban;
-
-			let input = Intelligence::make_input(true,teban, banmen, mc);
-
-			let t = training_data_generator(&es,b);
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-
-		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
-												sfens_with_extended.iter()
-													.map(|(teban,banmen,mc,es)| {
-			// 非手番側であるため、手番と勝敗を反転
-			let teban = teban.opposite();
-			let es = match es {
-				&GameEndState::Win => GameEndState::Lose,
-				&GameEndState::Lose => GameEndState::Win,
-				&GameEndState::Draw => GameEndState::Draw
-			};
-			let input = Intelligence::make_input(false,teban, banmen, mc);
-
-			let t = training_data_generator(&es,b);
-
-			(input.to_vec(),(0..1).map(|_| t).collect())
-		}))?;
-
-		self.save()?;
-
-		Ok((msa,moa,msb,mob))
-	}
-
-	pub fn learning_by_hcpe<'a,D>(&mut self,
-										  hcpes:Vec<Vec<u8>>,
-										  learn_max_threads:usize,
-										  training_data_generator:&D,
-										  a:f64,b:f64,
-										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-										  -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
-		where D: Fn(&GameEndState,f64) -> f64 {
-
-		let mut sfens_with_extended = Vec::with_capacity(hcpes.len());
-
-		for entry in hcpes.into_iter() {
-			let ((teban,banmen,mc),hcpe::haffman_code::ExtendFields {
-				eval: _,
-				best_move: _,
-				game_result
-			}) = self.hcpe_reader.read_sfen_with_extended(entry).map_err(|e| {
-				CommonError::Fail(format!("{}",e))
-			})?;
-
-			sfens_with_extended.push((teban, banmen, mc, game_result));
-		}
-
-		let msa = self.nna.learn_batch_parallel(learn_max_threads,
-			sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let teban = *teban;
-
-					let input = Intelligence::make_input(true,teban, banmen, mc);
-
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Win
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Lose
-						}
-					};
-
-					let t = training_data_generator(&es,a);
-
-					(input.to_vec(),(0..1).map(|_| t).collect())
-				}))?;
-
-
-		let moa = self.nna.learn_batch_parallel(learn_max_threads,
-			sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Lose
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Win
-						}
-					};
-
-					let input = Intelligence::make_input(false,teban, banmen, mc);
-
-					let t = training_data_generator(&es,a);
-
-					(input.to_vec(),(0..1).map(|_| t).collect())
-				}))?;
-
-
-		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
-			sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let teban = *teban;
-
-					let input = Intelligence::make_input(true,teban, banmen, mc);
-
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Win
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Lose
-						}
-					};
-
-					let t = training_data_generator(&es,b);
-
-					(input.to_vec(),(0..1).map(|_| t).collect())
-				}))?;
-
-
-		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
-			sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Lose
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Win
-						}
-					};
-
-					let input = Intelligence::make_input(false,teban, banmen, mc);
-
-					let t = training_data_generator(&es,b);
-
-					(input.to_vec(),(0..1).map(|_| t).collect())
-				}))?;
-
-		self.save()?;
-
-		Ok((msa,moa,msb,mob))
-	}
-
-	pub fn quantization(&mut self) {
-		let nnqa = Quantization::quantization(&self.nna,UnitsConverter::conv_to_fxs16).unwrap();
-		let nnqb = Quantization::quantization(&self.nnb,UnitsConverter::conv_to_fxs16).unwrap();
-
-		self.nnqa = nnqa;
-		self.nnqb = nnqb;
-	}
-
-	fn save(&mut self) -> Result<(),CommonError>{
-		self.nna.save(
-			PersistenceWithBinFile::new(
-				&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?)?;
-		self.nnb.save(
-			PersistenceWithBinFile::new(
-				&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?)?;
-		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nna_filename),
-						&format!("{}/{}", self.nnsavedir,self.nna_filename))?;
-		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nnb_filename),
-						&format!("{}/{}", self.nnsavedir,self.nnb_filename))?;
-		Ok(())
 	}
 
 	#[allow(dead_code)]
@@ -601,152 +451,6 @@ impl Intelligence {
 		}
 
 		Ok(())
-	}
-
-	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> [f64; 5514] {
-		let mut inputs:[f64; 5514] = [0f64; 5514];
-
-		let index = if is_self {
-			SELF_TEBAN_INDEX
-		} else {
-			OPPONENT_TEBAN_INDEX
-		};
-
-		for i in 0..(KOMA_COUNT-1) {
-			inputs[index + i] = 1f64;
-		}
-
-		match b {
-			&Banmen(ref kinds) => {
-				for y in 0..9 {
-					for x in 0..9 {
-						let kind = kinds[y][x];
-
-						if t == Teban::Sente && kind == KomaKind::SOu || t == Teban::Gote && kind == KomaKind::GOu {
-							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
-
-							for i in 0..(KOMA_COUNT-1) {
-								inputs[index + i] = 1f64;
-							}
-						} else if kind != KomaKind::Blank {
-							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
-
-							inputs[index] = 1f64;
-						}
-					}
-				}
-			}
-		}
-
-		let ms = Mochigoma::new();
-		let mg = Mochigoma::new();
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
-
-		let (ms,mg) = match t {
-			Teban::Sente => (ms,mg),
-			Teban::Gote => (mg,ms),
-		};
-
-		for &k in &MOCHIGOMA_KINDS {
-			let c = ms.get(k);
-
-			for i in 0..c {
-				let offset = SELF_INDEX_MAP[k as usize];
-
-				let offset = offset as usize;
-
-				inputs[offset + i as usize] = 1f64;
-			}
-
-			let c = mg.get(k);
-
-			for i in 0..c {
-				let offset = OPPONENT_INDEX_MAP[k as usize];
-
-				let offset = offset as usize;
-
-				inputs[offset + i as usize] = 1f64;
-			}
-		}
-		inputs
-	}
-
-	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, FxS16)>,CommonError> {
-		let mut d = Vec::new();
-
-		let (addi,subi) = if is_self {
-			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
-		} else {
-			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
-		};
-
-		for i in 0..(KOMA_COUNT-1) {
-			d.push((subi + i, -FxS16::one()));
-			d.push((addi + i,FxS16::one()));
-		}
-
-		match m {
-			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
-				match b {
-					&Banmen(ref kinds) => {
-						let (sx,sy) = (9-sx,sy-1);
-						let (dx,dy) = (9-dx,dy-1);
-
-						let sk = kinds[sy as usize][sx as usize];
-
-						if t == Teban::Sente && sk == KomaKind::SOu || t == Teban::Gote && sk == KomaKind::GOu {
-							let si = Intelligence::input_index_of_banmen(t, sk, sx, sy)?;
-							let di = Intelligence::input_index_of_banmen(t,sk,dx,dy)?;
-
-							for i in 0..(KOMA_COUNT-1) {
-								d.push((si + i, -FxS16::one()));
-								d.push((di + i,FxS16::one()));
-							}
-						} else {
-							d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -FxS16::one()));
-
-							if n {
-								d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,FxS16::one()));
-							} else {
-								d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,FxS16::one()));
-							}
-						}
-
-						let dk = kinds[dy as usize][dx as usize];
-
-						if dk != KomaKind::Blank {
-							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-FxS16::one()));
-						}
-
-						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
-
-							d.push((offset+1, FxS16::one()));
-						}
-					}
-				}
-			},
-			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
-				let (dx,dy) = (9-dx,dy-1);
-				let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
-
-				if offset < 1 {
-					return Err(CommonError::Fail(
-						String::from(
-							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
-						)))
-				} else {
-					d.push((offset, -FxS16::one()));
-
-					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, FxS16::one()));
-				}
-			}
-		}
-
-		Ok(d)
 	}
 
 	#[inline]
@@ -953,68 +657,302 @@ impl TrainerCreator {
 		}
 	}
 }
-
 impl<NN> Trainer<NN> {
-	pub fn make_input(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
-		let mut inputs = Arr::new();
 
-		let index = if is_self {
-			SELF_TEBAN_INDEX
-		} else {
-			OPPONENT_TEBAN_INDEX
-		};
+	pub fn learning_by_training_data<'a,D>(&mut self,
+										   last_teban:Teban,
+										   history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
+										   s:&GameEndState,
+										   learn_max_threads:usize,
+										   training_data_generator:&D,
+										   a:f64,b:f64,
+										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+										   -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
+		where D: Fn(&GameEndState,Teban,f64) -> f64 {
 
-		inputs[index] = 1f32;
+		let mut teban = last_teban;
 
-		match b {
-			&Banmen(ref kinds) => {
-				for y in 0..9 {
-					for x in 0..9 {
-						let kind = kinds[y][x];
+		let msa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(true,teban, banmen, mc);
 
-						if kind != KomaKind::Blank {
-							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+			let t = training_data_generator(s,teban,a);
 
-							inputs[index] = 1f32;
-						}
-					}
-				}
-			}
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		let mut teban = last_teban.opposite();
+
+		let moa = self.nna.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(false,teban, banmen, mc);
+
+			let t = training_data_generator(s,teban,a);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		let mut teban = last_teban;
+
+		let msb = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(true,teban, banmen, mc);
+
+			let t = training_data_generator(s,teban,b);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		let mut teban = last_teban.opposite();
+
+		let mob = self.nnb.learn_batch_parallel(learn_max_threads,history.iter().rev().map(move |(banmen,mc,_,_)| {
+			let input = Intelligence::make_input(false,teban, banmen, mc);
+
+			let t = training_data_generator(s,teban,b);
+
+			teban = teban.opposite();
+
+			(input.to_vec(),(0..1).map(|_| t).collect())
+		}))?;
+
+		self.save()?;
+
+		Ok((msa,moa,msb,mob))
+	}
+
+	pub fn learning_by_packed_sfens<'a,D>(&mut self,
+										  packed_sfens:Vec<Vec<u8>>,
+										  learn_max_threads:usize,
+										  training_data_generator:&D,
+										  a:f64,b:f64,
+										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+										  -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
+		where D: Fn(&GameEndState,f64) -> f64 {
+
+		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
+
+		for entry in packed_sfens.into_iter() {
+			let ((teban,banmen,mc),yaneuraou::haffman_code::ExtendFields {
+				value: _,
+				best_move: _,
+				end_ply: _,
+				game_result
+			}) = self.packed_sfen_reader.read_sfen_with_extended(entry).map_err(|e| {
+				CommonError::Fail(format!("{}",e))
+			})?;
+
+			sfens_with_extended.push((teban,banmen,mc,game_result));
 		}
 
-		let ms = Mochigoma::new();
-		let mg = Mochigoma::new();
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
+		let msa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														let teban = *teban;
 
-		let (ms,mg) = match t {
-			Teban::Sente => (ms,mg),
-			Teban::Gote => (mg,ms),
-		};
+														let input = Intelligence::make_input(true,teban, banmen, mc);
 
-		for &k in &MOCHIGOMA_KINDS {
-			let c = ms.get(k);
+														let t = training_data_generator(&es,a);
 
-			for i in 0..c {
-				let offset = SELF_INDEX_MAP[k as usize];
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
 
-				let offset = offset as usize;
 
-				inputs[offset + i as usize] = 1f32;
-			}
+		let moa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														// 非手番側であるため、手番と勝敗を反転
+														let teban = teban.opposite();
+														let es = match es {
+															&GameEndState::Win => GameEndState::Lose,
+															&GameEndState::Lose => GameEndState::Win,
+															&GameEndState::Draw => GameEndState::Draw
+														};
+														let input = Intelligence::make_input(false,teban, banmen, mc);
 
-			let c = mg.get(k);
+														let t = training_data_generator(&es,a);
 
-			for i in 0..c {
-				let offset = OPPONENT_INDEX_MAP[k as usize];
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
 
-				let offset = offset as usize;
 
-				inputs[offset + i as usize] = 1f32;
-			}
+		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														let teban = *teban;
+
+														let input = Intelligence::make_input(true,teban, banmen, mc);
+
+														let t = training_data_generator(&es,b);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+
+		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														// 非手番側であるため、手番と勝敗を反転
+														let teban = teban.opposite();
+														let es = match es {
+															&GameEndState::Win => GameEndState::Lose,
+															&GameEndState::Lose => GameEndState::Win,
+															&GameEndState::Draw => GameEndState::Draw
+														};
+														let input = Intelligence::make_input(false,teban, banmen, mc);
+
+														let t = training_data_generator(&es,b);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+		self.save()?;
+
+		Ok((msa,moa,msb,mob))
+	}
+
+	pub fn learning_by_hcpe<'a,D>(&mut self,
+								  hcpes:Vec<Vec<u8>>,
+								  learn_max_threads:usize,
+								  training_data_generator:&D,
+								  a:f64,b:f64,
+								  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+								  -> Result<(Metrics,Metrics,Metrics,Metrics),CommonError>
+		where D: Fn(&GameEndState,f64) -> f64 {
+
+		let mut sfens_with_extended = Vec::with_capacity(hcpes.len());
+
+		for entry in hcpes.into_iter() {
+			let ((teban,banmen,mc),hcpe::haffman_code::ExtendFields {
+				eval: _,
+				best_move: _,
+				game_result
+			}) = self.hcpe_reader.read_sfen_with_extended(entry).map_err(|e| {
+				CommonError::Fail(format!("{}",e))
+			})?;
+
+			sfens_with_extended.push((teban, banmen, mc, game_result));
 		}
-		inputs
+
+		let msa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														let teban = *teban;
+
+														let input = Intelligence::make_input(true,teban, banmen, mc);
+
+														let es = match (es,teban) {
+															(&GameResult::Draw,_) => GameEndState::Draw,
+															(&GameResult::SenteWin,Teban::Sente) |
+															(&GameResult::GoteWin,Teban::Gote) => {
+																GameEndState::Win
+															},
+															(&GameResult::SenteWin,Teban::Gote) |
+															(&GameResult::GoteWin,Teban::Sente) => {
+																GameEndState::Lose
+															}
+														};
+
+														let t = training_data_generator(&es,a);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+
+		let moa = self.nna.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														// 非手番側であるため、手番と勝敗を反転
+														let teban = teban.opposite();
+
+														let es = match (es,teban) {
+															(&GameResult::Draw,_) => GameEndState::Draw,
+															(&GameResult::SenteWin,Teban::Sente) |
+															(&GameResult::GoteWin,Teban::Gote) => {
+																GameEndState::Lose
+															},
+															(&GameResult::SenteWin,Teban::Gote) |
+															(&GameResult::GoteWin,Teban::Sente) => {
+																GameEndState::Win
+															}
+														};
+
+														let input = Intelligence::make_input(false,teban, banmen, mc);
+
+														let t = training_data_generator(&es,a);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+
+		let msb = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														let teban = *teban;
+
+														let input = Intelligence::make_input(true,teban, banmen, mc);
+
+														let es = match (es,teban) {
+															(&GameResult::Draw,_) => GameEndState::Draw,
+															(&GameResult::SenteWin,Teban::Sente) |
+															(&GameResult::GoteWin,Teban::Gote) => {
+																GameEndState::Win
+															},
+															(&GameResult::SenteWin,Teban::Gote) |
+															(&GameResult::GoteWin,Teban::Sente) => {
+																GameEndState::Lose
+															}
+														};
+
+														let t = training_data_generator(&es,b);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+
+		let mob = self.nnb.learn_batch_parallel(learn_max_threads,
+												sfens_with_extended.iter()
+													.map(|(teban,banmen,mc,es)| {
+														// 非手番側であるため、手番と勝敗を反転
+														let teban = teban.opposite();
+
+														let es = match (es,teban) {
+															(&GameResult::Draw,_) => GameEndState::Draw,
+															(&GameResult::SenteWin,Teban::Sente) |
+															(&GameResult::GoteWin,Teban::Gote) => {
+																GameEndState::Lose
+															},
+															(&GameResult::SenteWin,Teban::Gote) |
+															(&GameResult::GoteWin,Teban::Sente) => {
+																GameEndState::Win
+															}
+														};
+
+														let input = Intelligence::make_input(false,teban, banmen, mc);
+
+														let t = training_data_generator(&es,b);
+
+														(input.to_vec(),(0..1).map(|_| t).collect())
+													}))?;
+
+		self.save()?;
+
+		Ok((msa,moa,msb,mob))
+	}
+
+	fn save(&mut self) -> Result<(),CommonError>{
+		self.nna.save(
+			TextFilePersistence::new(
+				&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?)?;
+		self.nnb.save(
+			TextFilePersistence::new(
+				&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?)?;
+		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nna_filename),
+				   &format!("{}/{}", self.nnsavedir,self.nna_filename))?;
+		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nnb_filename),
+				   &format!("{}/{}", self.nnsavedir,self.nnb_filename))?;
+		Ok(())
 	}
 }
