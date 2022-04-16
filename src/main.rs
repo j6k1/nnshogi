@@ -1,4 +1,5 @@
 extern crate rand;
+extern crate rand_distr;
 extern crate rand_xorshift;
 extern crate statrs;
 extern crate getopts;
@@ -9,6 +10,7 @@ extern crate crossbeam_channel;
 
 extern crate usiagent;
 extern crate simplenn;
+extern crate nncombinator;
 extern crate csaparser;
 extern crate packedsfen;
 

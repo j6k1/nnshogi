@@ -1,12 +1,17 @@
-use rand;
-use rand::Rng;
-use rand::SeedableRng;
-use rand_xorshift::XorShiftRng;
-use rand::distributions::Distribution;
-use statrs::distribution::Normal;
 use std;
+use std::cell::RefCell;
 use std::sync::Mutex;
 use std::fs;
+use std::ops::DerefMut;
+use std::rc::Rc;
+use nncombinator::activation::{ReLu, Sigmoid};
+use nncombinator::arr::Arr;
+use nncombinator::device::DeviceCpu;
+use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, BatchTrain, ForwardAll, InputLayer, LinearLayer, LinearOutputLayer};
+use rand::{prelude, Rng, SeedableRng};
+use rand::prelude::{Distribution, SliceRandom};
+use rand_distr::Normal;
+use rand_xorshift::XorShiftRng;
 
 use simplenn::function::activation::*;
 use simplenn::function::optimizer::*;
@@ -857,5 +862,86 @@ impl Intelligence {
 		let offset = offset as usize;
 
 		Ok(offset + c as usize)
+	}
+}
+pub struct Trainer<NN> {
+	nna:NN,
+	nnb:NN,
+	nna_filename:String,
+	nnb_filename:String,
+	nnsavedir:String,
+	packed_sfen_reader:PackedSfenReader,
+	hcpe_reader:HcpeReader,
+	bias_shake_shake:bool,
+	quited:bool,
+}
+pub struct TrainerCreator;
+
+impl TrainerCreator {
+	pub fn new(savedir:String,nna_filename:String,nnb_filename:String,enable_shake_shake:bool)
+		-> Trainer<impl BatchTrain<f32> + ForwardAll> {
+		let mut rnd = prelude::thread_rng();
+		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
+
+		let n1 = Normal::<f32>::new(0.0, (2f32/14f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
+
+		let device = DeviceCpu::new();
+
+		let net:InputLayer<f32,Arr<f32,14>,_> = InputLayer::new();
+
+		let rnd = rnd_base.clone();
+
+		let mut nna = net.add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,14,100>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+		}).add_layer_train(|l| {
+			LinearOutputLayer::new(l,&device)
+		});
+
+		let mut rnd = prelude::thread_rng();
+		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
+
+		let n1 = Normal::<f32>::new(0.0, (2f32/14f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
+
+		let device = DeviceCpu::new();
+
+		let net:InputLayer<f32,Arr<f32,14>,_> = InputLayer::new();
+
+		let rnd = rnd_base.clone();
+
+		let mut nnb = net.add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,14,100>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+		}).add_layer_train(|l| {
+			LinearOutputLayer::new(l,&device)
+		});
+
+		Trainer {
+			nna:nna,
+			nnb:nnb,
+			nna_filename:nna_filename,
+			nnb_filename:nnb_filename,
+			nnsavedir:savedir,
+			packed_sfen_reader:PackedSfenReader::new(),
+			hcpe_reader:HcpeReader::new(),
+			bias_shake_shake:enable_shake_shake,
+			quited:false,
+		}
 	}
 }

@@ -13,6 +13,8 @@ path = "../simplenn"
 path = "../CsaParser"
 [dependencies.packedsfen]
 path = "../packedsfen"
+[dependencies.nncombinator]
+path = "../nncombinator"
 [dependencies]
 rand = "0.8.5"
 rand_xorshift = "0.3.0"
