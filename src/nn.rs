@@ -1,6 +1,6 @@
 use std;
 use std::cell::RefCell;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::fs;
 use std::ops::DerefMut;
 use std::rc::Rc;
@@ -60,10 +60,10 @@ const BANMEN_SIZE:usize = 81;
 const KOMA_COUNT:usize = 40;
 
 const SELF_TEBAN_INDEX:usize = 0;
-const OPPONENT_TEBAN_INDEX:usize = SELF_TEBAN_INDEX + (KOMA_COUNT - 1);
+const OPPONENT_TEBAN_INDEX:usize = SELF_TEBAN_INDEX + 1;
 
-const OU_INDEX:usize = OPPONENT_TEBAN_INDEX + (KOMA_COUNT - 1);
-const FU_INDEX:usize = OU_INDEX + BANMEN_SIZE * (KOMA_COUNT - 1);
+const OU_INDEX:usize = OPPONENT_TEBAN_INDEX + 1;
+const FU_INDEX:usize = OU_INDEX + BANMEN_SIZE;
 const KYOU_INDEX:usize = FU_INDEX + BANMEN_SIZE;
 const KEI_INDEX:usize = KYOU_INDEX + BANMEN_SIZE;
 const GIN_INDEX:usize = KEI_INDEX + BANMEN_SIZE;
@@ -883,23 +883,27 @@ impl TrainerCreator {
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
-		let n1 = Normal::<f32>::new(0.0, (2f32/14f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
+		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
 
 		let device = DeviceCpu::new();
 
-		let net:InputLayer<f32,Arr<f32,14>,_> = InputLayer::new();
+		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
 		let rnd = rnd_base.clone();
 
 		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,14,100>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -909,23 +913,27 @@ impl TrainerCreator {
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
-		let n1 = Normal::<f32>::new(0.0, (2f32/14f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
+		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/100f32.sqrt()).unwrap();
 
 		let device = DeviceCpu::new();
 
-		let net:InputLayer<f32,Arr<f32,14>,_> = InputLayer::new();
+		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
 		let rnd = rnd_base.clone();
 
 		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,14,100>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			let rnd = rnd.clone();
+			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -943,5 +951,70 @@ impl TrainerCreator {
 			bias_shake_shake:enable_shake_shake,
 			quited:false,
 		}
+	}
+}
+
+impl<NN> Trainer<NN> {
+	pub fn make_input(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
+		let mut inputs = Arr::new();
+
+		let index = if is_self {
+			SELF_TEBAN_INDEX
+		} else {
+			OPPONENT_TEBAN_INDEX
+		};
+
+		inputs[index] = 1f32;
+
+		match b {
+			&Banmen(ref kinds) => {
+				for y in 0..9 {
+					for x in 0..9 {
+						let kind = kinds[y][x];
+
+						if kind != KomaKind::Blank {
+							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+
+							inputs[index] = 1f32;
+						}
+					}
+				}
+			}
+		}
+
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let (ms,mg) = match t {
+			Teban::Sente => (ms,mg),
+			Teban::Gote => (mg,ms),
+		};
+
+		for &k in &MOCHIGOMA_KINDS {
+			let c = ms.get(k);
+
+			for i in 0..c {
+				let offset = SELF_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+
+			let c = mg.get(k);
+
+			for i in 0..c {
+				let offset = OPPONENT_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+		}
+		inputs
 	}
 }
