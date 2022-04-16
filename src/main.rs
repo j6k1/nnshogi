@@ -1,5 +1,4 @@
 extern crate rand;
-extern crate rand_core;
 extern crate rand_xorshift;
 extern crate statrs;
 extern crate getopts;
@@ -26,7 +25,7 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 use rand::Rng;
-use rand_core::SeedableRng;
+use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
@@ -418,7 +417,7 @@ fn run() -> Result<(),ApplicationError> {
 				let len = sfen_list.len();
 
 				let f:Box<dyn FnMut() -> String + Send + 'static> = Box::new(move || {
-					sfen_list[rnd.gen_range(0, len)].clone()
+					sfen_list[rnd.gen_range(0..len)].clone()
 				});
 
 				Some(f)

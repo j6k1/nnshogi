@@ -1,6 +1,6 @@
 use rand;
 use rand::Rng;
-use rand_core::SeedableRng;
+use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use rand::distributions::Distribution;
 use statrs::distribution::Normal;
