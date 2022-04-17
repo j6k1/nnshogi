@@ -6,7 +6,7 @@ use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
 use nncombinator::arr::{Arr, DiffArr};
 use nncombinator::device::DeviceCpu;
-use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer};
+use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
 use nncombinator::lossfunction::Mse;
 use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{Persistence, SaveToFile, TextFilePersistence};
@@ -34,7 +34,7 @@ use packedsfen::hcpe::haffman_code::GameResult;
 
 pub struct Intelligence<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> {
 	nna:NN,
 	nnb:NN,
 	nna_filename:String,
@@ -118,7 +118,8 @@ pub struct IntelligenceCreator;
 impl IntelligenceCreator {
 	pub fn create(savedir:String,nna_filename:String,nnb_filename:String)
 		-> Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-							 ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static> {
+							 PreTrain<f32> + ForwardDiff<f32> +
+							 AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -185,7 +186,8 @@ impl IntelligenceCreator {
 }
 impl<NN> Intelligence<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> +
+			  AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	pub fn new(nna:NN,nnb:NN,nna_filename:String,nnb_filename:String,nnsavedir:String) -> Intelligence<NN> {
 		Intelligence {
 			nna:nna,
@@ -200,7 +202,7 @@ impl<NN> Intelligence<NN>
 	}
 
 	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> (NN::OutStack,NN::OutStack) {
+		-> (<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack) {
 
 		let sa = self.nna.forward_diff(DiffInput::NotDiff(Self::make_input(
 			is_self,t,b,mc
@@ -227,16 +229,16 @@ impl<NN> Intelligence<NN>
 		(answer * (1 << 29) as f32) as i32
 	}
 
-	pub fn evalute_by_diff(&self, snapshot:&(NN::OutStack,NN::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
-		-> Result<(i32,(NN::OutStack,NN::OutStack)),CommonError> {
+	pub fn evalute_by_diff(&self, snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
+		-> Result<(i32,(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)),CommonError> {
 		let (sa,sb) = snapshot;
 
 		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
-		let o = self.nna.ask_diff_input(sa.clone());
+		let o = self.nna.ask_diff_input(sa);
 
 		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
 
-		let o = self.nnb.ask_diff_input(sb.clone());
+		let o = self.nnb.ask_diff_input(sb);
 
 		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
 
@@ -245,7 +247,7 @@ impl<NN> Intelligence<NN>
 		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
 	}
 
-	pub fn evalute_by_snapshot(&self,snapshot:&(NN::OutStack,NN::OutStack)) -> i32 {
+	pub fn evalute_by_snapshot(&self,snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)) -> i32 {
 		match snapshot {
 			&(sa,sb) => {
 				let (a,b) = (0.5f32,0.5f32);

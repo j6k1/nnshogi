@@ -31,7 +31,7 @@ use nn::{Intelligence};
 use solver::*;
 use std::sync::mpsc::Receiver;
 use nncombinator::arr::{Arr, DiffArr};
-use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff};
+use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff, PreTrain};
 use usiagent::output::USIOutputWriter;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -109,7 +109,7 @@ type Strategy<L,S,NN,ST> = fn (&Arc<Search<NN>>,
 						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
 pub struct Environment<L,S,NN> where L: Logger, S: InfoSender,
 										NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-											ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+											PreTrain<f32> +	ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	solver:Solver<CommonError,NN>,
 	event_queue:Arc<Mutex<UserEventQueue>>,
 	evalutor:Arc<Intelligence<NN>>,
@@ -127,7 +127,7 @@ impl<L,S,NN> Clone for Environment<L,S,NN>
 	where L: Logger,
 		  S: InfoSender,
 	      NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		  	  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	fn clone(&self) -> Self {
 		Environment {
 			solver:Solver::new(),
@@ -147,7 +147,7 @@ impl<L,S,NN> Clone for Environment<L,S,NN>
 }
 impl<L,S,NN> Environment<L,S,NN> where L: Logger, S: InfoSender,
 									   NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-									   	   ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+									   	   PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	pub fn new(event_queue:Arc<Mutex<UserEventQueue>>,
 			   evalutor:Arc<Intelligence<NN>>,
 			   info_sender:S,
@@ -176,7 +176,7 @@ impl<L,S,NN> Environment<L,S,NN> where L: Logger, S: InfoSender,
 }
 pub struct Search<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	kyokumenhash:KyokumenHash<u64>,
 	base_depth:u32,
 	max_depth:u32,
@@ -193,7 +193,7 @@ pub struct Search<NN>
 }
 impl<NN> Search<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	pub fn new() -> Search<NN> {
 		let max_ply_timelimit = if MAX_PLY_TIMELIMIT >  0 {
 			Some(Duration::from_millis(MAX_PLY_TIMELIMIT))
@@ -378,7 +378,7 @@ impl<NN> Search<NN>
 	*/
 
 	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence<NN>>,teban:Teban,state:&State,mc:&MochigomaCollections)
-		-> Result<(NN::OutStack,NN::OutStack),CommonError> {
+		-> Result<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack),CommonError> {
 
 		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc);
 
@@ -406,13 +406,13 @@ impl<NN> Search<NN>
 	*/
 
 	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
-								self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-								opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+								opponent_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 								teban:Teban,state:&Option<&Arc<State>>,
 								mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Result<(Evaluation,(NN::OutStack,NN::OutStack),
-				   			  (NN::OutStack,NN::OutStack)),CommonError>
+		-> Result<(Evaluation,(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack),
+				   			  (<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)),CommonError>
 		where L: Logger, S: InfoSender,
 			  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -454,8 +454,8 @@ impl<NN> Search<NN>
 
 	#[allow(unused)]
 	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
-							self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-							opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+							self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+							opponent_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 							teban:Teban,state:&Option<&Arc<State>>,
 							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
@@ -498,8 +498,8 @@ impl<NN> Search<NN>
 	}
 
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN>>,
-						   self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-						   opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>)
+						   self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+						   opponent_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>)
 		-> Score {
 
 		let ss = evalutor.evalute_by_snapshot(self_snapshot);
@@ -512,8 +512,8 @@ impl<NN> Search<NN>
 								env:&mut Environment<L,S,NN>,
 					  			event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
 					  			solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
-								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								self_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+								opponent_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
 								m:Option<AppliedMove>,mc:&Arc<MochigomaCollections>,
@@ -528,7 +528,7 @@ impl<NN> Search<NN>
 								mhash:u64,shash:u64,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								strategy:Strategy<L,S,NN,NN::OutStack>,
+								strategy:Strategy<L,S,NN,<NN as PreTrain<f32>>::OutStack>,
 	) -> Evaluation where L: Logger, S: InfoSender,
 						  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		if let None = env.kyokumen_score_map.get(teban,&mhash,&shash) {
@@ -837,8 +837,8 @@ impl<NN> Search<NN>
 								env:&mut Environment<L,S,NN>,
 						  		event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
 						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
-								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								self_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+								opponent_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
@@ -1022,8 +1022,8 @@ impl<NN> Search<NN>
 								env:&mut Environment<L,S,NN>,
 								event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
 								_:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
-								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
-								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								self_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+								opponent_nn_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
@@ -1395,7 +1395,7 @@ impl<NN> Search<NN>
 }
 pub struct NNShogiPlayer<NN,C>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	search:Arc<Search<NN>>,
 	kyokumen:Option<Kyokumen>,
@@ -1416,7 +1416,7 @@ pub struct NNShogiPlayer<NN,C>
 }
 impl<NN,C> fmt::Debug for NNShogiPlayer<NN,C>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "NNShogiPlayer")
@@ -1424,7 +1424,7 @@ impl<NN,C> fmt::Debug for NNShogiPlayer<NN,C>
 }
 impl<NN,C> NNShogiPlayer<NN,C>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	pub fn new(nna_filename:String, nnb_filename:String,
 			   bias_shake_shake:bool,learn_max_threads:usize,
@@ -1451,7 +1451,7 @@ impl<NN,C> NNShogiPlayer<NN,C>
 }
 impl<NN,C> USIPlayer<CommonError> for NNShogiPlayer<NN,C>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
@@ -1865,7 +1865,7 @@ impl<NN,C> USIPlayer<CommonError> for NNShogiPlayer<NN,C>
 
 		let limit = limit.to_instant(Instant::now());
 
-		let search = Search::new();
+		let search = Search::<NN>::new();
 
 		let mut info_sender = info_sender.clone();
 
