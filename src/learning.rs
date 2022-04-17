@@ -23,12 +23,15 @@ use csaparser::EndState;
 
 use error::ApplicationError;
 use error::CommonError;
-use nn::Intelligence;
-use rand::Rng;
+use nn::{Trainer, TrainerCreator};
+use rand::{Rng, SeedableRng};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, Read, BufWriter};
 use std::fs::{File, OpenOptions};
 use std::path::Path;
+use nncombinator::layer::{BatchTrain, ForwardAll};
+use nncombinator::persistence::{Persistence, TextFilePersistence};
+use rand_xorshift::XorShiftRng;
 use usiagent::output::USIStdErrorWriter;
 
 #[derive(Debug,Deserialize,Serialize)]
@@ -184,7 +187,7 @@ impl CsaLearnener {
 
 		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
 
-		let mut evalutor = Intelligence::new(String::from("data"),
+		let mut evalutor = TrainerCreator::create(String::from("data"),
 															String::from("nn.a.bin"),
 															String::from("nn.b.bin"),false);
 
@@ -312,12 +315,12 @@ impl CsaLearnener {
 				let (a,b) = if bias_shake_shake {
 					let mut rnd = rand::thread_rng();
 
-					let a: f64 = rnd.gen();
-					let b: f64 = 1f64 - a;
+					let a: f32 = rnd.gen();
+					let b: f32 = 1f32 - a;
 
 					(a,b)
 				} else {
-					(1f64,1f64)
+					(0.5f32,0.5f32)
 				};
 
 				let teban = teban.opposite();
@@ -334,15 +337,15 @@ impl CsaLearnener {
 							ab
 						}
 						&GameEndState::Win => {
-							0f64
+							0f32
 						},
 						&GameEndState::Lose if t == teban => {
-							0f64
+							0f32
 						},
 						&GameEndState::Lose => {
 							ab
 						},
-						_ => 0.5f64
+						_ => 0.5f32
 					}
 				}, a,b, &*user_event_queue) {
 					Err(_) => {
@@ -351,8 +354,8 @@ impl CsaLearnener {
 						)));
 					},
 					Ok((msa,moa,msb,mob)) => {
-						println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
-						println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+						println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f32);
+						println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f32);
 					}
 				};
 
@@ -417,20 +420,21 @@ impl CsaLearnener {
 
 	}
 
-	pub fn learning_batch(&mut self,kifudir:String,
+	pub fn learning_batch<NN>(&mut self,kifudir:String,
 							   ext:&str,
 							   bias_shake_shake:bool,
 							   learn_max_threads:usize,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   learning_process:fn(
-								   &mut Intelligence,
+								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
 								   bool,
 								   usize,
 								   &Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
 							   ) -> Result<(),ApplicationError>
-	) -> Result<(),ApplicationError> {
+	) -> Result<(),ApplicationError> where NN: BatchTrain<f32> +
+											   ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -447,7 +451,7 @@ impl CsaLearnener {
 
 		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
 
-		let mut evalutor = Intelligence::new(String::from("data"),
+		let mut evalutor = TrainerCreator::create(String::from("data"),
 											 String::from("nn.a.bin"),
 											 String::from("nn.b.bin"),false);
 
@@ -612,38 +616,23 @@ impl CsaLearnener {
 					let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
 					let a = rnd.gen();
-					let b = 1f64 - a;
+					let b = 1f32 - a;
 
 					(a,b)
 				} else {
-					(0.5f64,0.5f64
 					let (a,b) = if self.bias_shake_shake {
 						let mut rnd = rand::thread_rng();
 						let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
 						let a = rnd.gen();
-						let b = 1f64 - a;
+						let b = 1f32 - a;
 
 						(a,b)
 					} else {
-						(0.5f64,0.5f64)
+						(0.5f32,0.5f32)
 					};
-
-					let nnaanswera = ssa.r[0];
-					let nnbanswerb = ssb.r[0];
-
-					let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
-
-					((i16::from(answer) as i32) << 23) as i64
-
 				};
 
-				let nnaanswera = ssa.r[0];
-				let nnbanswerb = ssb.r[0];
-
-				let answer = nnaanswera * a.into() + nnbanswerb * b.into() - 0.5.into();
-
-				((i16::from(answer) as i32) << 23) as i64
 				if batch.len() == learn_batch_size {
 					learning_process(&mut evalutor,
 											batch,
@@ -693,21 +682,23 @@ impl CsaLearnener {
 		Ok(())
 	}
 
-	fn learning_from_yaneuraou_bin_batch(evalutor:&mut Intelligence,
+	fn learning_from_yaneuraou_bin_batch<NN>(evalutor:&mut Trainer<NN>,
 										 batch:Vec<Vec<u8>>,
 										 bias_shake_shake:bool,
 										 learn_max_threads:usize,
 										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
-	) -> Result<(),ApplicationError> {
+	) -> Result<(),ApplicationError>
+		where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+
 		let (a,b) = if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
 
-			let a: f64 = rnd.gen();
-			let b: f64 = 1f64 - a;
+			let a: f32 = rnd.gen();
+			let b: f32 = 1f32 - a;
 
 			(a,b)
 		} else {
-			(1f64,1f64)
+			(1f32,1f32)
 		};
 
 		match evalutor.learning_by_packed_sfens(
@@ -720,9 +711,9 @@ impl CsaLearnener {
 						ab
 					}
 					&GameEndState::Lose => {
-						0f64
+						0f32
 					},
-					_ => 0.5f64
+					_ => 0.5f32
 				}
 			}, a,b, &*user_event_queue) {
 			Err(_) => {
@@ -731,28 +722,29 @@ impl CsaLearnener {
 				)));
 			},
 			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
-				println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
 				Ok(())
 			}
 		}
 	}
 
-	fn learning_from_hcpe_batch(evalutor:&mut Intelligence,
-										 batch:Vec<Vec<u8>>,
-										 bias_shake_shake:bool,
-										 learn_max_threads:usize,
-										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
-	) -> Result<(),ApplicationError> {
-		let (a,b) = if bias_shake_shake {
+	fn learning_from_hcpe_batch<NN>(evalutor: &mut Trainer<NN>,
+								batch:Vec<Vec<u8>>,
+								bias_shake_shake:bool,
+								learn_max_threads:usize,
+								user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
+	) -> Result<(),ApplicationError>
+		where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+
+			let (a,b) = if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
 
-			let a: f64 = rnd.gen();
-			let b: f64 = 1f64 - a;
+			let a: f32 = rnd.gen();
+			let b: f32 = 1f32 - a;
 
 			(a,b)
 		} else {
-			(1f64,1f64)
+			(1f32,1f32)
 		};
 
 		match evalutor.learning_by_hcpe(
@@ -765,9 +757,9 @@ impl CsaLearnener {
 						ab
 					}
 					&GameEndState::Lose => {
-						0f64
+						0f32
 					},
-					_ => 0.5f64
+					_ => 0.5f32
 				}
 			}, a,b, &*user_event_queue) {
 			Err(_) => {
@@ -776,8 +768,7 @@ impl CsaLearnener {
 				)));
 			},
 			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f64);
-				println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f64);
+				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
 				Ok(())
 			}
 		}

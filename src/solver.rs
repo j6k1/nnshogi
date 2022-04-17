@@ -5,6 +5,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic;
 use std::sync::atomic::AtomicBool;
+use nncombinator::arr::{Arr, DiffArr};
+use nncombinator::{Cons, Stack};
+use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff, PreTrain};
 
 use usiagent::shogi::*;
 use usiagent::rule::*;
@@ -24,14 +27,21 @@ pub enum MaybeMate {
 	Continuation,
 	Unknown,
 }
-pub struct Solver<E> where E: PlayerError {
-	error_type:PhantomData<E>
+pub struct Solver<E,NN,SS> where E: PlayerError {
+	error_type:PhantomData<E>,
+	nn_type:PhantomData<NN>,
+	stack_type:PhantomData<SS>,
 }
-impl<E> Solver<E> where E: PlayerError {
-	pub fn new()
-	-> Solver<E> {
+impl<E,NN,SS> Solver<E,NN,SS>
+	where E: PlayerError, NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
+			 PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>>+
+			 ForwardDiff<f32> + AskDiffInput<f32>,
+		  SS: Stack {
+	pub fn new() -> Solver<E,NN,SS> {
 		Solver {
-			error_type:PhantomData::<E>
+			error_type:PhantomData::<E>,
+			nn_type:PhantomData::<NN>,
+			stack_type:PhantomData::<SS>,
 		}
 	}
 	pub fn checkmate<L,F,S>(&mut self,
@@ -43,14 +53,14 @@ impl<E> Solver<E> where E: PlayerError {
 							oute_kyokumen_map:&mut KyokumenMap<u64,()>,
 							already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
 							current_kyokumen_map:&mut KyokumenMap<u64,u32>,
-							hasher:&Search,
+							hasher:&Search<NN,SS>,
 							mhash:u64,shash:u64,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																UserEvent,Solver<E>,L,E>,)
+																UserEvent,Solver<E,NN,SS>,L,E>,)
 	-> MaybeMate where E: PlayerError, L: Logger, F: FnMut() -> bool, S: FnMut(u32,u64) {
 		let mvs = Rule::oute_only_moves_all(teban, state, mc);
 
@@ -156,29 +166,38 @@ mod checkmate {
 		}
 	}
 
-	pub struct CheckmateStrategy<E,O,R>
-			where E: PlayerError,
+	pub struct CheckmateStrategy<E,O,R,NN,SS> where E: PlayerError,
 					O: Comparator<(LegalMove,usize)>,
-					R: Comparator<(LegalMove,usize)> {
+					R: Comparator<(LegalMove,usize)>,
+					NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
+						PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
+						ForwardDiff<f32> + AskDiffInput<f32>,
+					SS: Stack {
 		error_type:PhantomData<E>,
 		oute_comparator:O,
 		response_oute_comparator:R,
 		nodes:u64,
 		current_frame:CheckmateStackFrame,
 		stack:Vec<CheckmateStackFrame>,
+		nn_type:PhantomData<NN>,
+		nn_stack_type:PhantomData<SS>
 	}
 
-	pub type MateStrategy<E> = CheckmateStrategy<E,DescComparator,AscComparator>;
-	pub type NomateStrategy<E> = CheckmateStrategy<E,AscComparator,DescComparator>;
+	pub type MateStrategy<E,NN,SS> = CheckmateStrategy<E,DescComparator,AscComparator,NN,SS>;
+	pub type NomateStrategy<E,NN,SS> = CheckmateStrategy<E,AscComparator,DescComparator,NN,SS>;
 
-	impl<E,O,R> CheckmateStrategy<E,O,R>
-			where E: PlayerError,
-					O: Comparator<(LegalMove,usize)>,
-					R: Comparator<(LegalMove,usize)> {
+	impl<E,O,R,NN,SS> CheckmateStrategy<E,O,R,NN,SS>
+		where E: PlayerError,
+			  O: Comparator<(LegalMove,usize)>,
+			  R: Comparator<(LegalMove,usize)>,
+			  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
+			  	  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
+			  	  ForwardDiff<f32> + AskDiffInput<f32>,
+			  SS: Stack {
 		fn new(current_frame:CheckmateStackFrame,
 				oute_comparator:O,
 				response_oute_comparator:R,
-		) -> CheckmateStrategy<E,O,R> {
+		) -> CheckmateStrategy<E,O,R,NN,SS> {
 			CheckmateStrategy {
 				error_type:PhantomData::<E>,
 				oute_comparator:oute_comparator,
@@ -186,6 +205,8 @@ mod checkmate {
 				nodes:0,
 				stack:Vec::new(),
 				current_frame:current_frame,
+				nn_type:PhantomData::<NN>,
+				nn_stack_type:PhantomData::<SS>
 			}
 		}
 
@@ -194,7 +215,7 @@ mod checkmate {
 						ignore_kyokumen_map:KyokumenMap<u64,()>,
 						oute_kyokumen_map:KyokumenMap<u64,()>,
 						current_kyokumen_map:KyokumenMap<u64,u32>)
-		-> CheckmateStrategy<E,DescComparator,AscComparator> {
+		-> CheckmateStrategy<E,DescComparator,AscComparator,NN,SS> {
 			CheckmateStrategy::new(CheckmateStackFrame {
 				teban:teban,
 				state:state,
@@ -216,7 +237,7 @@ mod checkmate {
 						ignore_kyokumen_map:KyokumenMap<u64,()>,
 						oute_kyokumen_map:KyokumenMap<u64,()>,
 						current_kyokumen_map:KyokumenMap<u64,u32>)
-		-> CheckmateStrategy<E,AscComparator,DescComparator> {
+		-> CheckmateStrategy<E,AscComparator,DescComparator,NN,SS> {
 			CheckmateStrategy::new(CheckmateStackFrame {
 				teban:teban,
 				state:state,
@@ -239,18 +260,18 @@ mod checkmate {
 		}
 
 		pub fn resume<L,F,S>(&mut self,
-							solver:&mut Solver<E>,
+							solver:&mut Solver<E,NN,SS>,
 							strict_moves:bool,
 							max_depth:Option<u32>,
 							max_nodes:Option<u64>,
 							already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-							hasher:&Search,
+							hasher:&Search<NN,SS>,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-											UserEvent,Solver<E>,L,E>
+											UserEvent,Solver<E,NN,SS>,L,E>
 		)  -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool,
@@ -270,19 +291,19 @@ mod checkmate {
 		}
 
 		fn exec<L,F,S>(&mut self,
-							solver:&mut Solver<E>,
+							solver:&mut Solver<E,NN,SS>,
 							strict_moves:bool,
 							depth:usize,
 							max_depth:Option<u32>,
 							max_nodes:Option<u64>,
 							already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-							hasher:&Search,
+							hasher:&Search<NN,SS>,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-											UserEvent,Solver<E>,L,E>
+											UserEvent,Solver<E,NN,SS>,L,E>
 		) -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool,
@@ -381,16 +402,16 @@ mod checkmate {
 		}
 
 		pub fn preprocess<L,F>(&mut self,
-								solver:&mut Solver<E>,
+								solver:&mut Solver<E,NN,SS>,
 								strict_moves:bool,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-								hasher:&Search,
+								hasher:&Search<NN,SS>,
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																	UserEvent,Solver<E>,L,E>
+																	UserEvent,Solver<E,NN,SS>,L,E>
 		)  -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool {
@@ -406,16 +427,16 @@ mod checkmate {
 		}
 
 		fn response_oute_preprocess<L,F>(&mut self,
-								solver:&mut Solver<E>,
+								solver:&mut Solver<E,NN,SS>,
 								_:bool,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-								hasher:&Search,
+								hasher:&Search<NN,SS>,
 								_:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																	UserEvent,Solver<E>,L,E>
+																	UserEvent,Solver<E,NN,SS>,L,E>
 		)  -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool {
@@ -496,19 +517,19 @@ mod checkmate {
 		}
 
 		fn response_oute<L,F,S>(&mut self,
-								solver:&mut Solver<E>,
+								solver:&mut Solver<E,NN,SS>,
 								strict_moves:bool,
 								max_depth:Option<u32>,
 								max_nodes:Option<u64>,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-								hasher:&Search,
+								hasher:&Search<NN,SS>,
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								on_searchstart:&mut S,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																	UserEvent,Solver<E>,L,E>
+																	UserEvent,Solver<E,NN,SS>,L,E>
 		)  -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool,
@@ -646,16 +667,16 @@ mod checkmate {
 		}
 
 		fn oute_only_preprocess<L,F>(&mut self,
-								solver:&mut Solver<E>,
+								solver:&mut Solver<E,NN,SS>,
 								strict_moves:bool,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-								hasher:&Search,
+								hasher:&Search<NN,SS>,
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																	UserEvent,Solver<E>,L,E>
+																	UserEvent,Solver<E,NN,SS>,L,E>
 		)  -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool {
@@ -745,19 +766,19 @@ mod checkmate {
 		}
 
 		fn oute_only<L,F,S>(&mut self,
-								solver:&mut Solver<E>,
+								solver:&mut Solver<E,NN,SS>,
 								strict_moves:bool,
 								max_depth:Option<u32>,
 								max_nodes:Option<u64>,
 								already_oute_kyokumen_map:&mut Option<KyokumenMap<u64,bool>>,
-								hasher:&Search,
+								hasher:&Search<NN,SS>,
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
 								on_searchstart:&mut S,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
-																	UserEvent,Solver<E>,L,E>,
+																	UserEvent,Solver<E,NN,SS>,L,E>,
 		) -> MaybeMate where E: PlayerError,
 								L: Logger,
 								F: FnMut() -> bool,

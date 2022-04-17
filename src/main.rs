@@ -9,7 +9,6 @@ extern crate serde_derive;
 extern crate crossbeam_channel;
 
 extern crate usiagent;
-extern crate simplenn;
 extern crate nncombinator;
 extern crate csaparser;
 extern crate packedsfen;

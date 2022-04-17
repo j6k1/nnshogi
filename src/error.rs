@@ -12,11 +12,10 @@ use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use usiagent::error::SelfMatchRunningError;
 use usiagent::error::TypeConvertError;
-use simplenn::error::InvalidStateError;
-use simplenn::error::PersistenceError;
 use usiagent::error::SfenStringConvertError;
 use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
+use nncombinator::error::{ConfigReadError, TrainingError};
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -57,11 +56,6 @@ impl<'a> From<CommonError> for USIAgentRunningError<'a,UserEventKind,CommonError
 		USIAgentRunningError::from(USIAgentStartupError::PlayerError(err))
 	}
 }
-impl From<InvalidStateError> for CommonError {
-	fn from(err: InvalidStateError) -> CommonError {
-		CommonError::Fail(format!("invalid state. ({})",err))
-	}
-}
 impl From<TypeConvertError<String>> for CommonError {
 	fn from(err: TypeConvertError<String>) -> CommonError {
 		CommonError::Fail(format!("An error occurred during type conversion. ({})",err))
@@ -70,11 +64,6 @@ impl From<TypeConvertError<String>> for CommonError {
 impl From<io::Error> for CommonError {
 	fn from(_: io::Error) -> CommonError {
 		CommonError::Fail(String::from("I/O Error."))
-	}
-}
-impl<E> From<PersistenceError<E>> for CommonError {
-	fn from(_: PersistenceError<E>) -> CommonError {
-		CommonError::Fail(String::from("An error occurred while saving model of NN."))
 	}
 }
 impl From<UsiProtocolError> for CommonError {
@@ -97,7 +86,9 @@ pub enum ApplicationError {
 	LogicError(String),
 	LearningError(String),
 	KifuWriteError(KifuWriteError),
-	SerdeError(toml::ser::Error)
+	SerdeError(toml::ser::Error),
+	ConfigReadError(ConfigReadError),
+	TrainingError(TrainingError)
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -114,6 +105,8 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::LearningError(ref s) => write!(f,"{}",s),
 			ApplicationError::KifuWriteError(ref s) => write!(f,"{}",s),
 			ApplicationError::SerdeError(ref e) => write!(f,"{}",e),
+			ApplicationError::ConfigReadError(ref e) => write!(f,"{}",e),
+			ApplicationError::TrainingError(ref e) => write!(f,"{}",e)
 		}
 	}
 }
@@ -131,7 +124,9 @@ impl error::Error for ApplicationError {
 			ApplicationError::LogicError(_) => "Logic error.",
 			ApplicationError::LearningError(_) => "An error occurred while learning the neural network.",
 			ApplicationError::KifuWriteError(_) => "An error occurred when recording kifu or initialize KifuWriter.",
-			ApplicationError::SerdeError(_) => "An error occurred during serialization or deserialization."
+			ApplicationError::SerdeError(_) => "An error occurred during serialization or deserialization.",
+			ApplicationError::ConfigReadError(_) => "An error occurred while loading the neural network model.",
+			ApplicationError::TrainingError(_) => "An error occurred while training the model."
 		}
 	}
 
@@ -149,6 +144,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::LearningError(_) => None,
 			ApplicationError::KifuWriteError(ref e) => Some(e),
 			ApplicationError::SerdeError(ref e) => Some(e),
+			ApplicationError::ConfigReadError(ref e) => Some(e),
+			ApplicationError::TrainingError(ref e) => Some(e)
 		}
 	}
 }
@@ -192,3 +189,14 @@ impl From<toml::ser::Error> for ApplicationError {
 		ApplicationError::SerdeError(err)
 	}
 }
+impl From<ConfigReadError> for ApplicationError {
+	fn from(err: ConfigReadError) -> ApplicationError {
+		ApplicationError::ConfigReadError(err)
+	}
+}
+impl From<TrainingError> for ApplicationError {
+	fn from(err: TrainingError) -> ApplicationError {
+		ApplicationError::TrainingError(err)
+	}
+}
+
