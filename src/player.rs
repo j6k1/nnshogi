@@ -2,8 +2,6 @@ use std;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::marker::PhantomData;
-use rand;
-use rand::Rng;
 use std::thread;
 use std::sync::{Arc, mpsc};
 use std::sync::Mutex;
@@ -33,8 +31,7 @@ use nn::{Intelligence};
 use solver::*;
 use std::sync::mpsc::Receiver;
 use nncombinator::arr::{Arr, DiffArr};
-use nncombinator::{Cons, Stack};
-use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff, PreTrain};
+use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff};
 use usiagent::output::USIOutputWriter;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -94,11 +91,11 @@ const MAX_PLY_TIMELIMIT:u64 = 0;
 const TURN_COUNT:u32 = 50;
 const MIN_TURN_COUNT:u32 = 5;
 
-type Strategy<L,S,NN,SS> = fn (&Arc<Search<NN,SS>>,
-						&mut Environment<L,S,NN,SS>,
-						&mut UserEventDispatcher<Search<NN,SS>,CommonError,L>,
-						&mut UserEventDispatcher<Solver<CommonError,NN,SS>,CommonError,L>,
-						&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+type Strategy<L,S,NN,ST> = fn (&Arc<Search<NN>>,
+						&mut Environment<L,S,NN>,
+						&mut UserEventDispatcher<Search<NN>,CommonError,L>,
+						&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
+						&Arc<(ST,ST)>,&Arc<(ST,ST)>,
 						Teban,&Arc<State>,
 						&Vec<AppliedMove>,
 						Score,Score,
@@ -110,14 +107,12 @@ type Strategy<L,S,NN,SS> = fn (&Arc<Search<NN,SS>>,
 						u64,u64,
 						u32,u32,u32,u64,
 						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
-pub struct Environment<L,S,NN,SS> where L: Logger, S: InfoSender,
-										NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-											PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>>+
-											ForwardDiff<f32> + AskDiffInput<f32>,
-										SS: Stack {
-	solver:Solver<CommonError,NN,SS>,
+pub struct Environment<L,S,NN> where L: Logger, S: InfoSender,
+										NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+											ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+	solver:Solver<CommonError,NN>,
 	event_queue:Arc<Mutex<UserEventQueue>>,
-	evalutor:Arc<Intelligence<NN,SS>>,
+	evalutor:Arc<Intelligence<NN>>,
 	info_sender:S,
 	on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
 	limit:Option<Instant>,
@@ -128,13 +123,11 @@ pub struct Environment<L,S,NN,SS> where L: Logger, S: InfoSender,
 	nodes:Arc<AtomicU64>,
 	think_start_time:Instant
 }
-impl<L,S,NN,SS> Clone for Environment<L,S,NN,SS>
+impl<L,S,NN> Clone for Environment<L,S,NN>
 	where L: Logger,
 		  S: InfoSender,
-	      NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-		      PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-		  	  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS: Stack {
+	      NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+		  	  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
 	fn clone(&self) -> Self {
 		Environment {
 			solver:Solver::new(),
@@ -152,18 +145,16 @@ impl<L,S,NN,SS> Clone for Environment<L,S,NN,SS>
 		}
 	}
 }
-impl<L,S,NN,SS> Environment<L,S,NN,SS> where L: Logger, S: InfoSender,
-									   NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-									   	   PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-									   	   ForwardDiff<f32> + AskDiffInput<f32>,
-									   SS: Stack {
+impl<L,S,NN> Environment<L,S,NN> where L: Logger, S: InfoSender,
+									   NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+									   	   ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
 	pub fn new(event_queue:Arc<Mutex<UserEventQueue>>,
-			   evalutor:Arc<Intelligence<NN,SS>>,
+			   evalutor:Arc<Intelligence<NN>>,
 			   info_sender:S,
 			   on_error_handler:Arc<Mutex<OnErrorHandler<L>>>,
 			   think_start_time:Instant,
 			   limit:Option<Instant>,
-			   current_limit:Option<Instant>) -> Environment<L,S,NN,SS> {
+			   current_limit:Option<Instant>) -> Environment<L,S,NN> {
 		let stop = Arc::new(AtomicBool::new(false));
 		let quited = Arc::new(AtomicBool::new(false));
 
@@ -183,11 +174,9 @@ impl<L,S,NN,SS> Environment<L,S,NN,SS> where L: Logger, S: InfoSender,
 		}
 	}
 }
-pub struct Search<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS: Stack {
+pub struct Search<NN>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
 	kyokumenhash:KyokumenHash<u64>,
 	base_depth:u32,
 	max_depth:u32,
@@ -202,12 +191,10 @@ pub struct Search<NN,SS>
 	adjust_depth:bool,
 	nn_type:PhantomData<NN>
 }
-impl<NN,SS> Search<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS: Stack {
-	pub fn new() -> Search<NN,SS> {
+impl<NN> Search<NN>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+	pub fn new() -> Search<NN> {
 		let max_ply_timelimit = if MAX_PLY_TIMELIMIT >  0 {
 			Some(Duration::from_millis(MAX_PLY_TIMELIMIT))
 		} else {
@@ -276,7 +263,7 @@ impl<NN,SS> Search<NN,SS>
 		})
 	}
 
-	fn timeout_expected<S,L>(&self,search:&Arc<Search<NN,SS>>,env:&mut Environment<L,S,NN,SS>,start_time:Instant,
+	fn timeout_expected<S,L>(&self,search:&Arc<Search<NN>>,env:&mut Environment<L,S,NN>,start_time:Instant,
 			current_depth:u32,nodes:u64,processed_nodes:u32
 		) -> bool where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -327,7 +314,7 @@ impl<NN,SS> Search<NN,SS>
 		}
 	}
 
-	fn send_info<L,S>(&self, env:&mut Environment<L,S,NN,SS>,
+	fn send_info<L,S>(&self, env:&mut Environment<L,S,NN>,
 					  depth:u32, seldepth:u32, pv:&Vec<AppliedMove>)
 		where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -390,8 +377,8 @@ impl<NN,SS> Search<NN,SS>
 	}
 	*/
 
-	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence<NN,SS>>,teban:Teban,state:&State,mc:&MochigomaCollections)
-		-> Result<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>),CommonError> {
+	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence<NN>>,teban:Teban,state:&State,mc:&MochigomaCollections)
+		-> Result<(NN::OutStack,NN::OutStack),CommonError> {
 
 		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc);
 
@@ -418,14 +405,14 @@ impl<NN,SS> Search<NN,SS>
 	}
 	*/
 
-	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN,SS>>,
-								self_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-								opponent_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
+								self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
 								teban:Teban,state:&Option<&Arc<State>>,
 								mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Result<(Evaluation,(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>),
-				   			  (Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)),CommonError>
+		-> Result<(Evaluation,(NN::OutStack,NN::OutStack),
+				   			  (NN::OutStack,NN::OutStack)),CommonError>
 		where L: Logger, S: InfoSender,
 			  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
@@ -466,9 +453,9 @@ impl<NN,SS> Search<NN,SS>
 	}
 
 	#[allow(unused)]
-	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN,SS>>,
-							self_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-							opponent_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
+							self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+							opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
 							teban:Teban,state:&Option<&Arc<State>>,
 							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
@@ -510,9 +497,9 @@ impl<NN,SS> Search<NN,SS>
 		Ok(Score::Value(s))
 	}
 
-	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN,SS>>,
-						   self_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-						   opponent_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>)
+	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN>>,
+						   self_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+						   opponent_snapshot:&Arc<(NN::OutStack,NN::OutStack)>)
 		-> Score {
 
 		let ss = evalutor.evalute_by_snapshot(self_snapshot);
@@ -522,11 +509,11 @@ impl<NN,SS> Search<NN,SS>
 	}
 
 	fn negascout<L,S>(self:&Arc<Self>,
-								env:&mut Environment<L,S,NN,SS>,
-					  			event_dispatcher:&mut UserEventDispatcher<Search<NN,SS>,CommonError,L>,
-					  			solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN,SS>,CommonError,L>,
-								self_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-								opponent_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+								env:&mut Environment<L,S,NN>,
+					  			event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
+					  			solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
+								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
 								teban:Teban,state:&Arc<State>,
 								alpha:Score,beta:Score,
 								m:Option<AppliedMove>,mc:&Arc<MochigomaCollections>,
@@ -541,7 +528,7 @@ impl<NN,SS> Search<NN,SS>
 								mhash:u64,shash:u64,
 								depth:u32,current_depth:u32,base_depth:u32,
 								node_count:u64,
-								strategy:Strategy<L,S,NN,SS>,
+								strategy:Strategy<L,S,NN,NN::OutStack>,
 	) -> Evaluation where L: Logger, S: InfoSender,
 						  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 		if let None = env.kyokumen_score_map.get(teban,&mhash,&shash) {
@@ -846,12 +833,12 @@ impl<NN,SS> Search<NN,SS>
 		Some((depth,obtained,mhash,shash,oute_kyokumen_map,current_kyokumen_map,is_sennichite))
 	}
 
-	fn single_search<L,S>(search:&Arc<Search<NN,SS>>,
-								env:&mut Environment<L,S,NN,SS>,
-						  		event_dispatcher:&mut UserEventDispatcher<Search<NN,SS>,CommonError,L>,
-						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN,SS>,CommonError,L>,
-								self_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-								opponent_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+	fn single_search<L,S>(search:&Arc<Search<NN>>,
+								env:&mut Environment<L,S,NN>,
+						  		event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
+						  		solver_event_dispatcher:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
+								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
@@ -1031,12 +1018,12 @@ impl<NN,SS> Search<NN,SS>
 		Evaluation::Result(scoreval,best_move)
 	}
 
-	fn parallel_search<L,S>(search:&Arc<Search<NN,SS>>,
-								env:&mut Environment<L,S,NN,SS>,
-								event_dispatcher:&mut UserEventDispatcher<Search<NN,SS>,CommonError,L>,
-								_:&mut UserEventDispatcher<Solver<CommonError,NN,SS>,CommonError,L>,
-								self_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
-								opponent_nn_snapshot:&Arc<(Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>)>,
+	fn parallel_search<L,S>(search:&Arc<Search<NN>>,
+								env:&mut Environment<L,S,NN>,
+								event_dispatcher:&mut UserEventDispatcher<Search<NN>,CommonError,L>,
+								_:&mut UserEventDispatcher<Solver<CommonError,NN>,CommonError,L>,
+								self_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
+								opponent_nn_snapshot:&Arc<(NN::OutStack,NN::OutStack)>,
 								teban:Teban,state:&Arc<State>,pv:&Vec<AppliedMove>,
 								mut alpha:Score,beta:Score,
 								mc:&Arc<MochigomaCollections>,
@@ -1349,7 +1336,7 @@ impl<NN,SS> Search<NN,SS>
 	}
 
 	fn termination<L,S>(&self,r:&Receiver<(Evaluation,AppliedMove)>,
-				   threads:u32,env:&mut Environment<L,S,NN,SS>,
+				   threads:u32,env:&mut Environment<L,S,NN>,
 				   score:Score,best_move:Option<AppliedMove>) -> Evaluation where L: Logger, S: InfoSender {
 		env.stop.store(true,atomic::Ordering::Release);
 
@@ -1406,12 +1393,11 @@ impl<NN,SS> Search<NN,SS>
 		self.kyokumenhash.calc_initial_hash(b,ms,mg)
 	}
 }
-pub struct NNShogiPlayer<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS :Stack {
-	search:Arc<Search<NN,SS>>,
+pub struct NNShogiPlayer<NN,C>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
+	search:Arc<Search<NN>>,
 	kyokumen:Option<Kyokumen>,
 	mhash:u64,
 	shash:u64,
@@ -1422,29 +1408,27 @@ pub struct NNShogiPlayer<NN,SS>
 	nnb_filename:String,
 	bias_shake_shake:bool,
 	learn_max_threads: usize,
-	evalutor:Option<Arc<Intelligence<NN,SS>>>,
-	evalutor_creator: Box<dyn FnOnce() -> Intelligence<NN,SS> + Send + Sync + 'static>,
+	evalutor:Option<Arc<Intelligence<NN>>>,
+	evalutor_creator: C,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
 	moved:bool,
 }
-impl<NN,SS> fmt::Debug for NNShogiPlayer<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS :Stack {
+impl<NN,C> fmt::Debug for NNShogiPlayer<NN,C>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "NNShogiPlayer")
 	}
 }
-impl<NN,SS> NNShogiPlayer<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS :Stack {
+impl<NN,C> NNShogiPlayer<NN,C>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	pub fn new(nna_filename:String, nnb_filename:String,
 			   bias_shake_shake:bool,learn_max_threads:usize,
-			   evalutor_creator:impl FnOnce() -> Intelligence<NN,SS>) -> NNShogiPlayer<NN,SS> {
+			   evalutor_creator:C) -> NNShogiPlayer<NN,C> {
 		NNShogiPlayer {
 			search:Arc::new(Search::new()),
 			kyokumen:None,
@@ -1458,18 +1442,17 @@ impl<NN,SS> NNShogiPlayer<NN,SS>
 			bias_shake_shake,
 			learn_max_threads:learn_max_threads,
 			evalutor:None,
-			evalutor_creator:Box::new(&evalutor_creator),
+			evalutor_creator:evalutor_creator,
 			history:Vec::new(),
 			count_of_move_started:0,
 			moved:false,
 		}
 	}
 }
-impl<NN,SS> USIPlayer<CommonError> for NNShogiPlayer<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS :Stack {
+impl<NN,C> USIPlayer<CommonError> for NNShogiPlayer<NN,C>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static,
+		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
 	fn get_option_kinds(&mut self) -> Result<BTreeMap<String,SysEventOptionKind>,CommonError> {
@@ -1941,6 +1924,7 @@ impl<NN,SS> USIPlayer<CommonError> for NNShogiPlayer<NN,SS>
 		event_queue:Arc<Mutex<UserEventQueue>>,
 		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
+		/*
 		let teban = self.kyokumen.as_ref().map(|k| k.teban).ok_or(
 			UsiProtocolError::InvalidState(
 						String::from("Information of 'teban' is not set."))
@@ -1960,12 +1944,12 @@ impl<NN,SS> USIPlayer<CommonError> for NNShogiPlayer<NN,SS>
 							let (a,b) = if self.bias_shake_shake {
 								let mut rnd = rand::thread_rng();
 
-								let a: f64 = rnd.gen();
-								let b: f64 = 1f64 - a;
+								let a: f32 = rnd.gen();
+								let b: f32 = 1f32 - a;
 
 								(a,b)
 							} else {
-								(1f64,1f64)
+								(1f32,1f32)
 							};
 
 							evalutor.learning_by_training_data(teban,
@@ -1978,15 +1962,15 @@ impl<NN,SS> USIPlayer<CommonError> for NNShogiPlayer<NN,SS>
 											ab
 										}
 										&GameEndState::Win => {
-											0f64
+											0f32
 										},
 										&GameEndState::Lose if t == teban => {
-											0f64
+											0f32
 										},
 										&GameEndState::Lose => {
 											ab
 										},
-										_ => 0.5f64
+										_ => 0.5f32
 									}
 								}, a,b,&*event_queue)?;
 							evalutor.quantization();
@@ -2003,6 +1987,8 @@ impl<NN,SS> USIPlayer<CommonError> for NNShogiPlayer<NN,SS>
 			}
 			self.history = Vec::new();
 		}
+
+		 */
 		Ok(())
 	}
 

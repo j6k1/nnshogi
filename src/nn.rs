@@ -1,17 +1,16 @@
 use std::cell::RefCell;
 use std::sync::{Mutex};
 use std::fs;
-use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
 use nncombinator::arr::{Arr, DiffArr};
 use nncombinator::device::DeviceCpu;
-use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
-use nncombinator::{Cons, Stack};
+use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer};
 use nncombinator::lossfunction::Mse;
 use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{Persistence, SaveToFile, TextFilePersistence};
+use nncombinator::Stack;
 use rand::{prelude, Rng, SeedableRng};
 use rand::prelude::{Distribution};
 use rand_distr::Normal;
@@ -33,10 +32,9 @@ use packedsfen::traits::Reader;
 use packedsfen::hcpe::reader::HcpeReader;
 use packedsfen::hcpe::haffman_code::GameResult;
 
-pub struct Intelligence<NN,S>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  S: Stack {
+pub struct Intelligence<NN>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> {
 	nna:NN,
 	nnb:NN,
 	nna_filename:String,
@@ -45,7 +43,6 @@ pub struct Intelligence<NN,S>
 	packed_sfen_reader:PackedSfenReader,
 	hcpe_reader:HcpeReader,
 	quited:bool,
-	stack_type:PhantomData<S>
 }
 
 const BANMEN_SIZE:usize = 81;
@@ -120,8 +117,8 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
 	pub fn create(savedir:String,nna_filename:String,nnb_filename:String)
-		-> Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-						ForwardDiff<f32> + AskDiffInput<f32>,impl Stack> {
+		-> Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+							 ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -186,12 +183,10 @@ impl IntelligenceCreator {
 		Intelligence::new(nna,nnb,nna_filename,nnb_filename,savedir)
 	}
 }
-impl<NN,SS> Intelligence<NN,SS>
-	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>> +
-			  PreTrain<f32,OutStack=Cons<SS,Arr<f32,1>>> +
-			  ForwardDiff<f32> + AskDiffInput<f32>,
-		  SS: Stack {
-	pub fn new(nna:NN,nnb:NN,nna_filename:String,nnb_filename:String,nnsavedir:String) -> Intelligence<NN,SS> {
+impl<NN> Intelligence<NN>
+	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  ForwardDiff<f32> + AskDiffInput<f32,DiffInput=DiffArr<f32,2517>> + Send + Sync + 'static {
+	pub fn new(nna:NN,nnb:NN,nna_filename:String,nnb_filename:String,nnsavedir:String) -> Intelligence<NN> {
 		Intelligence {
 			nna:nna,
 			nnb:nnb,
@@ -201,8 +196,96 @@ impl<NN,SS> Intelligence<NN,SS>
 			packed_sfen_reader:PackedSfenReader::new(),
 			hcpe_reader:HcpeReader::new(),
 			quited:false,
-			stack_type:PhantomData::<SS>
 		}
+	}
+
+	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+		-> (NN::OutStack,NN::OutStack) {
+
+		let sa = self.nna.forward_diff(DiffInput::NotDiff(Self::make_input(
+			is_self,t,b,mc
+		)));
+
+		let sb = self.nnb.forward_diff(DiffInput::NotDiff(Self::make_input(
+			is_self,t,b,mc
+		)));
+
+		(sa,sb)
+	}
+
+	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
+		-> i32 {
+		let input = Self::make_input(is_self,t,b,mc);
+
+		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone()));
+		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone()));
+
+		let (a,b) = (0.5f32,0.5f32);
+
+		let answer = nnaanswera[0] * a + nnbanswerb[0] * b - 0.5;
+
+		(answer * (1 << 29) as f32) as i32
+	}
+
+	pub fn evalute_by_diff(&self, snapshot:&(NN::OutStack,NN::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
+		-> Result<(i32,(NN::OutStack,NN::OutStack)),CommonError> {
+		let (sa,sb) = snapshot;
+
+		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
+		let o = self.nna.ask_diff_input(sa.clone());
+
+		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
+
+		let o = self.nnb.ask_diff_input(sb.clone());
+
+		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
+
+		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone()) - 0.5;
+
+		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
+	}
+
+	pub fn evalute_by_snapshot(&self,snapshot:&(NN::OutStack,NN::OutStack)) -> i32 {
+		match snapshot {
+			&(sa,sb) => {
+				let (a,b) = (0.5f32,0.5f32);
+
+				let nnaanswera = sa.map(|ans| ans[0].clone());
+				let nnbanswerb = sb.map(|ans| ans[0].clone());
+
+				let answer = nnaanswera * a+ nnbanswerb * b - 0.5;
+
+				(answer * (1 << 29) as f32) as i32
+			}
+		}
+	}
+
+	#[allow(dead_code)]
+	fn handle_events<'a>(&mut self,event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+		-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
+		{
+		self.dispatch_events(event_queue)?;
+
+		Ok(())
+	}
+
+	#[allow(dead_code)]
+	fn dispatch_events<'a>(&mut self, event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
+		{
+		let events = {
+			event_queue.lock()?.drain_events()
+		};
+
+		for e in &events {
+			match e {
+				&UserEvent::Quit => {
+					self.quited = true
+				},
+				_ => (),
+			};
+		}
+
+		Ok(())
 	}
 
 	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
@@ -329,100 +412,6 @@ impl<NN,SS> Intelligence<NN,SS>
 		}
 
 		Ok(d)
-	}
-
-	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> (Cons<SS,Arr<f32,1>>,Cons<SS,Arr<f32,1>>) {
-
-		let sa = self.nna.forward_diff(DiffInput::NotDiff(Self::make_input(
-			is_self,t,b,mc
-		)));
-
-		let sb = self.nnb.forward_diff(DiffInput::NotDiff(Self::make_input(
-			is_self,t,b,mc
-		)));
-
-		(sa,sb)
-	}
-
-	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> i32 {
-		let input = Self::make_input(is_self,t,b,mc);
-
-		let nnaanswera = self.nna.forward_all(input.clone());
-		let nnbanswerb = self.nnb.forward_all(input.clone());
-
-		let (a,b) = (0.5f64,0.5f64);
-
-		let nnaanswera = nnaanswera[0];
-		let nnbanswerb = nnbanswerb[0];
-
-		let answer = nnaanswera * a + nnbanswerb * b - 0.5;
-
-		(answer * (1 << 29) as f32) as i32
-	}
-
-	pub fn evalute_by_diff<SA,SB>(&self, snapshot:&(Cons<SA,Arr<f32,1>>,Cons<SB,Arr<f32,1>>), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
-		-> Result<(i32,(Cons<SA,f32>,Cons<SB,f32>)),CommonError> where SA: Stack, SB: Stack {
-		let (sa,sb) = snapshot;
-
-		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
-		let o = self.nna.ask_diff_input(sa);
-
-		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
-
-		let o = self.nnb.ask_diff_input(sb);
-
-		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
-
-		let (a,b) = (0.5f64,0.5f64);
-
-		let answer = sa.1 * a + sb.1 * b - 0.5;
-
-		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
-	}
-
-	pub fn evalute_by_snapshot<SA,SB>(&self,snapshot:&(Cons<SA,Arr<f32,1>>,Cons<SB,Arr<f32,1>>)) -> i32 where SA: Stack, SB: Stack {
-		match snapshot {
-			&(sa,sb) => {
-				let (a,b) = (0.5f64,0.5f64);
-
-				let nnaanswera = sa.1;
-				let nnbanswerb = sb.1;
-
-				let answer = nnaanswera * a+ nnbanswerb * b - 0.5;
-
-				(answer * (1 << 29) as f32) as i32
-			}
-		}
-	}
-
-	#[allow(dead_code)]
-	fn handle_events<'a>(&mut self,event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-		-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
-		{
-		self.dispatch_events(event_queue)?;
-
-		Ok(())
-	}
-
-	#[allow(dead_code)]
-	fn dispatch_events<'a>(&mut self, event_queue:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)-> Result<(), EventDispatchError<'a,EventQueue<UserEvent,UserEventKind>,UserEvent,CommonError>>
-		{
-		let events = {
-			event_queue.lock()?.drain_events()
-		};
-
-		for e in &events {
-			match e {
-				&UserEvent::Quit => {
-					self.quited = true
-				},
-				_ => (),
-			};
-		}
-
-		Ok(())
 	}
 
 	#[inline]
@@ -639,10 +628,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 										   s:&GameEndState,
 										   learn_max_threads:usize,
 										   training_data_generator:&D,
-										   a:f64,b:f64,
+										   a:f32,b:f32,
 										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 										   -> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,Teban,f64) -> f64 {
+		where D: Fn(&GameEndState,Teban,f32) -> f32 {
 
 		let lossf = Mse::new();
 
@@ -743,10 +732,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 										  packed_sfens:Vec<Vec<u8>>,
 										  learn_max_threads:usize,
 										  training_data_generator:&D,
-										  a:f64,b:f64,
+										  a:f32,b:f32,
 										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,f64) -> f64 {
+		where D: Fn(&GameEndState,f32) -> f32 {
 
 		let lossf = Mse::new();
 
@@ -865,10 +854,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 								  hcpes:Vec<Vec<u8>>,
 								  learn_max_threads:usize,
 								  training_data_generator:&D,
-								  a:f64,b:f64,
+								  a:f32,b:f32,
 								  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 								  -> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,f64) -> f64 {
+		where D: Fn(&GameEndState,f32) -> f32 {
 
 		let lossf = Mse::new();
 
