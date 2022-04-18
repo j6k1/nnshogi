@@ -6,7 +6,7 @@ use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
 use nncombinator::arr::{Arr, DiffArr};
 use nncombinator::device::DeviceCpu;
-use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
+use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
 use nncombinator::lossfunction::Mse;
 use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{Persistence, SaveToFile, TextFilePersistence};
@@ -233,7 +233,7 @@ impl<NN> Intelligence<NN>
 		-> Result<(i32,(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)),CommonError> {
 		let (sa,sb) = snapshot;
 
-		let input = Intelligence::make_diff_input(is_self, t, b, mc, m)?;
+		let input = InputCreator::make_diff_input(is_self, t, b, mc, m)?;
 		let o = self.nna.ask_diff_input(sa);
 
 		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone(),o));
@@ -249,7 +249,7 @@ impl<NN> Intelligence<NN>
 
 	pub fn evalute_by_snapshot(&self,snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)) -> i32 {
 		match snapshot {
-			&(sa,sb) => {
+			(sa,sb) => {
 				let (a,b) = (0.5f32,0.5f32);
 
 				let nnaanswera = sa.map(|ans| ans[0].clone());
@@ -308,7 +308,7 @@ impl<NN> Intelligence<NN>
 						let kind = kinds[y][x];
 
 						if kind != KomaKind::Blank {
-							let index = Intelligence::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+							let index = InputCreator::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
 
 							inputs[index] = 1f32;
 						}
@@ -353,8 +353,8 @@ impl<NN> Intelligence<NN>
 		inputs
 	}
 
-	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<Vec<(usize, f32)>,CommonError> {
-		let mut d = Vec::new();
+	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<DiffArr<f32,2517>,CommonError> {
+		let mut d = DiffArr::new();
 
 		let (addi,subi) = if is_self {
 			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
@@ -362,8 +362,8 @@ impl<NN> Intelligence<NN>
 			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
 		};
 
-		d.push((subi,1.));
-		d.push((addi,1.));
+		d.push(subi,1.)?;
+		d.push(addi,1.)?;
 
 		match m {
 			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
@@ -374,31 +374,31 @@ impl<NN> Intelligence<NN>
 
 						let sk = kinds[sy as usize][sx as usize];
 
-						d.push((Intelligence::input_index_of_banmen(t, sk, sx, sy)?, -1.));
+						d.push(InputCreator::input_index_of_banmen(t, sk, sx, sy)?, -1.)?;
 
 						if n {
-							d.push((Intelligence::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1.));
+							d.push(InputCreator::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1.)?;
 						} else {
-							d.push((Intelligence::input_index_of_banmen(t,sk,dx,dy)?,1.));
+							d.push(InputCreator::input_index_of_banmen(t,sk,dx,dy)?,1.)?;
 						}
 
 						let dk = kinds[dy as usize][dx as usize];
 
 						if dk != KomaKind::Blank {
-							d.push((Intelligence::input_index_of_banmen(t,dk,dx,dy)?,-1.));
+							d.push(InputCreator::input_index_of_banmen(t,dk,dx,dy)?,-1.)?;
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
+							let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
 
-							d.push((offset+1, 1.));
+							d.push(offset+1, 1.)?;
 						}
 					}
 				}
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let offset = Intelligence::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
+				let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
 
 				if offset < 1 {
 					return Err(CommonError::Fail(
@@ -406,9 +406,9 @@ impl<NN> Intelligence<NN>
 							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
 						)))
 				} else {
-					d.push((offset, -1.));
+					d.push(offset, -1.)?;
 
-					d.push((Intelligence::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1.));
+					d.push(InputCreator::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1.)?;
 				}
 			}
 		}
@@ -547,7 +547,8 @@ pub struct TrainerCreator;
 
 impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
-		-> Trainer<impl BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>>> {
+		-> Trainer<impl BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+						BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>>> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -623,7 +624,9 @@ impl TrainerCreator {
 		}
 	}
 }
-impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+impl<NN> Trainer<NN>
+	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
 	pub fn learning_by_training_data<'a,D>(&mut self,
 										   last_teban:Teban,
 										   history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
@@ -640,7 +643,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		let mut teban = last_teban;
 
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(true,teban, banmen, mc);
+			let input = InputCreator::make_input(true,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
 
@@ -649,10 +652,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 			let mut ans = Arr::new();
 
 			ans[0] = t;
-			(input,ans)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (input,ans) | {
-			acc.0.push(input);
-			acc.1.push(ans);
+			(ans,input)
+		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
+			acc.0.push(ans);
+			acc.1.push(input);
 
 			acc
 		});
@@ -662,7 +665,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		let mut teban = last_teban.opposite();
 
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(false,teban, banmen, mc);
+			let input = InputCreator::make_input(false,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,a);
 
@@ -671,10 +674,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 			let mut ans = Arr::new();
 
 			ans[0] = t;
-			(input,ans)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (input,ans) | {
-			acc.0.push(input);
-			acc.1.push(ans);
+			(ans,input)
+		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
+			acc.0.push(ans);
+			acc.1.push(input);
 
 			acc
 		});
@@ -684,7 +687,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		let mut teban = last_teban;
 
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(true,teban, banmen, mc);
+			let input = InputCreator::make_input(true,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
 
@@ -693,10 +696,10 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 			let mut ans = Arr::new();
 
 			ans[0] = t;
-			(input,ans)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (input,ans) | {
-			acc.0.push(input);
-			acc.1.push(ans);
+			(ans,input)
+		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
+			acc.0.push(ans);
+			acc.1.push(input);
 
 			acc
 		});
@@ -706,19 +709,22 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		let mut teban = last_teban.opposite();
 
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = Intelligence::make_input(false,teban, banmen, mc);
+			let input = InputCreator::make_input(false,teban, banmen, mc);
 
 			let t = training_data_generator(s,teban,b);
 
 			teban = teban.opposite();
 
-			let ans = Arr::new();
+			let mut ans = Arr::new();
+
+			let t = training_data_generator(s,teban,b);
 
 			ans[0] = t;
-			(input,ans)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (input,ans) | {
-			acc.0.push(input);
-			acc.1.push(ans);
+
+			(ans,input)
+		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
+			acc.0.push(ans);
+			acc.1.push(input);
 
 			acc
 		});
@@ -760,7 +766,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 			.map(|(teban,banmen,mc,es)| {
 				let teban = *teban;
 
-				let input = Intelligence::make_input(true,teban, banmen, mc);
+				let input = InputCreator::make_input(true,teban, banmen, mc);
 
 				let t = training_data_generator(&es,a);
 
@@ -768,13 +774,13 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 
 				ans[0] = t;
 
-				(input,ans)
-			}).fold((Vec::new(),Vec::new()),| mut acc,(input,ans) | {
-				acc.0.push(input);
-				acc.1.push(ans);
+				(ans,input)
+			}).fold((Vec::new(),Vec::new()),| mut acc,(ans,input) | {
+				acc.0.push(ans);
+				acc.1.push(input);
 				acc
 			});
-		let msa = self.nna.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let msa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch =
 			sfens_with_extended.iter()
@@ -786,7 +792,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 						&GameEndState::Lose => GameEndState::Win,
 						&GameEndState::Draw => GameEndState::Draw
 					};
-					let input = Intelligence::make_input(false,teban, banmen, mc);
+					let input = InputCreator::make_input(false,teban, banmen, mc);
 
 					let t = training_data_generator(&es,a);
 
@@ -794,19 +800,19 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 
 					ans[0] = t;
 
-					(input,ans)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let moa = self.nna.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let moa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
 					let teban = *teban;
 
-					let input = Intelligence::make_input(true,teban, banmen, mc);
+					let input = InputCreator::make_input(true,teban, banmen, mc);
 
 					let t = training_data_generator(&es,b);
 
@@ -814,13 +820,13 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 
 					ans[0] = t;
 
-					(input,ans)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(input,ans)| {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input)| {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let msb = self.nnb.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let msb = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
@@ -831,7 +837,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 						&GameEndState::Lose => GameEndState::Win,
 						&GameEndState::Draw => GameEndState::Draw
 					};
-					let input = Intelligence::make_input(false,teban, banmen, mc);
+					let input = InputCreator::make_input(false,teban, banmen, mc);
 
 					let t = training_data_generator(&es,b);
 
@@ -839,13 +845,13 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 
 					ans[0] = t;
 
-					(input,ans)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let mob = self.nnb.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let mob = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		self.save()?;
 
@@ -881,7 +887,7 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 				.map(|(teban,banmen,mc,es)| {
 					let teban = *teban;
 
-					let input = Intelligence::make_input(true,teban, banmen, mc);
+					let input = InputCreator::make_input(true,teban, banmen, mc);
 
 					let es = match (es,teban) {
 						(&GameResult::Draw,_) => GameEndState::Draw,
@@ -901,13 +907,13 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 
 					ans[0] = t;
 
-					(input,t)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let msa = self.nna.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let msa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
@@ -926,28 +932,28 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 						}
 					};
 
-					let input = Intelligence::make_input(false,teban, banmen, mc);
+					let input = InputCreator::make_input(false,teban, banmen, mc);
 
 					let t = training_data_generator(&es,a);
 
 					let mut ans = Arr::new();
 
-					ans[0] = 1;
+					ans[0] = t;
 
-					(input,1)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let moa = self.nna.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let moa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
 					let teban = *teban;
 
-					let input = Intelligence::make_input(true,teban, banmen, mc);
+					let input = InputCreator::make_input(true,teban, banmen, mc);
 
 					let es = match (es,teban) {
 						(&GameResult::Draw,_) => GameEndState::Draw,
@@ -961,18 +967,20 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 						}
 					};
 
+					let t = training_data_generator(&es,b);
+
 					let mut ans = Arr::new();
 
-					ans[0] = 1;
+					ans[0] = t;
 
-					(input,1)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
 
-		let msb = self.nnb.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let msb = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
@@ -991,22 +999,21 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 						}
 					};
 
-					let input = Intelligence::make_input(false,teban, banmen, mc);
+					let input = InputCreator::make_input(false,teban, banmen, mc);
 
 					let t = training_data_generator(&es,b);
 
-
 					let mut ans = Arr::new();
 
-					ans[0] = 1;
+					ans[0] = t;
 
-					(input,1)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (input,ans) | {
-					acc.0.push(input);
-					acc.1.push(ans);
+					(ans,input)
+				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
+					acc.0.push(ans);
+					acc.1.push(input);
 					acc
 				});
-		let mob = self.nnb.batch_train(batch.1,batch.0,&mut self.optimizer, &lossf)?;
+		let mob = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		self.save()?;
 
@@ -1019,8 +1026,8 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		let mut pb = TextFilePersistence::new(
 			&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?;
 
-		self.nna.save(&mut pa)?;
-		self.nnb.save(&mut pb)?;
+		self.nna.save(&mut pa);
+		self.nnb.save(&mut pb);
 
 		pa.save(&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?;
 		pb.save(&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?;
@@ -1030,5 +1037,249 @@ impl<NN> Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,Te
 		fs::rename(&format!("{}/{}.tmp", self.nnsavedir,self.nnb_filename),
 				   &format!("{}/{}", self.nnsavedir,self.nnb_filename))?;
 		Ok(())
+	}
+}
+pub struct InputCreator;
+
+impl InputCreator {
+	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
+		let mut inputs = Arr::new();
+
+		let index = if is_self {
+			SELF_TEBAN_INDEX
+		} else {
+			OPPONENT_TEBAN_INDEX
+		};
+
+		inputs[index] = 1f32;
+
+		match b {
+			&Banmen(ref kinds) => {
+				for y in 0..9 {
+					for x in 0..9 {
+						let kind = kinds[y][x];
+
+						if kind != KomaKind::Blank {
+							let index = InputCreator::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
+
+							inputs[index] = 1f32;
+						}
+					}
+				}
+			}
+		}
+
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let (ms,mg) = match t {
+			Teban::Sente => (ms,mg),
+			Teban::Gote => (mg,ms),
+		};
+
+		for &k in &MOCHIGOMA_KINDS {
+			let c = ms.get(k);
+
+			for i in 0..c {
+				let offset = SELF_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+
+			let c = mg.get(k);
+
+			for i in 0..c {
+				let offset = OPPONENT_INDEX_MAP[k as usize];
+
+				let offset = offset as usize;
+
+				inputs[offset + i as usize] = 1f32;
+			}
+		}
+		inputs
+	}
+
+	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<DiffArr<f32,2517>,CommonError> {
+		let mut d = DiffArr::new();
+
+		let (addi,subi) = if is_self {
+			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
+		} else {
+			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
+		};
+
+		d.push(subi,1.)?;
+		d.push(addi,1.)?;
+
+		match m {
+			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
+				match b {
+					&Banmen(ref kinds) => {
+						let (sx,sy) = (9-sx,sy-1);
+						let (dx,dy) = (9-dx,dy-1);
+
+						let sk = kinds[sy as usize][sx as usize];
+
+						d.push(InputCreator::input_index_of_banmen(t, sk, sx, sy)?, -1.)?;
+
+						if n {
+							d.push(InputCreator::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1.)?;
+						} else {
+							d.push(InputCreator::input_index_of_banmen(t,sk,dx,dy)?,1.)?;
+						}
+
+						let dk = kinds[dy as usize][dx as usize];
+
+						if dk != KomaKind::Blank {
+							d.push(InputCreator::input_index_of_banmen(t,dk,dx,dy)?,-1.)?;
+						}
+
+						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
+							let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
+
+							d.push(offset+1, 1.)?;
+						}
+					}
+				}
+			},
+			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
+				let (dx,dy) = (9-dx,dy-1);
+				let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
+
+				if offset < 1 {
+					return Err(CommonError::Fail(
+						String::from(
+							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
+						)))
+				} else {
+					d.push(offset, -1.)?;
+
+					d.push(InputCreator::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1.)?;
+				}
+			}
+		}
+
+		Ok(d)
+	}
+
+	#[inline]
+	fn input_index_of_banmen(teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
+		const SENTE_INDEX_MAP:[usize; 28] = [
+			FU_INDEX,
+			KYOU_INDEX,
+			KEI_INDEX,
+			GIN_INDEX,
+			KIN_INDEX,
+			KAKU_INDEX,
+			HISHA_INDEX,
+			OU_INDEX,
+			NARIFU_INDEX,
+			NARIKYOU_INDEX,
+			NARIKEI_INDEX,
+			NARIGIN_INDEX,
+			NARIKAKU_INDEX,
+			NARIHISHA_INDEX,
+			OPPONENT_FU_INDEX,
+			OPPONENT_KYOU_INDEX,
+			OPPONENT_KEI_INDEX,
+			OPPONENT_GIN_INDEX,
+			OPPONENT_KIN_INDEX,
+			OPPONENT_KAKU_INDEX,
+			OPPONENT_HISHA_INDEX,
+			OPPONENT_OU_INDEX,
+			OPPONENT_NARIFU_INDEX,
+			OPPONENT_NARIKYOU_INDEX,
+			OPPONENT_NARIKEI_INDEX,
+			OPPONENT_NARIGIN_INDEX,
+			OPPONENT_NARIKAKU_INDEX,
+			OPPONENT_NARIHISHA_INDEX
+		];
+
+		const GOTE_INDEX_MAP:[usize; 28] = [
+			OPPONENT_FU_INDEX,
+			OPPONENT_KYOU_INDEX,
+			OPPONENT_KEI_INDEX,
+			OPPONENT_GIN_INDEX,
+			OPPONENT_KIN_INDEX,
+			OPPONENT_KAKU_INDEX,
+			OPPONENT_HISHA_INDEX,
+			OPPONENT_OU_INDEX,
+			OPPONENT_NARIFU_INDEX,
+			OPPONENT_NARIKYOU_INDEX,
+			OPPONENT_NARIKEI_INDEX,
+			OPPONENT_NARIGIN_INDEX,
+			OPPONENT_NARIKAKU_INDEX,
+			OPPONENT_NARIHISHA_INDEX,
+			FU_INDEX,
+			KYOU_INDEX,
+			KEI_INDEX,
+			GIN_INDEX,
+			KIN_INDEX,
+			KAKU_INDEX,
+			HISHA_INDEX,
+			OU_INDEX,
+			NARIFU_INDEX,
+			NARIKYOU_INDEX,
+			NARIKEI_INDEX,
+			NARIGIN_INDEX,
+			NARIKAKU_INDEX,
+			NARIHISHA_INDEX
+		];
+
+		let index = match teban {
+			Teban::Sente | Teban::Gote if kind == KomaKind::Blank => {
+				return Err(CommonError::Fail(
+					String::from(
+						"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
+					)));
+			},
+			Teban::Sente => {
+				SENTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
+			},
+			Teban::Gote => {
+				let (x,y) = (8-x,8-y);
+
+				GOTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
+			}
+		};
+
+		Ok(index as usize)
+	}
+
+	#[inline]
+	fn input_index_with_of_mochigoma_get(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
+										 -> Result<usize,CommonError> {
+
+		let ms = Mochigoma::new();
+		let mg = Mochigoma::new();
+
+		let (ms,mg) = match mc {
+			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
+			&MochigomaCollections::Empty => (&ms,&mg),
+		};
+
+		let mc = match teban {
+			Teban::Sente if is_self => ms,
+			Teban::Sente => mg,
+			Teban::Gote if is_self => mg,
+			Teban::Gote => ms,
+		};
+
+		let offset = if is_self {
+			SELF_INDEX_MAP[kind as usize]
+		} else {
+			OPPONENT_INDEX_MAP[kind as usize]
+		};
+
+		let c = mc.get(kind);
+		let offset = offset as usize;
+
+		Ok(offset + c as usize)
 	}
 }

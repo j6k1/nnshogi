@@ -15,7 +15,7 @@ use usiagent::error::TypeConvertError;
 use usiagent::error::SfenStringConvertError;
 use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
-use nncombinator::error::{ConfigReadError, TrainingError};
+use nncombinator::error::{ConfigReadError, IndexOutBoundError, TrainingError};
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -71,6 +71,21 @@ impl From<UsiProtocolError> for CommonError {
 		match err {
 			UsiProtocolError::InvalidState(s) => CommonError::Fail(s)
 		}
+	}
+}
+impl From<IndexOutBoundError> for CommonError {
+	fn from(err: IndexOutBoundError) -> Self {
+		CommonError::Fail(format!("{}",err))
+	}
+}
+impl From<TrainingError> for CommonError {
+	fn from(err: TrainingError) -> Self {
+		CommonError::Fail(format!("{}",err))
+	}
+}
+impl From<ConfigReadError> for CommonError {
+	fn from(err: ConfigReadError) -> Self {
+		CommonError::Fail(format!("{}",err))
 	}
 }
 #[derive(Debug)]

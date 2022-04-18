@@ -1393,10 +1393,10 @@ impl<NN> Search<NN>
 		self.kyokumenhash.calc_initial_hash(b,ms,mg)
 	}
 }
-pub struct NNShogiPlayer<NN,C>
+pub struct NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
+	{
 	search:Arc<Search<NN>>,
 	kyokumen:Option<Kyokumen>,
 	mhash:u64,
@@ -1409,26 +1409,27 @@ pub struct NNShogiPlayer<NN,C>
 	bias_shake_shake:bool,
 	learn_max_threads: usize,
 	evalutor:Option<Arc<Intelligence<NN>>>,
-	evalutor_creator: C,
+	evalutor_creator: Box<dyn Fn() -> Intelligence<NN> + Send + 'static>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
 	moved:bool,
 }
-impl<NN,C> fmt::Debug for NNShogiPlayer<NN,C>
+impl<NN> fmt::Debug for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+	{
+		fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "NNShogiPlayer")
 	}
 }
-impl<NN,C> NNShogiPlayer<NN,C>
+impl<NN> NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
-	pub fn new(nna_filename:String, nnb_filename:String,
+	{
+
+	pub fn new<C: Fn() -> Intelligence<NN> + Send + 'static>(nna_filename:String, nnb_filename:String,
 			   bias_shake_shake:bool,learn_max_threads:usize,
-			   evalutor_creator:C) -> NNShogiPlayer<NN,C> {
+			   evalutor_creator:C) -> NNShogiPlayer<NN> {
 		NNShogiPlayer {
 			search:Arc::new(Search::new()),
 			kyokumen:None,
@@ -1442,17 +1443,18 @@ impl<NN,C> NNShogiPlayer<NN,C>
 			bias_shake_shake,
 			learn_max_threads:learn_max_threads,
 			evalutor:None,
-			evalutor_creator:evalutor_creator,
+			evalutor_creator:Box::new(evalutor_creator),
 			history:Vec::new(),
 			count_of_move_started:0,
 			moved:false,
 		}
 	}
 }
-impl<NN,C> USIPlayer<CommonError> for NNShogiPlayer<NN,C>
+impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-		  C: FnOnce() -> Intelligence<NN> + Send + 'static {
+	{
+
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
 	fn get_option_kinds(&mut self) -> Result<BTreeMap<String,SysEventOptionKind>,CommonError> {

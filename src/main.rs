@@ -43,7 +43,8 @@ use usiagent::player::*;
 
 use player::NNShogiPlayer;
 use error::ApplicationError;
-use learning::CsaLearnener;
+use learning::Learnener;
+use nn::{IntelligenceCreator, TrainerCreator};
 
 const LEAN_SFEN_READ_SIZE:usize = 1000 * 1000 * 10;
 const LEAN_BATCH_SIZE:usize = 256;
@@ -141,23 +142,32 @@ fn run() -> Result<(),ApplicationError> {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
 		if matches.opt_present("yaneuraou") {
-			CsaLearnener::new().learning_from_yaneuraou_bin(kifudir,
-															config.bias_shake_shake_with_kifu,
-															config.learn_max_threads.unwrap_or(1),
-															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-															config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+			Learnener::new(false).learning_from_yaneuraou_bin(kifudir,
+														 TrainerCreator::create(String::from("data"),
+																				String::from("nn.a.bin"),
+																				String::from("nn.b.bin"),false),
+														 config.bias_shake_shake_with_kifu,
+														 config.learn_max_threads.unwrap_or(1),
+														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else if matches.opt_present("hcpe") {
-				CsaLearnener::new().learning_from_hcpe(kifudir,
-																config.bias_shake_shake_with_kifu,
-																config.learn_max_threads.unwrap_or(1),
-																config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-																config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+				Learnener::new(false).learning_from_hcpe(kifudir,
+													TrainerCreator::create(String::from("data"),
+																		   String::from("nn.a.bin"),
+																		   String::from("nn.b.bin"),false),
+													config.bias_shake_shake_with_kifu,
+													config.learn_max_threads.unwrap_or(1),
+													config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-			CsaLearnener::new().learning_from_csa(kifudir,
-												  lowerrate,
-												  config.bias_shake_shake_with_kifu,
-												  config.learn_max_threads.unwrap_or(1))
+			Learnener::new(false).learning_from_csa(kifudir,
+											   lowerrate,
+											   TrainerCreator::create(String::from("data"),
+																	  String::from("nn.a.bin"),
+																	  String::from("nn.b.bin"),false),
+											   config.bias_shake_shake_with_kifu,
+											   config.learn_max_threads.unwrap_or(1))
 		}
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
@@ -601,12 +611,23 @@ fn run() -> Result<(),ApplicationError> {
 								NNShogiPlayer::new(String::from("nn.a.bin"),
 												   		  String::from("nn.b.bin"),
 												   	   true,
-												   	  config.learn_max_threads.unwrap_or(1)),
+												   	  config.learn_max_threads.unwrap_or(1),
+												   || IntelligenceCreator::create(
+													   String::from("data"),
+													   String::from("nn.a.bin"),
+													   String::from("nn.b.bin"),
+													   )),
 								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),
 												   		  String::from("nn_opponent.b.bin"),
 												   		true,
-												   					  config.learn_max_threads.unwrap_or(1)),
-								[
+												   					  config.learn_max_threads.unwrap_or(1),
+
+												   || IntelligenceCreator::create(
+													   String::from("data"),
+													   String::from("nn_opponent.a.bin"),
+													   String::from("nn_opponent.b.bin"),
+													   )),
+										[
 									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
@@ -660,7 +681,11 @@ fn run() -> Result<(),ApplicationError> {
 		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),
 													 						   String::from("nn.b.bin"),
 													 						 false,
-																						  config.learn_max_threads.unwrap_or(1)));
+																						  config.learn_max_threads.unwrap_or(1),
+																	 || IntelligenceCreator::create(
+																		 String::from("data"),
+																		 String::from("nn.a.bin"),
+																		 String::from("nn.b.bin"))));
 
 		let r = agent.start_default(|on_error_handler,e| {
 			match on_error_handler {

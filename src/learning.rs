@@ -4,8 +4,6 @@ use std::sync::Arc;
 use std::fs;
 use std::io::Write;
 
-use rand::seq::SliceRandom;
-
 use usiagent::OnErrorHandler;
 use usiagent::shogi::Banmen;
 use usiagent::shogi::MochigomaCollections;
@@ -23,14 +21,17 @@ use csaparser::EndState;
 
 use error::ApplicationError;
 use error::CommonError;
-use nn::{Trainer, TrainerCreator};
+use nn::{Trainer};
 use rand::{Rng, SeedableRng};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, Read, BufWriter};
 use std::fs::{File, OpenOptions};
+use std::marker::PhantomData;
 use std::path::Path;
-use nncombinator::layer::{BatchTrain, ForwardAll};
+use nncombinator::arr::Arr;
+use nncombinator::layer::{BatchForwardBase, BatchTrain};
 use nncombinator::persistence::{Persistence, TextFilePersistence};
+use rand::prelude::SliceRandom;
 use rand_xorshift::XorShiftRng;
 use usiagent::output::USIStdErrorWriter;
 
@@ -98,13 +99,19 @@ impl<P: AsRef<Path>> CheckPointWriter<P> {
 		}
 	}
 }
-pub struct CsaLearnener {
-
+pub struct Learnener<NN>
+	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
+	nn:PhantomData<NN>,
+	bias_shake_shake:bool
 }
-impl CsaLearnener {
-	pub fn new() -> CsaLearnener {
-		CsaLearnener {
-
+impl<NN> Learnener<NN>
+	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>>{
+	pub fn new(bias_shake_shake:bool) -> Learnener<NN> {
+		Learnener {
+			nn:PhantomData::<NN>,
+			bias_shake_shake:bias_shake_shake
 		}
 	}
 
@@ -170,7 +177,7 @@ impl CsaLearnener {
 		});
 	}
 
-	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
+	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, evalutor: Trainer<NN>,bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -187,9 +194,7 @@ impl CsaLearnener {
 
 		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
 
-		let mut evalutor = TrainerCreator::create(String::from("data"),
-															String::from("nn.a.bin"),
-															String::from("nn.b.bin"),false);
+		let mut evalutor = evalutor;
 
 		print!("learning start... kifudir = {}\n", kifudir);
 
@@ -354,8 +359,7 @@ impl CsaLearnener {
 						)));
 					},
 					Ok((msa,moa,msb,mob)) => {
-						println!("error_total: {}, error_average: {}",msa.error_total + moa.error_total,(msa.error_average + moa.error_average) / 2f32);
-						println!("error_total: {}, error_average: {}",msb.error_total + mob.error_total,(msb.error_average + mob.error_average) / 2f32);
+						println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
 					}
 				};
 
@@ -389,6 +393,7 @@ impl CsaLearnener {
 	}
 
 	pub fn learning_from_yaneuraou_bin(&mut self, kifudir:String,
+									   evalutor: Trainer<NN>,
 									   bias_shake_shake:bool,
 									   learn_max_threads:usize,
 									   learn_sfen_read_size:usize,
@@ -396,6 +401,7 @@ impl CsaLearnener {
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
+							evalutor,
 							bias_shake_shake,
 							learn_max_threads,
 							learn_sfen_read_size,
@@ -405,6 +411,7 @@ impl CsaLearnener {
 	}
 
 	pub fn learning_from_hcpe(&mut self, kifudir:String,
+									   evalutor: Trainer<NN>,
 									   bias_shake_shake:bool,
 									   learn_max_threads:usize,
 									   learn_sfen_read_size:usize,
@@ -412,6 +419,7 @@ impl CsaLearnener {
 	) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"hcpe",
+							evalutor,
 							bias_shake_shake,
 							learn_max_threads,
 							learn_sfen_read_size,
@@ -420,8 +428,9 @@ impl CsaLearnener {
 
 	}
 
-	pub fn learning_batch<NN>(&mut self,kifudir:String,
+	pub fn learning_batch(&mut self,kifudir:String,
 							   ext:&str,
+							   evalutor: Trainer<NN>,
 							   bias_shake_shake:bool,
 							   learn_max_threads:usize,
 							   learn_sfen_read_size:usize,
@@ -433,8 +442,7 @@ impl CsaLearnener {
 								   usize,
 								   &Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
 							   ) -> Result<(),ApplicationError>
-	) -> Result<(),ApplicationError> where NN: BatchTrain<f32> +
-											   ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+	) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -451,9 +459,7 @@ impl CsaLearnener {
 
 		let mut system_event_dispatcher = self.create_event_dispatcher(notify_quit,on_error_handler);
 
-		let mut evalutor = TrainerCreator::create(String::from("data"),
-											 String::from("nn.a.bin"),
-											 String::from("nn.b.bin"),false);
+		let mut evalutor = evalutor;
 
 		print!("learning start... kifudir = {}\n", kifudir);
 
@@ -620,7 +626,7 @@ impl CsaLearnener {
 
 					(a,b)
 				} else {
-					let (a,b) = if self.bias_shake_shake {
+					if self.bias_shake_shake {
 						let mut rnd = rand::thread_rng();
 						let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
@@ -630,7 +636,7 @@ impl CsaLearnener {
 						(a,b)
 					} else {
 						(0.5f32,0.5f32)
-					};
+					}
 				};
 
 				if batch.len() == learn_batch_size {
@@ -682,13 +688,12 @@ impl CsaLearnener {
 		Ok(())
 	}
 
-	fn learning_from_yaneuraou_bin_batch<NN>(evalutor:&mut Trainer<NN>,
+	fn learning_from_yaneuraou_bin_batch(evalutor:&mut Trainer<NN>,
 										 batch:Vec<Vec<u8>>,
 										 bias_shake_shake:bool,
 										 learn_max_threads:usize,
 										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
-	) -> Result<(),ApplicationError>
-		where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+	) -> Result<(),ApplicationError> {
 
 		let (a,b) = if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -728,13 +733,12 @@ impl CsaLearnener {
 		}
 	}
 
-	fn learning_from_hcpe_batch<NN>(evalutor: &mut Trainer<NN>,
+	fn learning_from_hcpe_batch(evalutor: &mut Trainer<NN>,
 								batch:Vec<Vec<u8>>,
 								bias_shake_shake:bool,
 								learn_max_threads:usize,
 								user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
-	) -> Result<(),ApplicationError>
-		where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>> {
+	) -> Result<(),ApplicationError> {
 
 			let (a,b) = if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
