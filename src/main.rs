@@ -52,7 +52,6 @@ const LEAN_BATCH_SIZE:usize = 256;
 #[derive(Debug, Deserialize)]
 pub struct Config {
 	max_threads:Option<u32>,
-	learn_max_threads:Option<usize>,
 	learn_sfen_read_size:Option<usize>,
 	learn_batch_size:Option<usize>,
 	base_depth:Option<u32>,
@@ -142,32 +141,26 @@ fn run() -> Result<(),ApplicationError> {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
 		if matches.opt_present("yaneuraou") {
-			Learnener::new(false).learning_from_yaneuraou_bin(kifudir,
+			Learnener::new().learning_from_yaneuraou_bin(kifudir,
 														 TrainerCreator::create(String::from("data"),
 																				String::from("nn.a.bin"),
-																				String::from("nn.b.bin"),false),
-														 config.bias_shake_shake_with_kifu,
-														 config.learn_max_threads.unwrap_or(1),
+																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu),
 														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else if matches.opt_present("hcpe") {
-				Learnener::new(false).learning_from_hcpe(kifudir,
+				Learnener::new().learning_from_hcpe(kifudir,
 													TrainerCreator::create(String::from("data"),
 																		   String::from("nn.a.bin"),
-																		   String::from("nn.b.bin"),false),
-													config.bias_shake_shake_with_kifu,
-													config.learn_max_threads.unwrap_or(1),
-													config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu),
+															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-			Learnener::new(false).learning_from_csa(kifudir,
+			Learnener::new().learning_from_csa(kifudir,
 											   lowerrate,
 											   TrainerCreator::create(String::from("data"),
 																	  String::from("nn.a.bin"),
-																	  String::from("nn.b.bin"),false),
-											   config.bias_shake_shake_with_kifu,
-											   config.learn_max_threads.unwrap_or(1))
+																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu))
 		}
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
@@ -608,21 +601,12 @@ fn run() -> Result<(),ApplicationError> {
 								initial_position_creator,
 								Some(Box::new(move |sfen,mvs| kifuwriter.write(sfen,mvs))),
 								input_read_handler,
-								NNShogiPlayer::new(String::from("nn.a.bin"),
-												   		  String::from("nn.b.bin"),
-												   	   true,
-												   	  config.learn_max_threads.unwrap_or(1),
-												   || IntelligenceCreator::create(
+								NNShogiPlayer::new(|| IntelligenceCreator::create(
 													   String::from("data"),
 													   String::from("nn.a.bin"),
 													   String::from("nn.b.bin"),
 													   )),
-								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),
-												   		  String::from("nn_opponent.b.bin"),
-												   		true,
-												   					  config.learn_max_threads.unwrap_or(1),
-
-												   || IntelligenceCreator::create(
+								NNShogiPlayer::new(|| IntelligenceCreator::create(
 													   String::from("data"),
 													   String::from("nn_opponent.a.bin"),
 													   String::from("nn_opponent.b.bin"),
@@ -677,12 +661,7 @@ fn run() -> Result<(),ApplicationError> {
 					secs / (60 * 60), secs  % (60 * 60) / 60, secs % 60, r.elapsed.subsec_nanos() / 1_000_000);
 		})
 	} else {
-		let config = ConfigLoader::new("settings.toml")?.load()?;
-		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),
-													 						   String::from("nn.b.bin"),
-													 						 false,
-																						  config.learn_max_threads.unwrap_or(1),
-																	 || IntelligenceCreator::create(
+		let agent = UsiAgent::new(NNShogiPlayer::new(|| IntelligenceCreator::create(
 																		 String::from("data"),
 																		 String::from("nn.a.bin"),
 																		 String::from("nn.b.bin"))));

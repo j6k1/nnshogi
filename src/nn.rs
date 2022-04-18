@@ -40,13 +40,10 @@ pub struct Intelligence<NN>
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
-	packed_sfen_reader:PackedSfenReader,
-	hcpe_reader:HcpeReader,
 	quited:bool,
 }
 
 const BANMEN_SIZE:usize = 81;
-const KOMA_COUNT:usize = 40;
 
 const SELF_TEBAN_INDEX:usize = 0;
 const OPPONENT_TEBAN_INDEX:usize = SELF_TEBAN_INDEX + 1;
@@ -195,8 +192,6 @@ impl<NN> Intelligence<NN>
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:nnsavedir,
-			packed_sfen_reader:PackedSfenReader::new(),
-			hcpe_reader:HcpeReader::new(),
 			quited:false,
 		}
 	}
@@ -415,121 +410,6 @@ impl<NN> Intelligence<NN>
 
 		Ok(d)
 	}
-
-	#[inline]
-	fn input_index_of_banmen(teban:Teban,kind:KomaKind,x:u32,y:u32) -> Result<usize,CommonError> {
-		const SENTE_INDEX_MAP:[usize; 28] = [
-			FU_INDEX,
-			KYOU_INDEX,
-			KEI_INDEX,
-			GIN_INDEX,
-			KIN_INDEX,
-			KAKU_INDEX,
-			HISHA_INDEX,
-			OU_INDEX,
-			NARIFU_INDEX,
-			NARIKYOU_INDEX,
-			NARIKEI_INDEX,
-			NARIGIN_INDEX,
-			NARIKAKU_INDEX,
-			NARIHISHA_INDEX,
-			OPPONENT_FU_INDEX,
-			OPPONENT_KYOU_INDEX,
-			OPPONENT_KEI_INDEX,
-			OPPONENT_GIN_INDEX,
-			OPPONENT_KIN_INDEX,
-			OPPONENT_KAKU_INDEX,
-			OPPONENT_HISHA_INDEX,
-			OPPONENT_OU_INDEX,
-			OPPONENT_NARIFU_INDEX,
-			OPPONENT_NARIKYOU_INDEX,
-			OPPONENT_NARIKEI_INDEX,
-			OPPONENT_NARIGIN_INDEX,
-			OPPONENT_NARIKAKU_INDEX,
-			OPPONENT_NARIHISHA_INDEX
-		];
-
-		const GOTE_INDEX_MAP:[usize; 28] = [
-			OPPONENT_FU_INDEX,
-			OPPONENT_KYOU_INDEX,
-			OPPONENT_KEI_INDEX,
-			OPPONENT_GIN_INDEX,
-			OPPONENT_KIN_INDEX,
-			OPPONENT_KAKU_INDEX,
-			OPPONENT_HISHA_INDEX,
-			OPPONENT_OU_INDEX,
-			OPPONENT_NARIFU_INDEX,
-			OPPONENT_NARIKYOU_INDEX,
-			OPPONENT_NARIKEI_INDEX,
-			OPPONENT_NARIGIN_INDEX,
-			OPPONENT_NARIKAKU_INDEX,
-			OPPONENT_NARIHISHA_INDEX,
-			FU_INDEX,
-			KYOU_INDEX,
-			KEI_INDEX,
-			GIN_INDEX,
-			KIN_INDEX,
-			KAKU_INDEX,
-			HISHA_INDEX,
-			OU_INDEX,
-			NARIFU_INDEX,
-			NARIKYOU_INDEX,
-			NARIKEI_INDEX,
-			NARIGIN_INDEX,
-			NARIKAKU_INDEX,
-			NARIHISHA_INDEX
-		];
-
-		let index = match teban {
-			Teban::Sente | Teban::Gote if kind == KomaKind::Blank => {
-				return Err(CommonError::Fail(
-					String::from(
-						"Calculation of index of difference input data of neural network failed. (KomaKind is 'Blank')"
-					)));
-			},
-			Teban::Sente => {
-				SENTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
-			},
-			Teban::Gote => {
-				let (x,y) = (8-x,8-y);
-
-				GOTE_INDEX_MAP[kind as usize] + y as usize * 9 + x as usize
-			}
-		};
-
-		Ok(index as usize)
-	}
-
-	#[inline]
-	fn input_index_with_of_mochigoma_get(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
-										 -> Result<usize,CommonError> {
-
-		let ms = Mochigoma::new();
-		let mg = Mochigoma::new();
-
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
-
-		let mc = match teban {
-			Teban::Sente if is_self => ms,
-			Teban::Sente => mg,
-			Teban::Gote if is_self => mg,
-			Teban::Gote => ms,
-		};
-
-		let offset = if is_self {
-			SELF_INDEX_MAP[kind as usize]
-		} else {
-			OPPONENT_INDEX_MAP[kind as usize]
-		};
-
-		let c = mc.get(kind);
-		let offset = offset as usize;
-
-		Ok(offset + c as usize)
-	}
 }
 pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>>{
 	nna:NN,
@@ -541,7 +421,6 @@ pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,
 	packed_sfen_reader:PackedSfenReader,
 	hcpe_reader:HcpeReader,
 	bias_shake_shake:bool,
-	quited:bool,
 }
 pub struct TrainerCreator;
 
@@ -620,132 +499,137 @@ impl TrainerCreator {
 			packed_sfen_reader:PackedSfenReader::new(),
 			hcpe_reader:HcpeReader::new(),
 			bias_shake_shake:enable_shake_shake,
-			quited:false,
 		}
 	}
 }
 impl<NN> Trainer<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
-	pub fn learning_by_training_data<'a,D>(&mut self,
-										   last_teban:Teban,
-										   history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
-										   s:&GameEndState,
-										   learn_max_threads:usize,
-										   training_data_generator:&D,
-										   a:f32,b:f32,
-										   _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-										   -> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,Teban,f32) -> f32 {
+	pub fn calc_alpha_beta(bias_shake_shake:bool) -> (f32,f32) {
+		if bias_shake_shake {
+			let mut rnd = rand::thread_rng();
+			let mut rnd = XorShiftRng::from_seed(rnd.gen());
+
+			let a = rnd.gen();
+			let b = 1f32 - a;
+
+			(a,b)
+		} else {
+			(0.5f32,0.5f32)
+		}
+	}
+
+	pub fn learning_by_training_csa<'a>(&mut self,
+										last_teban:Teban,
+										history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
+										s:&GameEndState,
+										_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
+										-> Result<(f32,f32,f32,f32),CommonError> {
 
 		let lossf = Mse::new();
 
 		let mut teban = last_teban;
-
+		let bias_shake_shake = self.bias_shake_shake;
+		
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = InputCreator::make_input(true,teban, banmen, mc);
+			let (a, b) = Self::calc_alpha_beta(bias_shake_shake);
 
-			let t = training_data_generator(s,teban,a);
+			let input = InputCreator::make_input(true, teban, banmen, mc);
+
+			let t = match s {
+				GameEndState::Win if teban == last_teban => {
+					1f32
+				}
+				GameEndState::Win => {
+					0f32
+				},
+				GameEndState::Lose if teban == last_teban => {
+					0f32
+				},
+				GameEndState::Lose => {
+					1f32
+				},
+				_ => 0.5f32
+			};
 
 			teban = teban.opposite();
 
-			let mut ans = Arr::new();
+			(t,input,a,b)
+		}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())), | mut acc, (t,input,a,b) | {
+			let mut ans = Arr::<f32, 1>::new();
+			ans[0] = t * a;
 
-			ans[0] = t;
-			(ans,input)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
-			acc.0.push(ans);
-			acc.1.push(input);
+			(acc.0).0.push(ans);
+			(acc.0).1.push(input.clone());
+
+			let mut ans = Arr::<f32, 1>::new();
+			ans[0] = t * b;
+
+			(acc.1).0.push(ans);
+			(acc.1).1.push(input);
 
 			acc
 		});
 
-		let msa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer,&lossf)?;
+		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
+		let msb = self.nna.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
 		let mut teban = last_teban.opposite();
 
 		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = InputCreator::make_input(false,teban, banmen, mc);
+			let (a, b) = Self::calc_alpha_beta(bias_shake_shake);
 
-			let t = training_data_generator(s,teban,a);
+			let input = InputCreator::make_input(false, teban, banmen, mc);
+
+			let t = match s {
+				GameEndState::Win if teban == last_teban => {
+					1f32
+				}
+				GameEndState::Win => {
+					0f32
+				},
+				GameEndState::Lose if teban == last_teban => {
+					0f32
+				},
+				GameEndState::Lose => {
+					1f32
+				},
+				_ => 0.5f32
+			};
 
 			teban = teban.opposite();
 
-			let mut ans = Arr::new();
+			(t,input,a,b)
+		}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())),| mut acc, (t,input,a,b) | {
+			let mut ans = Arr::<f32,1>::new();
+			ans[0] = t * a;
 
-			ans[0] = t;
-			(ans,input)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
-			acc.0.push(ans);
-			acc.1.push(input);
+			(acc.0).0.push(ans);
+			(acc.0).1.push(input.clone());
+			let mut ans = Arr::<f32,1>::new();
+			ans[0] = t * b;
+
+			(acc.1).0.push(ans);
+			(acc.1).1.push(input);
 
 			acc
 		});
 
-		let moa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer,&lossf)?;
-
-		let mut teban = last_teban;
-
-		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = InputCreator::make_input(true,teban, banmen, mc);
-
-			let t = training_data_generator(s,teban,b);
-
-			teban = teban.opposite();
-
-			let mut ans = Arr::new();
-
-			ans[0] = t;
-			(ans,input)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
-			acc.0.push(ans);
-			acc.1.push(input);
-
-			acc
-		});
-
-		let msb = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer,&lossf)?;
-
-		let mut teban = last_teban.opposite();
-
-		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let input = InputCreator::make_input(false,teban, banmen, mc);
-
-			let t = training_data_generator(s,teban,b);
-
-			teban = teban.opposite();
-
-			let mut ans = Arr::new();
-
-			let t = training_data_generator(s,teban,b);
-
-			ans[0] = t;
-
-			(ans,input)
-		}).fold((Vec::new(),Vec::new()), | mut acc, (ans,input) | {
-			acc.0.push(ans);
-			acc.1.push(input);
-
-			acc
-		});
-
-		let mob = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer,&lossf)?;
+		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
+		let mob = self.nna.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
 		self.save()?;
 
 		Ok((msa,moa,msb,mob))
 	}
 
-	pub fn learning_by_packed_sfens<'a,D>(&mut self,
+	pub fn learning_by_packed_sfens<'a>(&mut self,
 										  packed_sfens:Vec<Vec<u8>>,
-										  learn_max_threads:usize,
-										  training_data_generator:&D,
-										  a:f32,b:f32,
 										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-		-> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,f32) -> f32 {
+		-> Result<(f32,f32,f32,f32),CommonError> {
 
 		let lossf = Mse::new();
+		let bias_shake_shake = self.bias_shake_shake;
 
 		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
 
@@ -764,110 +648,99 @@ impl<NN> Trainer<NN>
 
 		let batch = sfens_with_extended.iter()
 			.map(|(teban,banmen,mc,es)| {
+				let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
+
 				let teban = *teban;
 
-				let input = InputCreator::make_input(true,teban, banmen, mc);
+				let input = InputCreator::make_input(true, teban, banmen, mc);
 
-				let t = training_data_generator(&es,a);
+				let t = match es {
+					GameEndState::Win => {
+						1f32
+					}
+					GameEndState::Lose => {
+						0f32
+					},
+					_ => 0.5f32
+				};
 
-				let mut ans = Arr::new();
+				(t,input,a,b)
+			}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())), | mut acc, (t,input,a,b) | {
+				let mut ans = Arr::<f32, 1>::new();
+				ans[0] = t * a;
 
-				ans[0] = t;
+				(acc.0).0.push(ans);
+				(acc.0).1.push(input.clone());
 
-				(ans,input)
-			}).fold((Vec::new(),Vec::new()),| mut acc,(ans,input) | {
-				acc.0.push(ans);
-				acc.1.push(input);
+				let mut ans = Arr::<f32, 1>::new();
+				ans[0] = t * b;
+
+				(acc.1).0.push(ans);
+				(acc.1).1.push(input);
+
 				acc
 			});
-		let msa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
-		let batch =
-			sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-					let es = match es {
-						&GameEndState::Win => GameEndState::Lose,
-						&GameEndState::Lose => GameEndState::Win,
-						&GameEndState::Draw => GameEndState::Draw
-					};
-					let input = InputCreator::make_input(false,teban, banmen, mc);
+		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
+		let msb = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
-					let t = training_data_generator(&es,a);
-
-					let mut ans = Arr::new();
-
-					ans[0] = t;
-
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-		let moa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
 
 		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let teban = *teban;
+			.map(|(teban,banmen,mc,es)| {
+				let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
 
-					let input = InputCreator::make_input(true,teban, banmen, mc);
+				// 非手番側であるため、手番と勝敗を反転
+				let teban = teban.opposite();
+				let es = match es {
+					GameEndState::Win => GameEndState::Lose,
+					GameEndState::Lose => GameEndState::Win,
+					GameEndState::Draw => GameEndState::Draw
+				};
 
-					let t = training_data_generator(&es,b);
+				let input = InputCreator::make_input(false, teban, banmen, mc);
 
-					let mut ans = Arr::new();
+				let t = match es {
+					GameEndState::Win => {
+						1f32
+					}
+					GameEndState::Lose => {
+						0f32
+					},
+					_ => 0.5f32
+				};
 
-					ans[0] = t;
+				(t,input,a,b)
+			}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())), | mut acc, (t,input,a,b) | {
+				let mut ans = Arr::<f32, 1>::new();
+				ans[0] = t * a;
 
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input)| {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-		let msb = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
+				(acc.0).0.push(ans);
+				(acc.0).1.push(input.clone());
 
-		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-					let es = match es {
-						&GameEndState::Win => GameEndState::Lose,
-						&GameEndState::Lose => GameEndState::Win,
-						&GameEndState::Draw => GameEndState::Draw
-					};
-					let input = InputCreator::make_input(false,teban, banmen, mc);
+				let mut ans = Arr::<f32, 1>::new();
+				ans[0] = t * b;
 
-					let t = training_data_generator(&es,b);
+				(acc.1).0.push(ans);
+				(acc.1).1.push(input);
 
-					let mut ans = Arr::new();
+				acc
+			});
 
-					ans[0] = t;
-
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()), | mut acc,(ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-		let mob = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
+		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
+		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
 		self.save()?;
 
 		Ok((msa,moa,msb,mob))
 	}
 
-	pub fn learning_by_hcpe<'a,D>(&mut self,
+	pub fn learning_by_hcpe<'a>(&mut self,
 								  hcpes:Vec<Vec<u8>>,
-								  learn_max_threads:usize,
-								  training_data_generator:&D,
-								  a:f32,b:f32,
 								  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-								  -> Result<(f32,f32,f32,f32),CommonError>
-		where D: Fn(&GameEndState,f32) -> f32 {
+								  -> Result<(f32,f32,f32,f32),CommonError> {
 
 		let lossf = Mse::new();
+		let bias_shake_shake = self.bias_shake_shake;
 
 		let mut sfens_with_extended = Vec::with_capacity(hcpes.len());
 
@@ -884,136 +757,104 @@ impl<NN> Trainer<NN>
 		}
 
 		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let teban = *teban;
+			.map(|(teban,banmen,mc,es)| {
+				let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
 
-					let input = InputCreator::make_input(true,teban, banmen, mc);
+				let teban = *teban;
 
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Win
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Lose
-						}
-					};
+				let input = InputCreator::make_input(true,teban, banmen, mc);
 
-					let t = training_data_generator(&es,a);
+				let es = match (es,teban) {
+					(GameResult::Draw,_) => GameEndState::Draw,
+					(GameResult::SenteWin,Teban::Sente) |
+					(GameResult::GoteWin,Teban::Gote) => {
+						GameEndState::Win
+					},
+					(GameResult::SenteWin,Teban::Gote) |
+					(GameResult::GoteWin,Teban::Sente) => {
+						GameEndState::Lose
+					}
+				};
 
-					let mut ans = Arr::new();
+				let t = match es {
+					GameEndState::Win => {
+						1f32
+					}
+					GameEndState::Lose => {
+						0f32
+					},
+					_ => 0.5f32
+				};
 
-					ans[0] = t;
+				(t,input,a,b)
+			}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())),| mut acc, (t,input,a,b) | {
+				let mut ans = Arr::<f32,1>::new();
+				ans[0] = t * a;
 
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-		let msa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
+				(acc.0).0.push(ans);
+				(acc.0).1.push(input.clone());
+
+				let mut ans = Arr::<f32,1>::new();
+				ans[0] = t * b;
+
+				(acc.1).0.push(ans);
+				(acc.1).1.push(input);
+
+				acc
+			});
+
+		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
+		let msb = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
+					let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
+
 					// 非手番側であるため、手番と勝敗を反転
 					let teban = teban.opposite();
 
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Lose
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Win
-						}
-					};
-
 					let input = InputCreator::make_input(false,teban, banmen, mc);
 
-					let t = training_data_generator(&es,a);
-
-					let mut ans = Arr::new();
-
-					ans[0] = t;
-
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-		let moa = self.nna.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
-
-
-		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let teban = *teban;
-
-					let input = InputCreator::make_input(true,teban, banmen, mc);
-
 					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Win
-						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Lose
-						}
-					};
-
-					let t = training_data_generator(&es,b);
-
-					let mut ans = Arr::new();
-
-					ans[0] = t;
-
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
-					acc
-				});
-
-		let msb = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
-
-		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-
-					let es = match (es,teban) {
-						(&GameResult::Draw,_) => GameEndState::Draw,
-						(&GameResult::SenteWin,Teban::Sente) |
-						(&GameResult::GoteWin,Teban::Gote) => {
+						(GameResult::Draw,_) => GameEndState::Draw,
+						(GameResult::SenteWin,Teban::Sente) |
+						(GameResult::GoteWin,Teban::Gote) => {
 							GameEndState::Lose
 						},
-						(&GameResult::SenteWin,Teban::Gote) |
-						(&GameResult::GoteWin,Teban::Sente) => {
+						(GameResult::SenteWin,Teban::Gote) |
+						(GameResult::GoteWin,Teban::Sente) => {
 							GameEndState::Win
 						}
 					};
 
-					let input = InputCreator::make_input(false,teban, banmen, mc);
+					let t = match es {
+						GameEndState::Win => {
+							1f32
+						}
+						GameEndState::Lose => {
+							0f32
+						},
+						_ => 0.5f32
+					};
 
-					let t = training_data_generator(&es,b);
+					(t,input,a,b)
+				}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())),| mut acc, (t,input,a,b) | {
+					let mut ans = Arr::<f32,1>::new();
+					ans[0] = t * a;
 
-					let mut ans = Arr::new();
+					(acc.0).0.push(ans);
+					(acc.0).1.push(input.clone());
 
-					ans[0] = t;
+					let mut ans = Arr::<f32,1>::new();
+					ans[0] = t * b;
 
-					(ans,input)
-				}).fold((Vec::new(),Vec::new()),| mut acc, (ans,input) | {
-					acc.0.push(ans);
-					acc.1.push(input);
+					(acc.1).0.push(ans);
+					(acc.1).1.push(input);
+
 					acc
 				});
-		let mob = self.nnb.batch_train(batch.0,batch.1,&mut self.optimizer, &lossf)?;
+		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer, &lossf)?;
+		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer, &lossf)?;
 
 		self.save()?;
 

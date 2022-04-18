@@ -22,7 +22,6 @@ use csaparser::EndState;
 use error::ApplicationError;
 use error::CommonError;
 use nn::{Trainer};
-use rand::{Rng, SeedableRng};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, Read, BufWriter};
 use std::fs::{File, OpenOptions};
@@ -32,7 +31,6 @@ use nncombinator::arr::Arr;
 use nncombinator::layer::{BatchForwardBase, BatchTrain};
 use nncombinator::persistence::{Persistence, TextFilePersistence};
 use rand::prelude::SliceRandom;
-use rand_xorshift::XorShiftRng;
 use usiagent::output::USIStdErrorWriter;
 
 #[derive(Debug,Deserialize,Serialize)]
@@ -102,16 +100,13 @@ impl<P: AsRef<Path>> CheckPointWriter<P> {
 pub struct Learnener<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
-	nn:PhantomData<NN>,
-	bias_shake_shake:bool
-}
+	nn:PhantomData<NN>}
 impl<NN> Learnener<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>>{
-	pub fn new(bias_shake_shake:bool) -> Learnener<NN> {
+	pub fn new() -> Learnener<NN> {
 		Learnener {
-			nn:PhantomData::<NN>,
-			bias_shake_shake:bias_shake_shake
+			nn:PhantomData::<NN>
 		}
 	}
 
@@ -177,7 +172,7 @@ impl<NN> Learnener<NN>
 		});
 	}
 
-	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, evalutor: Trainer<NN>,bias_shake_shake:bool, learn_max_threads:usize) -> Result<(),ApplicationError> {
+	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, evalutor: Trainer<NN>) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -317,42 +312,12 @@ impl<NN> Learnener<NN>
 					history
 				});
 
-				let (a,b) = if bias_shake_shake {
-					let mut rnd = rand::thread_rng();
-
-					let a: f32 = rnd.gen();
-					let b: f32 = 1f32 - a;
-
-					(a,b)
-				} else {
-					(0.5f32,0.5f32)
-				};
-
 				let teban = teban.opposite();
 
-				match evalutor.learning_by_training_data(
+				match evalutor.learning_by_training_csa(
 					teban,
 					history,
-					&GameEndState::Win,
-					learn_max_threads,
-					&move |s,t, ab| {
-
-					match s {
-						&GameEndState::Win if t == teban => {
-							ab
-						}
-						&GameEndState::Win => {
-							0f32
-						},
-						&GameEndState::Lose if t == teban => {
-							0f32
-						},
-						&GameEndState::Lose => {
-							ab
-						},
-						_ => 0.5f32
-					}
-				}, a,b, &*user_event_queue) {
+					&GameEndState::Win,&*user_event_queue) {
 					Err(_) => {
 						return Err(ApplicationError::LearningError(String::from(
 							"An error occurred while learning the neural network."
@@ -394,16 +359,12 @@ impl<NN> Learnener<NN>
 
 	pub fn learning_from_yaneuraou_bin(&mut self, kifudir:String,
 									   evalutor: Trainer<NN>,
-									   bias_shake_shake:bool,
-									   learn_max_threads:usize,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
 							evalutor,
-							bias_shake_shake,
-							learn_max_threads,
 							learn_sfen_read_size,
 							learn_batch_size,
 							Self::learning_from_yaneuraou_bin_batch)
@@ -412,16 +373,12 @@ impl<NN> Learnener<NN>
 
 	pub fn learning_from_hcpe(&mut self, kifudir:String,
 									   evalutor: Trainer<NN>,
-									   bias_shake_shake:bool,
-									   learn_max_threads:usize,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 	) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"hcpe",
 							evalutor,
-							bias_shake_shake,
-							learn_max_threads,
 							learn_sfen_read_size,
 							learn_batch_size,
 							Self::learning_from_hcpe_batch)
@@ -431,15 +388,11 @@ impl<NN> Learnener<NN>
 	pub fn learning_batch(&mut self,kifudir:String,
 							   ext:&str,
 							   evalutor: Trainer<NN>,
-							   bias_shake_shake:bool,
-							   learn_max_threads:usize,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   learning_process:fn(
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
-								   bool,
-								   usize,
 								   &Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
 							   ) -> Result<(),ApplicationError>
 	) -> Result<(),ApplicationError> {
@@ -555,8 +508,6 @@ impl<NN> Learnener<NN>
 						if batch.len() == learn_batch_size {
 							learning_process(&mut evalutor,
 													batch,
-													bias_shake_shake,
-													learn_max_threads,
 													&user_event_queue)?;
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
@@ -587,8 +538,6 @@ impl<NN> Learnener<NN>
 					if remaing > 0 {
 						learning_process(&mut evalutor,
 												batch,
-												bias_shake_shake,
-												learn_max_threads,
 												&user_event_queue)?;
 						count += remaing;
 					}
@@ -617,33 +566,11 @@ impl<NN> Learnener<NN>
 			let mut batch = Vec::with_capacity(learn_batch_size);
 
 			for sfen in teachers.into_iter() {
-				let (a,b) = if self.bias_shake_shake {
-					let mut rnd = rand::thread_rng();
-					let mut rnd = XorShiftRng::from_seed(rnd.gen());
-
-					let a = rnd.gen();
-					let b = 1f32 - a;
-
-					(a,b)
-				} else {
-					if self.bias_shake_shake {
-						let mut rnd = rand::thread_rng();
-						let mut rnd = XorShiftRng::from_seed(rnd.gen());
-
-						let a = rnd.gen();
-						let b = 1f32 - a;
-
-						(a,b)
-					} else {
-						(0.5f32,0.5f32)
-					}
-				};
+				batch.push(sfen);
 
 				if batch.len() == learn_batch_size {
 					learning_process(&mut evalutor,
 											batch,
-											bias_shake_shake,
-											learn_max_threads,
 											&user_event_queue)?;
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
@@ -676,8 +603,6 @@ impl<NN> Learnener<NN>
 			if !notify_quit.load(Ordering::Acquire) && remaing > 0 {
 				learning_process(&mut evalutor,
 							   		batch,
-							   		bias_shake_shake,
-							   		learn_max_threads,
 							   		&user_event_queue)?;
 				count += remaing;
 			}
@@ -690,37 +615,11 @@ impl<NN> Learnener<NN>
 
 	fn learning_from_yaneuraou_bin_batch(evalutor:&mut Trainer<NN>,
 										 batch:Vec<Vec<u8>>,
-										 bias_shake_shake:bool,
-										 learn_max_threads:usize,
 										 user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
 	) -> Result<(),ApplicationError> {
-
-		let (a,b) = if bias_shake_shake {
-			let mut rnd = rand::thread_rng();
-
-			let a: f32 = rnd.gen();
-			let b: f32 = 1f32 - a;
-
-			(a,b)
-		} else {
-			(1f32,1f32)
-		};
-
 		match evalutor.learning_by_packed_sfens(
 			batch,
-			learn_max_threads,
-			&move |s, ab| {
-
-				match s {
-					&GameEndState::Win => {
-						ab
-					}
-					&GameEndState::Lose => {
-						0f32
-					},
-					_ => 0.5f32
-				}
-			}, a,b, &*user_event_queue) {
+			&*user_event_queue) {
 			Err(_) => {
 				return Err(ApplicationError::LearningError(String::from(
 					"An error occurred while learning the neural network."
@@ -735,37 +634,11 @@ impl<NN> Learnener<NN>
 
 	fn learning_from_hcpe_batch(evalutor: &mut Trainer<NN>,
 								batch:Vec<Vec<u8>>,
-								bias_shake_shake:bool,
-								learn_max_threads:usize,
 								user_event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
 	) -> Result<(),ApplicationError> {
-
-			let (a,b) = if bias_shake_shake {
-			let mut rnd = rand::thread_rng();
-
-			let a: f32 = rnd.gen();
-			let b: f32 = 1f32 - a;
-
-			(a,b)
-		} else {
-			(1f32,1f32)
-		};
-
 		match evalutor.learning_by_hcpe(
 			batch,
-			learn_max_threads,
-			&move |s, ab| {
-
-				match s {
-					&GameEndState::Win => {
-						ab
-					}
-					&GameEndState::Lose => {
-						0f32
-					},
-					_ => 0.5f32
-				}
-			}, a,b, &*user_event_queue) {
+			 &*user_event_queue) {
 			Err(_) => {
 				return Err(ApplicationError::LearningError(String::from(
 					"An error occurred while learning the neural network."

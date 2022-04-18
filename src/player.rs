@@ -1404,10 +1404,6 @@ pub struct NNShogiPlayer<NN>
 	oute_kyokumen_map:KyokumenMap<u64,()>,
 	kyokumen_map:KyokumenMap<u64,u32>,
 	remaining_turns:u32,
-	nna_filename:String,
-	nnb_filename:String,
-	bias_shake_shake:bool,
-	learn_max_threads: usize,
 	evalutor:Option<Arc<Intelligence<NN>>>,
 	evalutor_creator: Box<dyn Fn() -> Intelligence<NN> + Send + 'static>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
@@ -1427,9 +1423,9 @@ impl<NN> NNShogiPlayer<NN>
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 	{
 
-	pub fn new<C: Fn() -> Intelligence<NN> + Send + 'static>(nna_filename:String, nnb_filename:String,
-			   bias_shake_shake:bool,learn_max_threads:usize,
-			   evalutor_creator:C) -> NNShogiPlayer<NN> {
+	pub fn new<C: Fn() -> Intelligence<NN> + Send + 'static>(evalutor_creator:C)
+		-> NNShogiPlayer<NN> {
+
 		NNShogiPlayer {
 			search:Arc::new(Search::new()),
 			kyokumen:None,
@@ -1438,10 +1434,6 @@ impl<NN> NNShogiPlayer<NN>
 			oute_kyokumen_map:KyokumenMap::new(),
 			kyokumen_map:KyokumenMap::new(),
 			remaining_turns:TURN_COUNT,
-			nna_filename:nna_filename,
-			nnb_filename:nnb_filename,
-			bias_shake_shake,
-			learn_max_threads:learn_max_threads,
 			evalutor:None,
 			evalutor_creator:Box::new(evalutor_creator),
 			history:Vec::new(),
@@ -1922,9 +1914,8 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 	fn on_stop(&mut self,_:&UserEvent) -> Result<(), CommonError> where CommonError: PlayerError {
 		Ok(())
 	}
-	fn gameover<L>(&mut self,s:&GameEndState,
-		event_queue:Arc<Mutex<UserEventQueue>>,
-		_:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+	fn gameover<L>(&mut self,_:&GameEndState,
+		_:Arc<Mutex<UserEventQueue>>, _:Arc<Mutex<OnErrorHandler<L>>>) -> Result<(),CommonError> where L: Logger, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
 
 		/*
 		let teban = self.kyokumen.as_ref().map(|k| k.teban).ok_or(
