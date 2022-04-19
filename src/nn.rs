@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::sync::{Mutex};
 use std::fs;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
 use nncombinator::arr::{Arr, DiffArr};
@@ -9,7 +10,7 @@ use nncombinator::device::DeviceCpu;
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
 use nncombinator::lossfunction::Mse;
 use nncombinator::optimizer::{MomentumSGD};
-use nncombinator::persistence::{Persistence, SaveToFile, TextFilePersistence};
+use nncombinator::persistence::{BinFilePersistence, Linear, Persistence, SaveToFile};
 use nncombinator::Stack;
 use rand::{prelude, Rng, SeedableRng};
 use rand::prelude::{Distribution};
@@ -37,9 +38,6 @@ pub struct Intelligence<NN>
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> {
 	nna:NN,
 	nnb:NN,
-	nna_filename:String,
-	nnb_filename:String,
-	nnsavedir:String,
 	quited:bool,
 }
 
@@ -114,9 +112,9 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
 	pub fn create(savedir:String,nna_filename:String,nnb_filename:String)
-		-> Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+		-> Result<Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 							 PreTrain<f32> + ForwardDiff<f32> +
-							 AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static> {
+							 AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static>,ApplicationError> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -131,7 +129,7 @@ impl IntelligenceCreator {
 
 		let rnd = rnd_base.clone();
 
-		let nna = net.add_layer(|l| {
+		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
 			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -161,7 +159,7 @@ impl IntelligenceCreator {
 
 		let rnd = rnd_base.clone();
 
-		let nnb = net.add_layer(|l| {
+		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
 			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -178,20 +176,32 @@ impl IntelligenceCreator {
 			LinearOutputLayer::new(l,&device)
 		});
 
-		Intelligence::new(nna,nnb,nna_filename,nnb_filename,savedir)
+		if Path::new(&format!("{}/{}",savedir,nna_filename)).exists() {
+			let mut pa = BinFilePersistence::new(
+				&format!("{}/{}", savedir, nna_filename))?;
+
+			nna.load(&mut pa)?;
+		}
+
+
+		if Path::new(&format!("{}/{}",savedir,nnb_filename)).exists() {
+			let mut pb = BinFilePersistence::new(
+				&format!("{}/{}", savedir, nna_filename))?;
+
+			nnb.load(&mut pb)?;
+		}
+
+		Ok(Intelligence::new(nna,nnb))
 	}
 }
 impl<NN> Intelligence<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> +
 			  AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
-	pub fn new(nna:NN,nnb:NN,nna_filename:String,nnb_filename:String,nnsavedir:String) -> Intelligence<NN> {
+	pub fn new(nna:NN,nnb:NN) -> Intelligence<NN> {
 		Intelligence {
 			nna:nna,
 			nnb:nnb,
-			nna_filename:nna_filename,
-			nnb_filename:nnb_filename,
-			nnsavedir:nnsavedir,
 			quited:false,
 		}
 	}
@@ -411,7 +421,7 @@ impl<NN> Intelligence<NN>
 		Ok(d)
 	}
 }
-pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,TextFilePersistence<f32>>{
+pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear>{
 	nna:NN,
 	nnb:NN,
 	optimizer:MomentumSGD<f32>,
@@ -427,7 +437,7 @@ pub struct TrainerCreator;
 impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
 		-> Trainer<impl BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-						BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>>> {
+						BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -504,7 +514,7 @@ impl TrainerCreator {
 }
 impl<NN> Trainer<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
+			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	pub fn calc_alpha_beta(bias_shake_shake:bool) -> (f32,f32) {
 		if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -862,9 +872,9 @@ impl<NN> Trainer<NN>
 	}
 
 	fn save(&mut self) -> Result<(),CommonError> {
-		let mut pa = TextFilePersistence::new(
+		let mut pa = BinFilePersistence::new(
 			&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?;
-		let mut pb = TextFilePersistence::new(
+		let mut pb = BinFilePersistence::new(
 			&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?;
 
 		self.nna.save(&mut pa);

@@ -1405,7 +1405,7 @@ pub struct NNShogiPlayer<NN>
 	kyokumen_map:KyokumenMap<u64,u32>,
 	remaining_turns:u32,
 	evalutor:Option<Arc<Intelligence<NN>>>,
-	evalutor_creator: Box<dyn Fn() -> Intelligence<NN> + Send + 'static>,
+	evalutor_creator: Box<dyn Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
 	moved:bool,
@@ -1423,7 +1423,7 @@ impl<NN> NNShogiPlayer<NN>
 			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
 	{
 
-	pub fn new<C: Fn() -> Intelligence<NN> + Send + 'static>(evalutor_creator:C)
+	pub fn new<C: Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>(evalutor_creator:C)
 		-> NNShogiPlayer<NN> {
 
 		NNShogiPlayer {
@@ -1489,7 +1489,7 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 		match self.evalutor {
 			Some(_) => (),
 			None => {
-				self.evalutor = Some(Arc::new((self.evalutor_creator)()));
+				self.evalutor = Some(Arc::new((self.evalutor_creator)()?));
 			}
 		}
 		Ok(())

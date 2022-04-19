@@ -29,7 +29,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use nncombinator::arr::Arr;
 use nncombinator::layer::{BatchForwardBase, BatchTrain};
-use nncombinator::persistence::{Persistence, TextFilePersistence};
+use nncombinator::persistence::{BinFilePersistence, Linear, Persistence};
 use rand::prelude::SliceRandom;
 use usiagent::output::USIStdErrorWriter;
 
@@ -99,11 +99,11 @@ impl<P: AsRef<Path>> CheckPointWriter<P> {
 }
 pub struct Learnener<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>> {
+			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	nn:PhantomData<NN>}
 impl<NN> Learnener<NN>
 	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-			  BatchTrain<f32> + Persistence<f32,TextFilePersistence<f32>>{
+			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>{
 	pub fn new() -> Learnener<NN> {
 		Learnener {
 			nn:PhantomData::<NN>

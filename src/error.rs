@@ -88,6 +88,11 @@ impl From<ConfigReadError> for CommonError {
 		CommonError::Fail(format!("{}",err))
 	}
 }
+impl From<ApplicationError> for CommonError {
+	fn from(err: ApplicationError) -> Self {
+		CommonError::Fail(format!("{}",err))
+	}
+}
 #[derive(Debug)]
 pub enum ApplicationError {
 	StartupError(String),
