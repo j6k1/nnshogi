@@ -592,7 +592,51 @@ impl<NN> Search<NN>
 			None => opponent_nn_snapshot,
 		};
 
-		{
+		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
+			let network_delay = self.network_delay;
+			let limit = env.limit.clone();
+			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
+
+			let mut check_timelimit = move || {
+				limit.map_or(false,|l| {
+					let now = Instant::now();
+					l < now ||
+						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
+						checkmate_limit.map(|l| l < now).unwrap_or(false)
+				})
+			};
+
+			let this = self.clone();
+
+			let mut info_sender = env.info_sender.clone();
+			let on_error_handler = env.on_error_handler.clone();
+
+			let mut on_searchstart = |depth,_| {
+				this.send_seldepth(&mut info_sender, &on_error_handler, base_depth, current_depth + depth);
+			};
+
+			match env.solver.checkmate(false,teban, state, mc,
+									   self.max_ply,
+									   None,
+									   &mut oute_kyokumen_map.clone(),
+									   self_already_oute_map,
+									   &mut current_kyokumen_map.clone(),
+									   &*this.clone(),
+									   mhash, shash,
+									   &mut check_timelimit,
+									   &env.stop,
+									   &mut on_searchstart,
+									   &env.event_queue,
+									   solver_event_dispatcher) {
+				MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
+					return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_applied_move()));
+				},
+				MaybeMate::MateMoves(_,_) => {
+					return Evaluation::Result(Score::INFINITE,None);
+				},
+				_ => ()
+			}
+
 			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot, self_nn_snapshot);
 
 			if depth == 0 || current_depth > self.max_depth {
@@ -625,51 +669,6 @@ impl<NN> Search<NN>
 				(mvs,true)
 			}
 		} else {
-			let network_delay = self.network_delay;
-			let limit = env.limit.clone();
-			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
-
-			let mut check_timelimit = move || {
-				limit.map_or(false,|l| {
-					let now = Instant::now();
-						l < now ||
-						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
-						checkmate_limit.map(|l| l < now).unwrap_or(false)
-				})
-			};
-			{
-				let this = self.clone();
-
-				let mut info_sender = env.info_sender.clone();
-				let on_error_handler = env.on_error_handler.clone();
-
-				let mut on_searchstart = |depth,_| {
-					this.send_seldepth(&mut info_sender, &on_error_handler, base_depth, current_depth + depth);
-				};
-
-				match env.solver.checkmate(false,teban, state, mc,
-											self.max_ply,
-											None,
-											&mut oute_kyokumen_map.clone(),
-											self_already_oute_map,
-											&mut current_kyokumen_map.clone(),
-											&*this.clone(),
-											mhash, shash,
-											&mut check_timelimit,
-											&env.stop,
-											&mut on_searchstart,
-											&env.event_queue,
-											solver_event_dispatcher) {
-					MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
-						return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_applied_move()));
-					},
-					MaybeMate::MateMoves(_,_) => {
-						return Evaluation::Result(Score::INFINITE,None);
-					},
-					_ => ()
-				}
-			}
-
 			if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
 				self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 				return Evaluation::Timeout(None,None);
