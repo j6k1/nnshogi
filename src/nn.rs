@@ -209,11 +209,11 @@ impl<NN> Intelligence<NN>
 	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> (<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack) {
 
-		let sa = self.nna.forward_diff(DiffInput::NotDiff(Self::make_input(
+		let sa = self.nna.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
 		)));
 
-		let sb = self.nnb.forward_diff(DiffInput::NotDiff(Self::make_input(
+		let sb = self.nnb.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
 		)));
 
@@ -222,7 +222,7 @@ impl<NN> Intelligence<NN>
 
 	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
 		-> i32 {
-		let input = Self::make_input(is_self,t,b,mc);
+		let input = InputCreator::make_input(is_self,t,b,mc);
 
 		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone()));
 		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone()));
@@ -289,132 +289,6 @@ impl<NN> Intelligence<NN>
 		}
 
 		Ok(())
-	}
-
-	pub fn make_input(is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections) -> Arr<f32,2517> {
-		let mut inputs = Arr::new();
-
-		let index = if is_self {
-			SELF_TEBAN_INDEX
-		} else {
-			OPPONENT_TEBAN_INDEX
-		};
-
-		inputs[index] = 1f32;
-
-		match b {
-			&Banmen(ref kinds) => {
-				for y in 0..9 {
-					for x in 0..9 {
-						let kind = kinds[y][x];
-
-						if kind != KomaKind::Blank {
-							let index = InputCreator::input_index_of_banmen(t,kind,x as u32,y as u32).unwrap();
-
-							inputs[index] = 1f32;
-						}
-					}
-				}
-			}
-		}
-
-		let ms = Mochigoma::new();
-		let mg = Mochigoma::new();
-		let (ms,mg) = match mc {
-			&MochigomaCollections::Pair(ref ms,ref mg) => (ms,mg),
-			&MochigomaCollections::Empty => (&ms,&mg),
-		};
-
-		let (ms,mg) = match t {
-			Teban::Sente => (ms,mg),
-			Teban::Gote => (mg,ms),
-		};
-
-		for &k in &MOCHIGOMA_KINDS {
-			let c = ms.get(k);
-
-			for i in 0..c {
-				let offset = SELF_INDEX_MAP[k as usize];
-
-				let offset = offset as usize;
-
-				inputs[offset + i as usize] = 1f32;
-			}
-
-			let c = mg.get(k);
-
-			for i in 0..c {
-				let offset = OPPONENT_INDEX_MAP[k as usize];
-
-				let offset = offset as usize;
-
-				inputs[offset + i as usize] = 1f32;
-			}
-		}
-		inputs
-	}
-
-	pub fn make_diff_input(is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move) -> Result<DiffArr<f32,2517>,CommonError> {
-		let mut d = DiffArr::new();
-
-		let (addi,subi) = if is_self {
-			(SELF_TEBAN_INDEX,OPPONENT_TEBAN_INDEX)
-		} else {
-			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
-		};
-
-		d.push(subi,1.)?;
-		d.push(addi,1.)?;
-
-		match m {
-			&Move::To(KomaSrcPosition(sx,sy),KomaDstToPosition(dx,dy,n)) => {
-				match b {
-					&Banmen(ref kinds) => {
-						let (sx,sy) = (9-sx,sy-1);
-						let (dx,dy) = (9-dx,dy-1);
-
-						let sk = kinds[sy as usize][sx as usize];
-
-						d.push(InputCreator::input_index_of_banmen(t, sk, sx, sy)?, -1.)?;
-
-						if n {
-							d.push(InputCreator::input_index_of_banmen(t,sk.to_nari(),dx,dy)?,1.)?;
-						} else {
-							d.push(InputCreator::input_index_of_banmen(t,sk,dx,dy)?,1.)?;
-						}
-
-						let dk = kinds[dy as usize][dx as usize];
-
-						if dk != KomaKind::Blank {
-							d.push(InputCreator::input_index_of_banmen(t,dk,dx,dy)?,-1.)?;
-						}
-
-						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
-
-							d.push(offset+1, 1.)?;
-						}
-					}
-				}
-			},
-			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
-				let (dx,dy) = (9-dx,dy-1);
-				let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
-
-				if offset < 1 {
-					return Err(CommonError::Fail(
-						String::from(
-							"Calculation of index of difference input data of neural network failed. (The number of holding pieces is 0)"
-						)))
-				} else {
-					d.push(offset, -1.)?;
-
-					d.push(InputCreator::input_index_of_banmen(t, KomaKind::from((t, kind)), dx, dy)?, 1.)?;
-				}
-			}
-		}
-
-		Ok(d)
 	}
 }
 pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear>{
