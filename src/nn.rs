@@ -436,7 +436,8 @@ pub struct TrainerCreator;
 
 impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
-		-> Trainer<impl BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+		-> Trainer<impl ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
+						BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 						BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>> {
 
 		let mut rnd = prelude::thread_rng();
@@ -513,7 +514,8 @@ impl TrainerCreator {
 	}
 }
 impl<NN> Trainer<NN>
-	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
+			  BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	pub fn calc_alpha_beta(bias_shake_shake:bool) -> (f32,f32) {
 		if bias_shake_shake {
@@ -633,6 +635,20 @@ impl<NN> Trainer<NN>
 		Ok((msa,moa,msb,mob))
 	}
 
+	pub fn test_by_csa<'a>(&mut self,
+						   teban:Teban,
+						   kyokumen:&(Banmen,MochigomaCollections,u64,u64))
+						   -> Result<f32,ApplicationError> {
+		let (banmen,mc,_,_) = kyokumen;
+
+		let input = InputCreator::make_input(true, teban, &banmen, &mc);
+
+		let ra = self.nna.forward_all(input.clone());
+		let rb = self.nnb.forward_all(input);
+
+		Ok(ra[0] + rb[0])
+	}
+
 	pub fn learning_by_packed_sfens<'a>(&mut self,
 										  packed_sfens:Vec<Vec<u8>>,
 										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
@@ -742,6 +758,26 @@ impl<NN> Trainer<NN>
 		self.save()?;
 
 		Ok((msa,moa,msb,mob))
+	}
+
+	pub fn test_by_packed_sfens<'a>(&mut self,
+										packed_sfen:Vec<u8>)
+										-> Result<(GameEndState,f32),ApplicationError> {
+		let ((teban,banmen,mc),yaneuraou::haffman_code::ExtendFields {
+			value: _,
+			best_move: _,
+			end_ply: _,
+			game_result
+		}) = self.packed_sfen_reader.read_sfen_with_extended(packed_sfen).map_err(|e| {
+			ApplicationError::LearningError(format!("{}",e))
+		})?;
+
+		let input = InputCreator::make_input(true, teban, &banmen, &mc);
+
+		let ra = self.nna.forward_all(input.clone());
+		let rb = self.nnb.forward_all(input);
+
+		Ok((game_result,ra[0] + rb[0]))
 	}
 
 	pub fn learning_by_hcpe<'a>(&mut self,
@@ -869,6 +905,41 @@ impl<NN> Trainer<NN>
 		self.save()?;
 
 		Ok((msa,moa,msb,mob))
+	}
+
+	pub fn test_by_packed_hcpe<'a>(&mut self,
+									hcpe:Vec<u8>)
+									-> Result<(GameEndState,f32),ApplicationError> {
+		let ((teban,banmen,mc),hcpe::haffman_code::ExtendFields {
+			eval: _,
+			best_move: _,
+			game_result
+		}) = self.hcpe_reader.read_sfen_with_extended(hcpe).map_err(|e| {
+			ApplicationError::LearningError(format!("{}",e))
+		})?;
+
+		let input = InputCreator::make_input(true, teban, &banmen, &mc);
+
+		let ra = self.nna.forward_all(input.clone());
+		let rb = self.nnb.forward_all(input);
+
+		let s = match game_result {
+			GameResult::SenteWin if teban == Teban::Sente => {
+				GameEndState::Win
+			},
+			GameResult::SenteWin => {
+				GameEndState::Lose
+			},
+			GameResult::GoteWin if teban == Teban::Gote => {
+				GameEndState::Win
+			},
+			GameResult::GoteWin => {
+				GameEndState::Lose
+			},
+			_ => GameEndState::Draw
+		};
+
+		Ok((s,ra[0] + rb[0]))
 	}
 
 	fn save(&mut self) -> Result<(),CommonError> {

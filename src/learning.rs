@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Write;
 
 use usiagent::OnErrorHandler;
-use usiagent::shogi::Banmen;
+use usiagent::shogi::{Banmen, Teban};
 use usiagent::shogi::MochigomaCollections;
 use usiagent::rule::*;
 use usiagent::event::*;
@@ -28,9 +28,11 @@ use std::fs::{File, OpenOptions};
 use std::marker::PhantomData;
 use std::path::Path;
 use nncombinator::arr::Arr;
-use nncombinator::layer::{BatchForwardBase, BatchTrain};
+use nncombinator::layer::{BatchForwardBase, BatchTrain, ForwardAll};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence};
 use rand::prelude::SliceRandom;
+use rand::{Rng, SeedableRng};
+use rand_xorshift::XorShiftRng;
 use usiagent::output::USIStdErrorWriter;
 
 #[derive(Debug,Deserialize,Serialize)]
@@ -98,11 +100,13 @@ impl<P: AsRef<Path>> CheckPointWriter<P> {
 	}
 }
 pub struct Learnener<NN>
-	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
+			  BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	nn:PhantomData<NN>}
 impl<NN> Learnener<NN>
-	where NN: BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
+	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
+			  BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
 			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>{
 	pub fn new() -> Learnener<NN> {
 		Learnener {
@@ -130,7 +134,7 @@ impl<NN> Learnener<NN>
 		system_event_dispatcher
 	}
 
-	fn start_read_stdinput_thread(&self,
+	fn start_read_stdinput_thread(&self,notify_run_test:Arc<AtomicBool>,
 								  system_event_queue:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>>,
 								  on_error_handler:Arc<Mutex<OnErrorHandler<FileLogger>>>) {
 		thread::spawn(move || {
@@ -143,6 +147,7 @@ impl<NN> Learnener<NN>
 							"quit" => {
 								match system_event_queue.lock() {
 									Ok(mut system_event_queue) => {
+										notify_run_test.store(false,Ordering::Release);
 										system_event_queue.push(SystemEvent::Quit);
 										return;
 									},
@@ -152,6 +157,18 @@ impl<NN> Learnener<NN>
 									}
 								}
 							},
+							"test" => {
+								match system_event_queue.lock() {
+									Ok(mut system_event_queue) => {
+										system_event_queue.push(SystemEvent::Quit);
+										return;
+									},
+									Err(ref e) => {
+										let _ = on_error_handler.lock().map(|h| h.call(e));
+										return;
+									}
+								}
+							}
 							_ => (),
 						}
 					},
@@ -196,7 +213,10 @@ impl<NN> Learnener<NN>
 		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
 
-		self.start_read_stdinput_thread(system_event_queue,on_error_handler);
+		let notify_run_test_arc = Arc::new(AtomicBool::new(true));
+		let notify_run_test = notify_run_test_arc.clone();
+
+		self.start_read_stdinput_thread(notify_run_test,system_event_queue,on_error_handler);
 
 		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
@@ -218,7 +238,10 @@ impl<NN> Learnener<NN>
 		let mut skip_files = checkpoint.is_some();
 		let mut skip_items = checkpoint.is_some();
 
-		'files: for entry in fs::read_dir(kifudir)? {
+		let mut rng = rand::thread_rng();
+		let mut rng = XorShiftRng::from_seed(rng.gen());
+
+		'files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
 			let path = entry?.path();
 
 			current_filename = Some(path.as_path().file_name().map(|s| {
@@ -352,6 +375,123 @@ impl<NN> Learnener<NN>
 			})?;
 		}
 
+		if notify_run_test_arc.load(Ordering::Acquire) {
+			let mut historys:Vec<(Teban,GameEndState,(Banmen,MochigomaCollections,u64,u64))> = Vec::new();
+
+			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("tests"))? {
+				let path = entry?.path();
+				if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
+					continue;
+				}
+
+				let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
+
+				for p in parsed.into_iter() {
+					match p.end_state {
+						Some(EndState::Toryo) | Some(EndState::Tsumi) => (),
+						_ => {
+							continue;
+						}
+					}
+
+					if !p.comments.iter().any(|c| {
+						if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
+							return false;
+						}
+
+						let c = c.split(':').collect::<Vec<&str>>();
+
+						if c.len() != 3 {
+							false
+						} else {
+							let rate:f64 = match c[2].parse() {
+								Err(_) => {
+									return false;
+								},
+								Ok(rate) => rate,
+							};
+
+							rate >= lowerrate
+						}
+					}) {
+						continue;
+					}
+					let m = p.moves.iter().fold(Vec::new(),|mut mvs,m| match *m {
+						CsaMove::Move(m,_) => {
+							mvs.push(m);
+							mvs
+						},
+						_ => {
+							mvs
+						}
+					});
+					let teban = p.teban_at_start;
+					let banmen = p.initial_position;
+					let state = State::new(banmen);
+					let mc = p.initial_mochigoma;
+					let history = Vec::new();
+
+					let (mut teban,_,_,history) = Rule::apply_moves_with_callback(state,
+																			   teban,
+																			   mc,&m.into_iter().map(|m| {
+							m.to_applied_move()
+						}).collect::<Vec<AppliedMove>>(),
+						history,
+							|_,banmen,mc,_,_,history| {
+							let mut history = history;
+							history.push((banmen.clone(),mc.clone(),0,0));
+							history
+						});
+
+					let mut s = GameEndState::Win;
+
+					for h in history.into_iter() {
+						historys.push((teban,s.clone(),h));
+						teban = teban.opposite();
+
+						if s == GameEndState::Win {
+							s = GameEndState::Lose;
+						} else {
+							s = GameEndState::Win;
+						}
+					}
+
+					if historys.len() >= 10000 {
+						break 'test_files;
+					}
+				}
+			}
+
+			historys.shuffle(&mut rng);
+
+			let mut successed = 0;
+			let mut count = 0;
+
+			for (teban,s,kyokumen) in historys.iter().take(100) {
+				let score = evalutor.test_by_csa(*teban, kyokumen)?;
+
+				let success = match s {
+					GameEndState::Win => {
+						score >= 0.5
+					},
+					_ => {
+						score < 0.5
+					}
+				};
+
+				if success {
+					successed += 1;
+					println!("正解!");
+				} else {
+					println!("不正解...");
+				}
+
+				count += 1;
+			}
+
+			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
+		}
+
 		print!("{}件の棋譜を学習しました。\n",count);
 
 		Ok(())
@@ -367,7 +507,10 @@ impl<NN> Learnener<NN>
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
-							Self::learning_from_yaneuraou_bin_batch)
+							Self::learning_from_yaneuraou_bin_batch,
+							|evalutor,packed| {
+								evalutor.test_by_packed_sfens(packed)
+							})
 
 	}
 
@@ -381,11 +524,14 @@ impl<NN> Learnener<NN>
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
-							Self::learning_from_hcpe_batch)
+							Self::learning_from_hcpe_batch,
+							|evalutor,packed| {
+								evalutor.test_by_packed_hcpe(packed)
+							})
 
 	}
 
-	pub fn learning_batch(&mut self,kifudir:String,
+	pub fn learning_batch<F>(&mut self,kifudir:String,
 							   ext:&str,
 							   evalutor: Trainer<NN>,
 							   learn_sfen_read_size:usize,
@@ -394,8 +540,11 @@ impl<NN> Learnener<NN>
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
 								   &Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>
-							   ) -> Result<(),ApplicationError>
-	) -> Result<(),ApplicationError> {
+							   ) -> Result<(),ApplicationError>,
+							   mut test_process:F
+	) -> Result<(),ApplicationError>
+		where F: FnMut(&mut Trainer<NN>,Vec<u8>) -> Result<(GameEndState,f32),ApplicationError> {
+
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -419,7 +568,10 @@ impl<NN> Learnener<NN>
 		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
 
-		self.start_read_stdinput_thread(system_event_queue,on_error_handler);
+		let notify_run_test_arc = Arc::new(AtomicBool::new(true));
+		let notify_run_test = notify_run_test_arc.clone();
+
+		self.start_read_stdinput_thread(notify_run_test,system_event_queue,on_error_handler);
 
 		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
@@ -444,7 +596,10 @@ impl<NN> Learnener<NN>
 		let mut skip_files = checkpoint.is_some();
 		let mut skip_items = checkpoint.is_some();
 
-		'files: for entry in fs::read_dir(kifudir)? {
+		let mut rng = rand::thread_rng();
+		let mut rng = XorShiftRng::from_seed(rng.gen());
+
+		'files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
 			let path = entry?.path();
 
 			current_filename = Some(path.as_path().file_name().map(|s| {
@@ -560,7 +715,6 @@ impl<NN> Learnener<NN>
 		}
 
 		if !notify_quit.load(Ordering::Acquire) && teachers.len() > 0 {
-			let mut rng = rand::thread_rng();
 			teachers.shuffle(&mut rng);
 
 			let mut batch = Vec::with_capacity(learn_batch_size);
@@ -593,8 +747,7 @@ impl<NN> Learnener<NN>
 				}
 
 				if notify_quit.load(Ordering::Acquire) {
-					print!("{}局面を学習しました。\n",count);
-					return Ok(());
+					break;
 				}
 			}
 
@@ -606,6 +759,66 @@ impl<NN> Learnener<NN>
 							   		&user_event_queue)?;
 				count += remaing;
 			}
+		}
+
+		if notify_run_test_arc.load(Ordering::Acquire) {
+			let mut testdata = Vec::new();
+
+			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
+				let path = entry?.path();
+
+				if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
+					continue;
+				}
+
+				print!("{}\n", path.display());
+
+				for b in BufReader::new(File::open(path)?).bytes() {
+					let b = b?;
+
+					record.push(b);
+
+					if record.len() == 40 {
+						testdata.push(record);
+						record = Vec::with_capacity(40);
+					} else {
+						continue;
+					}
+
+					if testdata.len() >= 10000 {
+						break 'test_files;
+					}
+				}
+			}
+
+			testdata.shuffle(&mut rng);
+
+			let mut successed = 0;
+			let mut count = 0;
+
+			for packed in testdata.into_iter().take(100) {
+				let (s,score) = test_process(&mut evalutor,packed)?;
+
+				let success = match s {
+					GameEndState::Win => {
+						score >= 0.5
+					},
+					_ => {
+						score < 0.5
+					}
+				};
+
+				if success {
+					successed += 1;
+					println!("正解!");
+				} else {
+					println!("不正解...");
+				}
+
+				count += 1;
+			}
+
+			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
 		}
 
 		print!("{}局面を学習しました。\n",count);
