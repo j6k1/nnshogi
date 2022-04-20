@@ -445,8 +445,8 @@ impl<NN> Search<NN>
 		let (s,self_snapshot,opponent_snapshot) = {
 			let m = m.to_move();
 			let (ss, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
-			let (os, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
-			(ss - os,self_snapshot,opponent_snapshot)
+			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
+			(ss,self_snapshot,opponent_snapshot)
 		};
 
 		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot,opponent_snapshot))
@@ -490,22 +490,19 @@ impl<NN> Search<NN>
 		let s = {
 			let m = m.to_move();
 			let (ss, _) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
-			let (os, _) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
-			ss - os
+			ss
 		};
 
 		Ok(Score::Value(s))
 	}
 
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN>>,
-						   self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-						   opponent_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>)
+						   self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>)
 		-> Score {
 
 		let ss = evalutor.evalute_by_snapshot(self_snapshot);
-		let os = evalutor.evalute_by_snapshot(opponent_snapshot);
 
-		Score::Value(ss - os)
+		Score::Value(ss)
 	}
 
 	fn negascout<L,S>(self:&Arc<Self>,
@@ -637,7 +634,7 @@ impl<NN> Search<NN>
 				_ => ()
 			}
 
-			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot, self_nn_snapshot);
+			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot);
 
 			if depth == 0 || current_depth > self.max_depth {
 				return Evaluation::Result(-s, None);
@@ -664,7 +661,7 @@ impl<NN> Search<NN>
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				return Evaluation::Result(-self.evalute_by_snapshot(&env.evalutor,opponent_nn_snapshot,self_nn_snapshot),None);
+				return Evaluation::Result(-self.evalute_by_snapshot(&env.evalutor,opponent_nn_snapshot),None);
 			} else {
 				(mvs,true)
 			}
