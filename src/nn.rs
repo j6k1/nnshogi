@@ -227,9 +227,7 @@ impl<NN> Intelligence<NN>
 		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone()));
 		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone()));
 
-		let (a,b) = (0.5f32,0.5f32);
-
-		let answer = nnaanswera[0] * a + nnbanswerb[0] * b - 0.5;
+		let answer = nnaanswera[0] + nnbanswerb[0] - 0.5;
 
 		(answer * (1 << 29) as f32) as i32
 	}
@@ -255,12 +253,10 @@ impl<NN> Intelligence<NN>
 	pub fn evalute_by_snapshot(&self,snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)) -> i32 {
 		match snapshot {
 			(sa,sb) => {
-				let (a,b) = (0.5f32,0.5f32);
-
 				let nnaanswera = sa.map(|ans| ans[0].clone());
 				let nnbanswerb = sb.map(|ans| ans[0].clone());
 
-				let answer = nnaanswera * a+ nnbanswerb * b - 0.5;
+				let answer = nnaanswera + nnbanswerb - 0.5;
 
 				(answer * (1 << 29) as f32) as i32
 			}
