@@ -764,7 +764,7 @@ impl<NN> Learnener<NN>
 		if notify_run_test_arc.load(Ordering::Acquire) {
 			let mut testdata = Vec::new();
 
-			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
+			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("tests"))? {
 				let path = entry?.path();
 
 				if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
