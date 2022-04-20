@@ -481,9 +481,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("正解!");
+					println!("勝率{}% 正解!",score * 100.);
 				} else {
-					println!("不正解...");
+					println!("勝率{}% 不正解...",score * 100.);
 				}
 
 				count += 1;
@@ -810,9 +810,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("正解!");
+					println!("勝率{}% 正解!",score * 100.);
 				} else {
-					println!("不正解...");
+					println!("勝率{}% 不正解...",score * 100.);
 				}
 
 				count += 1;
