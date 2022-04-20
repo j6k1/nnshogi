@@ -436,9 +436,9 @@ pub struct TrainerCreator;
 
 impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
-		-> Trainer<impl ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
+		-> Result<Trainer<impl ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
 						BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-						BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>> {
+						BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>>,ApplicationError> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -453,7 +453,7 @@ impl TrainerCreator {
 
 		let rnd = rnd_base.clone();
 
-		let nna = net.add_layer(|l| {
+		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -483,7 +483,7 @@ impl TrainerCreator {
 
 		let rnd = rnd_base.clone();
 
-		let nnb = net.add_layer(|l| {
+		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -500,7 +500,21 @@ impl TrainerCreator {
 			LinearOutputLayer::new(l,&device)
 		});
 
-		Trainer {
+		if Path::new(&format!("{}/{}",savedir,nna_filename)).exists() {
+			let mut pa = BinFilePersistence::new(
+				&format!("{}/{}", savedir, nna_filename))?;
+
+			nna.load(&mut pa)?;
+		}
+
+		if Path::new(&format!("{}/{}",savedir,nnb_filename)).exists() {
+			let mut pb = BinFilePersistence::new(
+				&format!("{}/{}", savedir, nna_filename))?;
+
+			nnb.load(&mut pb)?;
+		}
+
+		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
 			optimizer:MomentumSGD::with_params(0.001,0.9,0.0),
@@ -510,7 +524,7 @@ impl TrainerCreator {
 			packed_sfen_reader:PackedSfenReader::new(),
 			hcpe_reader:HcpeReader::new(),
 			bias_shake_shake:enable_shake_shake,
-		}
+		})
 	}
 }
 impl<NN> Trainer<NN>

@@ -144,14 +144,14 @@ fn run() -> Result<(),ApplicationError> {
 			Learnener::new().learning_from_yaneuraou_bin(kifudir,
 														 TrainerCreator::create(String::from("data"),
 																				String::from("nn.a.bin"),
-																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu),
+																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else if matches.opt_present("hcpe") {
 				Learnener::new().learning_from_hcpe(kifudir,
 													TrainerCreator::create(String::from("data"),
 																		   String::from("nn.a.bin"),
-																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu),
+																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
 		} else {
@@ -160,7 +160,7 @@ fn run() -> Result<(),ApplicationError> {
 											   lowerrate,
 											   TrainerCreator::create(String::from("data"),
 																	  String::from("nn.a.bin"),
-																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu))
+																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?)
 		}
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
