@@ -947,7 +947,7 @@ impl InputCreator {
 						}
 
 						if dk != KomaKind::Blank && dk != KomaKind::SOu && dk != KomaKind::GOu {
-							let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, MochigomaKind::try_from(dk)?, mc)?;
+							let offset = InputCreator::input_index_with_of_mochigoma_get(t, MochigomaKind::try_from(dk)?, mc)?;
 
 							d.push(offset+1, 1.)?;
 						}
@@ -956,7 +956,7 @@ impl InputCreator {
 			},
 			&Move::Put(kind,KomaDstPutPosition(dx,dy))  => {
 				let (dx,dy) = (9-dx,dy-1);
-				let offset = InputCreator::input_index_with_of_mochigoma_get(is_self, t, kind, mc)?;
+				let offset = InputCreator::input_index_with_of_mochigoma_get(t, kind, mc)?;
 
 				if offset < 1 {
 					return Err(CommonError::Fail(
@@ -1059,7 +1059,7 @@ impl InputCreator {
 	}
 
 	#[inline]
-	fn input_index_with_of_mochigoma_get(is_self:bool, teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
+	fn input_index_with_of_mochigoma_get(teban:Teban, kind:MochigomaKind, mc:&MochigomaCollections)
 										 -> Result<usize,CommonError> {
 
 		let ms = Mochigoma::new();
@@ -1071,13 +1071,11 @@ impl InputCreator {
 		};
 
 		let mc = match teban {
-			Teban::Sente if is_self => ms,
-			Teban::Sente => mg,
-			Teban::Gote if is_self => mg,
-			Teban::Gote => ms,
+			Teban::Sente => ms,
+			Teban::Gote => mg,
 		};
 
-		let offset = if is_self {
+		let offset = if teban == Teban::Sente {
 			SELF_INDEX_MAP[kind as usize]
 		} else {
 			OPPONENT_INDEX_MAP[kind as usize]
