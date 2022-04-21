@@ -920,7 +920,7 @@ impl InputCreator {
 			(OPPONENT_TEBAN_INDEX,SELF_TEBAN_INDEX)
 		};
 
-		d.push(subi,1.)?;
+		d.push(subi,-1.)?;
 		d.push(addi,1.)?;
 
 		match m {
