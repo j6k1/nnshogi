@@ -408,8 +408,8 @@ impl<NN> Trainer<NN>
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
-			let a = rnd.gen_range(0..1) as f32;
-			let b = 1f32 / a ;
+			let a = rnd.gen::<f32>().abs() / f32::MAX;
+			let b = 1f32 - a ;
 
 			(a,b)
 		} else {
