@@ -109,7 +109,7 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
-const SCALE:f32 = 100.;
+const SCALE:f32 = 40.;
 
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
@@ -408,7 +408,7 @@ impl<NN> Trainer<NN>
 			let mut rnd = rand::thread_rng();
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
-			let a = rnd.gen::<f32>().abs() / f32::MAX;
+			let a = rnd.gen();
 			let b = 1f32 - a ;
 
 			(a,b)
