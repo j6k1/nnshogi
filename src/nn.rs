@@ -208,30 +208,30 @@ impl<NN> Intelligence<NN>
 		}
 	}
 
-	pub fn make_snapshot(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> (<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack) {
+	pub fn make_snapshot(&self, is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections) -> Result<(<NN as PreTrain<f32>>::OutStack, <NN as PreTrain<f32>>::OutStack), CommonError>
+	{
 
 		let sa = self.nna.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
-		) / SCALE));
+		) / SCALE))?;
 
 		let sb = self.nnb.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
-		) / SCALE));
+		) / SCALE))?;
 
-		(sa,sb)
+		Ok((sa,sb))
 	}
 
-	pub fn evalute(&self,is_self:bool,t:Teban,b:&Banmen,mc:&MochigomaCollections)
-		-> i32 {
+	pub fn evalute(&self, is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections) -> Result<i32, CommonError>
+	{
 		let input = InputCreator::make_input(is_self,t,b,mc);
 
-		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() / SCALE));
-		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() / SCALE));
+		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
+		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
 
 		let answer = nnaanswera[0] + nnbanswerb[0] - 0.5;
 
-		(answer * (1 << 29) as f32) as i32
+		Ok((answer * (1 << 29) as f32) as i32)
 	}
 
 	pub fn evalute_by_diff(&self, snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
@@ -241,11 +241,11 @@ impl<NN> Intelligence<NN>
 		let input = InputCreator::make_diff_input(is_self, t, b, mc, m)?;
 		let o = self.nna.ask_diff_input(sa);
 
-		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o));
+		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o))?;
 
 		let o = self.nnb.ask_diff_input(sb);
 
-		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o));
+		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o))?;
 
 		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone()) - 0.5;
 
@@ -529,8 +529,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE);
-		let rb = self.nnb.forward_all(input / SCALE);
+		let ra = self.nna.forward_all(input.clone() / SCALE)?;
+		let rb = self.nnb.forward_all(input / SCALE)?;
 
 		Ok(ra[0] + rb[0])
 	}
@@ -659,8 +659,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE);
-		let rb = self.nnb.forward_all(input / SCALE);
+		let ra = self.nna.forward_all(input.clone() / SCALE)?;
+		let rb = self.nnb.forward_all(input / SCALE)?;
 
 		Ok((game_result,ra[0] + rb[0]))
 	}
@@ -805,8 +805,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE);
-		let rb = self.nnb.forward_all(input / SCALE);
+		let ra = self.nna.forward_all(input.clone() / SCALE)?;
+		let rb = self.nnb.forward_all(input / SCALE)?;
 
 		let s = match game_result {
 			GameResult::SenteWin if teban == Teban::Sente => {
@@ -833,8 +833,8 @@ impl<NN> Trainer<NN>
 		let mut pb = BinFilePersistence::new(
 			&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?;
 
-		self.nna.save(&mut pa);
-		self.nnb.save(&mut pb);
+		self.nna.save(&mut pa)?;
+		self.nnb.save(&mut pb)?;
 
 		pa.save(&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?;
 		pb.save(&format!("{}/{}.tmp",self.nnsavedir,self.nnb_filename))?;

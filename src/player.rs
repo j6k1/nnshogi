@@ -380,7 +380,7 @@ impl<NN> Search<NN>
 	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence<NN>>,teban:Teban,state:&State,mc:&MochigomaCollections)
 		-> Result<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack),CommonError> {
 
-		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc);
+		let r = evalutor.make_snapshot(is_self,teban,state.get_banmen(),mc)?;
 
 		Ok(r)
 	}

@@ -15,7 +15,7 @@ use usiagent::error::TypeConvertError;
 use usiagent::error::SfenStringConvertError;
 use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
-use nncombinator::error::{ConfigReadError, IndexOutBoundError, TrainingError};
+use nncombinator::error::{ConfigReadError, EvaluateError, IndexOutBoundError, PersistenceError, TrainingError};
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -83,8 +83,19 @@ impl From<TrainingError> for CommonError {
 		CommonError::Fail(format!("{}",err))
 	}
 }
+impl From<EvaluateError> for CommonError {
+	fn from(err: EvaluateError) -> Self {
+		CommonError::Fail(format!("{}",err))
+	}
+}
 impl From<ConfigReadError> for CommonError {
 	fn from(err: ConfigReadError) -> Self {
+		CommonError::Fail(format!("{}",err))
+	}
+}
+
+impl From<PersistenceError> for CommonError {
+	fn from(err: PersistenceError) -> Self {
 		CommonError::Fail(format!("{}",err))
 	}
 }
@@ -108,7 +119,8 @@ pub enum ApplicationError {
 	KifuWriteError(KifuWriteError),
 	SerdeError(toml::ser::Error),
 	ConfigReadError(ConfigReadError),
-	TrainingError(TrainingError)
+	TrainingError(TrainingError),
+	EvaluateError(EvaluateError)
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -126,7 +138,8 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::KifuWriteError(ref s) => write!(f,"{}",s),
 			ApplicationError::SerdeError(ref e) => write!(f,"{}",e),
 			ApplicationError::ConfigReadError(ref e) => write!(f,"{}",e),
-			ApplicationError::TrainingError(ref e) => write!(f,"{}",e)
+			ApplicationError::TrainingError(ref e) => write!(f,"{}",e),
+			ApplicationError::EvaluateError(ref e) => write!(f,"{}",e),
 		}
 	}
 }
@@ -146,7 +159,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::KifuWriteError(_) => "An error occurred when recording kifu or initialize KifuWriter.",
 			ApplicationError::SerdeError(_) => "An error occurred during serialization or deserialization.",
 			ApplicationError::ConfigReadError(_) => "An error occurred while loading the neural network model.",
-			ApplicationError::TrainingError(_) => "An error occurred while training the model."
+			ApplicationError::TrainingError(_) => "An error occurred while training the model.",
+			ApplicationError::EvaluateError(_) => "An error occurred when running the neural network."
 		}
 	}
 
@@ -165,7 +179,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::KifuWriteError(ref e) => Some(e),
 			ApplicationError::SerdeError(ref e) => Some(e),
 			ApplicationError::ConfigReadError(ref e) => Some(e),
-			ApplicationError::TrainingError(ref e) => Some(e)
+			ApplicationError::TrainingError(ref e) => Some(e),
+			ApplicationError::EvaluateError(ref e) => Some(e)
 		}
 	}
 }
@@ -217,6 +232,11 @@ impl From<ConfigReadError> for ApplicationError {
 impl From<TrainingError> for ApplicationError {
 	fn from(err: TrainingError) -> ApplicationError {
 		ApplicationError::TrainingError(err)
+	}
+}
+impl From<EvaluateError> for ApplicationError {
+	fn from(err: EvaluateError) -> ApplicationError {
+		ApplicationError::EvaluateError(err)
 	}
 }
 
