@@ -458,7 +458,7 @@ impl<NN> Trainer<NN>
 			ans[0] = t * a;
 
 			(acc.0).0.push(ans);
-			(acc.0).1.push(input.clone());
+			(acc.0).1.push(input.clone() / SCALE);
 
 			let mut ans = Arr::<f32, 1>::new();
 			ans[0] = t * b;
@@ -503,7 +503,7 @@ impl<NN> Trainer<NN>
 			ans[0] = t * a;
 
 			(acc.0).0.push(ans);
-			(acc.0).1.push(input.clone());
+			(acc.0).1.push(input.clone() / SCALE);
 			let mut ans = Arr::<f32,1>::new();
 			ans[0] = t * b;
 
@@ -582,7 +582,7 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone());
+				(acc.0).1.push(input.clone() / SCALE);
 
 				let mut ans = Arr::<f32, 1>::new();
 				ans[0] = t * b;
@@ -595,7 +595,6 @@ impl<NN> Trainer<NN>
 
 		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
 		let msb = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
-
 
 		let batch = sfens_with_extended.iter()
 			.map(|(teban,banmen,mc,es)| {
@@ -627,7 +626,7 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone());
+				(acc.0).1.push(input.clone() / SCALE);
 
 				let mut ans = Arr::<f32, 1>::new();
 				ans[0] = t * b;
@@ -724,7 +723,7 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone());
+				(acc.0).1.push(input.clone() / SCALE);
 
 				let mut ans = Arr::<f32,1>::new();
 				ans[0] = t * b;
@@ -775,7 +774,7 @@ impl<NN> Trainer<NN>
 					ans[0] = t * a;
 
 					(acc.0).0.push(ans);
-					(acc.0).1.push(input.clone());
+					(acc.0).1.push(input.clone() / SCALE);
 
 					let mut ans = Arr::<f32,1>::new();
 					ans[0] = t * b;
