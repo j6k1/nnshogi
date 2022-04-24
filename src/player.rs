@@ -444,8 +444,8 @@ impl<NN> Search<NN>
 
 		let (s,self_snapshot,opponent_snapshot) = {
 			let m = m.to_move();
-			let (ss, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
-			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
+			let (ss, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, false, teban, state.get_banmen(), mc, &m)?;
+			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, true, teban.opposite(), state.get_banmen(), mc, &m)?;
 			(ss,self_snapshot,opponent_snapshot)
 		};
 
@@ -754,9 +754,9 @@ impl<NN> Search<NN>
 
 		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
 			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
-																					  &opponent_nn_snapshot,
 																					  &self_nn_snapshot,
-																					  teban.opposite(),
+																					  &opponent_nn_snapshot,
+																					  teban,
 																					  &prev_state.as_ref(), &prev_mc.as_ref(),
 																					  m, &mut env.info_sender, &env.on_error_handler) {
 				Ok((_, oss, sss)) => {
