@@ -455,7 +455,6 @@ impl<NN> Search<NN>
 	#[allow(unused)]
 	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
 							self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-							opponent_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 							teban:Teban,state:&Option<&Arc<State>>,
 							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
 							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
@@ -559,35 +558,6 @@ impl<NN> Search<NN>
 			}
 		}
 
-		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
-			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
-																					  &opponent_nn_snapshot,
-																					  &self_nn_snapshot,
-																					  teban.opposite(),
-																					  &prev_state.as_ref(), &prev_mc.as_ref(),
-																					  m, &mut env.info_sender, &env.on_error_handler) {
-				Ok((_, oss, sss)) => {
-					(Arc::new(oss), Arc::new(sss))
-				},
-				Err(ref e) => {
-					let _ = env.on_error_handler.lock().map(|h| h.call(e));
-					return Evaluation::Error;
-				}
-			};
-			(Some(opponent_nn_snapshot), Some(self_nn_snapshot))
-		} else {
-			(None, None)
-		};
-
-		let self_nn_snapshot = match current_self_nn_ss {
-			Some(ref ss) => ss,
-			None => self_nn_snapshot,
-		};
-
-		let opponent_nn_snapshot = match current_opponent_nn_ss {
-			Some(ref ss) => ss,
-			None => opponent_nn_snapshot,
-		};
 
 		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let network_delay = self.network_delay;
@@ -634,12 +604,51 @@ impl<NN> Search<NN>
 				_ => ()
 			}
 
-			let s = self.evalute_by_snapshot(&env.evalutor, opponent_nn_snapshot);
+			let r = self.evalute_score_by_diff(&env.evalutor,
+											   &self_nn_snapshot,
+											   teban,
+											   &prev_state.as_ref(), &prev_mc.as_ref(),
+											   m, &mut env.info_sender, &env.on_error_handler);
 
-			if depth == 0 || current_depth > self.max_depth {
-				return Evaluation::Result(-s, None);
+			match r {
+				Ok(s) => {
+					return Evaluation::Result(s, None);
+				},
+				Err(_) => {
+					return Evaluation::Error;
+				}
 			}
 		}
+
+		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
+			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
+																					  &opponent_nn_snapshot,
+																					  &self_nn_snapshot,
+																					  teban.opposite(),
+																					  &prev_state.as_ref(), &prev_mc.as_ref(),
+																					  m, &mut env.info_sender, &env.on_error_handler) {
+				Ok((_, oss, sss)) => {
+					(Arc::new(oss), Arc::new(sss))
+				},
+				Err(ref e) => {
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
+					return Evaluation::Error;
+				}
+			};
+			(Some(opponent_nn_snapshot), Some(self_nn_snapshot))
+		} else {
+			(None, None)
+		};
+
+		let self_nn_snapshot = match current_self_nn_ss {
+			Some(ref ss) => ss,
+			None => self_nn_snapshot,
+		};
+
+		let opponent_nn_snapshot = match current_opponent_nn_ss {
+			Some(ref ss) => ss,
+			None => opponent_nn_snapshot,
+		};
 
 		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
 
