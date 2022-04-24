@@ -109,7 +109,7 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
-const SCALE:f32 = 40.;
+const SCALE:f32 = 1.;
 
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
@@ -334,6 +334,8 @@ impl TrainerCreator {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
+		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -363,6 +365,8 @@ impl TrainerCreator {
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
