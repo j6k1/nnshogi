@@ -452,8 +452,50 @@ impl<NN> Search<NN>
 		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot,opponent_snapshot))
 	}
 
+	fn evalute_by_self_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
+							is_self:bool,
+							self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
+							teban:Teban,state:&Option<&Arc<State>>,
+							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
+							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
+							-> Result<(Evaluation,(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)),CommonError>
+		where L: Logger, S: InfoSender,
+			  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
+
+		let state = match state {
+			&Some(ref state) => state,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_state is none!");
+				return Err(CommonError::Fail(String::from("prev_state is none!")));
+			}
+		};
+
+		let mc = match mc {
+			&Some(ref mc) => mc,
+			&None => {
+				self.send_message(info_sender, on_error_handler, "prev_mc is none!");
+				return Err(CommonError::Fail(String::from("prev_mc is none!")));
+			}
+		};
+
+		let m = match m {
+			Some(m) => {
+				m
+			},
+			None => {
+				self.send_message(info_sender, on_error_handler, "m is none!");
+				return Err(CommonError::Fail(String::from("m is none!")));
+			}
+		};
+
+		let (s,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, is_self, teban, state.get_banmen(), mc, &m.to_move())?;
+
+		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot))
+	}
+
 	#[allow(unused)]
 	fn evalute_score_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
+							is_self:bool,
 							self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
 							teban:Teban,state:&Option<&Arc<State>>,
 							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
@@ -488,13 +530,14 @@ impl<NN> Search<NN>
 
 		let s = {
 			let m = m.to_move();
-			let (ss, _) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
+			let (ss, _) = evalutor.evalute_by_diff(&self_snapshot, is_self, teban, state.get_banmen(), mc, &m)?;
 			ss
 		};
 
 		Ok(Score::Value(s))
 	}
 
+	#[allow(dead_code)]
 	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN>>,
 						   self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>)
 		-> Score {
@@ -558,7 +601,6 @@ impl<NN> Search<NN>
 			}
 		}
 
-
 		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let network_delay = self.network_delay;
 			let limit = env.limit.clone();
@@ -605,6 +647,7 @@ impl<NN> Search<NN>
 			}
 
 			let r = self.evalute_score_by_diff(&env.evalutor,
+											   false,
 											   &self_nn_snapshot,
 											   teban,
 											   &prev_state.as_ref(), &prev_mc.as_ref(),
@@ -614,10 +657,99 @@ impl<NN> Search<NN>
 				Ok(s) => {
 					return Evaluation::Result(s, None);
 				},
-				Err(_) => {
+				Err(ref e) => {
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			}
+		}
+
+		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
+
+		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
+			return Evaluation::Timeout(None,None);
+		}
+
+		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),&*state) {
+			if depth == 0 || current_depth == self.max_depth {
+				if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+					self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
+					return Evaluation::Timeout(None,None);
+				}
+			}
+
+			let mvs = Rule::respond_oute_only_moves_all(teban, &*state, &*mc);
+
+			if mvs.len() == 0 {
+				return Evaluation::Result(Score::NEGINFINITE,None);
+			} else if depth == 0 || current_depth == self.max_depth {
+				let r = self.evalute_score_by_diff(&env.evalutor,false,
+										   &self_nn_snapshot,
+										   teban,
+										   &prev_state.as_ref(), &prev_mc.as_ref(),
+										   m, &mut env.info_sender, &env.on_error_handler);
+
+				match r {
+					Ok(s) => {
+						return Evaluation::Result(s, None);
+					},
+					Err(ref e) => {
+						let _ = env.on_error_handler.lock().map(|h| h.call(e));
+						return Evaluation::Error;
+					}
+				}
+			} else {
+				(mvs,true)
+			}
+		} else {
+			if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+				self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
+				return Evaluation::Timeout(None,None);
+			}
+
+			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &*state, &*mc);
+
+			(mvs,false)
+		};
+
+		if mvs.len() == 0 {
+			return Evaluation::Result(Score::NEGINFINITE,None);
+		} else if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
+			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
+			return Evaluation::Timeout(None,Some(mvs[0].to_applied_move()));
+		} else if mvs.len() == 1 {
+			let self_nn_snapshot = match self.evalute_by_self_diff(&env.evalutor,
+									   false,
+									   &self_nn_snapshot,
+									   teban,
+									   &prev_state.as_ref(), &prev_mc.as_ref(),
+									   m, &mut env.info_sender, &env.on_error_handler) {
+				Ok((_,s)) => {
+					s
+				},
+				Err(ref e) => {
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
+					return Evaluation::Error;
+				}
+			};
+
+			match self.evalute_score_by_diff(&env.evalutor,
+											   true,
+											   &Arc::new(self_nn_snapshot),
+											   teban,
+											   &Some(&state),
+											   &Some(&mc),
+											   Some(mvs[0].to_applied_move()),
+											   &mut env.info_sender, &env.on_error_handler) {
+				Ok(s) => {
+					return Evaluation::Result(s, Some(mvs[0].to_applied_move()));
+				},
+				Err(ref e) => {
+					let _ = env.on_error_handler.lock().map(|h| h.call(e));
+					return Evaluation::Error;
+				}
+			};
 		}
 
 		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
@@ -649,67 +781,6 @@ impl<NN> Search<NN>
 			Some(ref ss) => ss,
 			None => opponent_nn_snapshot,
 		};
-
-		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
-
-		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None,None);
-		}
-
-		let (mvs,responded_oute) = if Rule::is_mate(teban.opposite(),&*state) {
-			if depth == 0 || current_depth == self.max_depth {
-				if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-					self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-					return Evaluation::Timeout(None,None);
-				}
-			}
-
-			let mvs = Rule::respond_oute_only_moves_all(teban, &*state, &*mc);
-
-			if mvs.len() == 0 {
-				return Evaluation::Result(Score::NEGINFINITE,None);
-			} else if depth == 0 || current_depth == self.max_depth {
-				return Evaluation::Result(-self.evalute_by_snapshot(&env.evalutor,opponent_nn_snapshot),None);
-			} else {
-				(mvs,true)
-			}
-		} else {
-			if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-				self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-				return Evaluation::Timeout(None,None);
-			}
-
-			let mvs:Vec<LegalMove> = Rule::legal_moves_all(teban, &*state, &*mc);
-
-			(mvs,false)
-		};
-
-		if mvs.len() == 0 {
-			return Evaluation::Result(Score::NEGINFINITE,None);
-		} else if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
-			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
-			return Evaluation::Timeout(None,Some(mvs[0].to_applied_move()));
-		} else if mvs.len() == 1 {
-			let r = match self.evalute_by_diff(&env.evalutor,
-											   &self_nn_snapshot,
-											   &opponent_nn_snapshot,
-											   teban,
-											   &Some(&state),
-											   &Some(&mc),
-											   Some(mvs[0].to_applied_move()),
-											   &mut env.info_sender, &env.on_error_handler) {
-				Ok((r,_,_)) => {
-					r
-				},
-				Err(ref e) => {
-					let _ = env.on_error_handler.lock().map(|h| h.call(e));
-					return Evaluation::Error;
-				}
-			};
-
-			return r
-		}
 
 		let _ = event_dispatcher.dispatch_events(self,&*env.event_queue);
 
