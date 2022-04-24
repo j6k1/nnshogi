@@ -140,6 +140,8 @@ impl IntelligenceCreator {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
@@ -169,6 +171,8 @@ impl IntelligenceCreator {
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,256,100>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+		}).add_layer(|l| {
+			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,_,100,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
