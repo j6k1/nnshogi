@@ -752,22 +752,22 @@ impl<NN> Search<NN>
 			};
 		}
 
-		let (current_opponent_nn_ss,current_self_nn_ss) = if prev_state.is_some() {
-			let (opponent_nn_snapshot, self_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
+		let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
+			let (self_nn_snapshot,opponent_nn_snapshot) = match self.evalute_by_diff(&env.evalutor,
 																					  &self_nn_snapshot,
 																					  &opponent_nn_snapshot,
 																					  teban,
 																					  &prev_state.as_ref(), &prev_mc.as_ref(),
 																					  m, &mut env.info_sender, &env.on_error_handler) {
-				Ok((_, oss, sss)) => {
-					(Arc::new(oss), Arc::new(sss))
+				Ok((_, sss, oss)) => {
+					(Arc::new(sss), Arc::new(oss))
 				},
 				Err(ref e) => {
 					let _ = env.on_error_handler.lock().map(|h| h.call(e));
 					return Evaluation::Error;
 				}
 			};
-			(Some(opponent_nn_snapshot), Some(self_nn_snapshot))
+			(Some(self_nn_snapshot), Some(opponent_nn_snapshot))
 		} else {
 			(None, None)
 		};
