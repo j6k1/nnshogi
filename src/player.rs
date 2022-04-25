@@ -361,21 +361,6 @@ impl<NN> Search<NN>
 			}
 		}
 	}
-	/*
-	fn send_depth<L>(&self, info_sender:&USIInfoSender,
-			on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>, depth:u32)
-		where L: Logger {
-		let mut commands:Vec<UsiInfoSubCommand> = Vec::new();
-		commands.push(UsiInfoSubCommand::Depth(depth));
-
-		match info_sender.send(commands) {
-			Ok(_) => (),
-			Err(ref e) => {
-				let _ = on_error_handler.lock().map(|h| h.call(e));
-			}
-		}
-	}
-	*/
 
 	fn make_snapshot(&self,is_self:bool,evalutor:&Arc<Intelligence<NN>>,teban:Teban,state:&State,mc:&MochigomaCollections)
 		-> Result<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack),CommonError> {
@@ -384,26 +369,6 @@ impl<NN> Search<NN>
 
 		Ok(r)
 	}
-	/*
-	fn evalute<L,S>(&self,evalutor:&Arc<Intelligence>,teban:Teban,state:&State,mc:&MochigomaCollections,m:&Option<Move>,
-					info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-		-> Evaluation where L: Logger, S: InfoSender, Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-
-		let s = match evalutor.evalute(teban,state.get_banmen(),mc) {
-			Ok(s) => s,
-			Err(ref e) => {
-				on_error_handler.lock().map(|h| h.call(e)).is_err();
-				return Evaluation::Error;
-			}
-		};
-
-		if self.display_evalute_score {
-			self.send_message(info_sender, on_error_handler, &format!("evalute score = {}",s));
-		}
-
-		Evaluation::Result(Score::Value(s),m.clone())
-	}
-	*/
 
 	fn evalute_by_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
 								self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
@@ -444,53 +409,19 @@ impl<NN> Search<NN>
 
 		let (s,self_snapshot,opponent_snapshot) = {
 			let m = m.to_move();
-			let (ss, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, false, teban, state.get_banmen(), mc, &m)?;
+			let (s, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, false, teban, state.get_banmen(), mc, &m)?;
 			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, true, teban.opposite(), state.get_banmen(), mc, &m)?;
-			(ss,self_snapshot,opponent_snapshot)
+			(s,self_snapshot,opponent_snapshot)
 		};
+
+		let teban_str = match teban {
+			Teban::Sente => "sente",
+			Teban::Gote =>  "gote"
+		};
+
+		self.send_message(info_sender, on_error_handler, &format!("original nn evalute score =  {0: >17} ({1})",s,teban_str));
 
 		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot,opponent_snapshot))
-	}
-
-	fn evalute_by_self_diff<L,S>(&self,evalutor:&Arc<Intelligence<NN>>,
-							is_self:bool,
-							self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-							teban:Teban,state:&Option<&Arc<State>>,
-							mc:&Option<&Arc<MochigomaCollections>>,m:Option<AppliedMove>,
-							info_sender:&mut S,on_error_handler:&Arc<Mutex<OnErrorHandler<L>>>)
-							-> Result<(Evaluation,(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)),CommonError>
-		where L: Logger, S: InfoSender,
-			  Arc<Mutex<OnErrorHandler<L>>>: Send + 'static {
-
-		let state = match state {
-			&Some(ref state) => state,
-			&None => {
-				self.send_message(info_sender, on_error_handler, "prev_state is none!");
-				return Err(CommonError::Fail(String::from("prev_state is none!")));
-			}
-		};
-
-		let mc = match mc {
-			&Some(ref mc) => mc,
-			&None => {
-				self.send_message(info_sender, on_error_handler, "prev_mc is none!");
-				return Err(CommonError::Fail(String::from("prev_mc is none!")));
-			}
-		};
-
-		let m = match m {
-			Some(m) => {
-				m
-			},
-			None => {
-				self.send_message(info_sender, on_error_handler, "m is none!");
-				return Err(CommonError::Fail(String::from("m is none!")));
-			}
-		};
-
-		let (s,self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, is_self, teban, state.get_banmen(), mc, &m.to_move())?;
-
-		Ok((Evaluation::Result(Score::Value(s),Some(m)),self_snapshot))
 	}
 
 	#[allow(unused)]
@@ -530,21 +461,18 @@ impl<NN> Search<NN>
 
 		let s = {
 			let m = m.to_move();
-			let (ss, _) = evalutor.evalute_by_diff(&self_snapshot, is_self, teban, state.get_banmen(), mc, &m)?;
-			ss
+			let (s, _) = evalutor.evalute_by_diff(&self_snapshot, is_self, teban, state.get_banmen(), mc, &m)?;
+			s
 		};
 
+		let teban_str = match teban {
+			Teban::Sente => "sente",
+			Teban::Gote =>  "gote"
+		};
+
+		self.send_message(info_sender, on_error_handler, &format!("original nn evalute score =  {0: >17} ({1})",s,teban_str));
+
 		Ok(Score::Value(s))
-	}
-
-	#[allow(dead_code)]
-	fn evalute_by_snapshot(&self,evalutor:&Arc<Intelligence<NN>>,
-						   self_snapshot:&Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>)
-		-> Score {
-
-		let ss = evalutor.evalute_by_snapshot(self_snapshot);
-
-		Score::Value(ss)
 	}
 
 	fn negascout<L,S>(self:&Arc<Self>,
@@ -718,38 +646,6 @@ impl<NN> Search<NN>
 		} else if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
 			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None,Some(mvs[0].to_applied_move()));
-		} else if mvs.len() == 1 {
-			let self_nn_snapshot = match self.evalute_by_self_diff(&env.evalutor,
-									   false,
-									   &self_nn_snapshot,
-									   teban,
-									   &prev_state.as_ref(), &prev_mc.as_ref(),
-									   m, &mut env.info_sender, &env.on_error_handler) {
-				Ok((_,s)) => {
-					s
-				},
-				Err(ref e) => {
-					let _ = env.on_error_handler.lock().map(|h| h.call(e));
-					return Evaluation::Error;
-				}
-			};
-
-			match self.evalute_score_by_diff(&env.evalutor,
-											   true,
-											   &Arc::new(self_nn_snapshot),
-											   teban,
-											   &Some(&state),
-											   &Some(&mc),
-											   Some(mvs[0].to_applied_move()),
-											   &mut env.info_sender, &env.on_error_handler) {
-				Ok(s) => {
-					return Evaluation::Result(s, Some(mvs[0].to_applied_move()));
-				},
-				Err(ref e) => {
-					let _ = env.on_error_handler.lock().map(|h| h.call(e));
-					return Evaluation::Error;
-				}
-			};
 		}
 
 		let (current_self_nn_ss,current_opponent_nn_ss) = if prev_state.is_some() {
