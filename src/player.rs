@@ -506,6 +506,10 @@ impl<NN> Search<NN>
 			return Evaluation::Result(Score::NEGINFINITE, None);
 		}
 
+		if Rule::is_mate(teban,&*state) {
+			return Evaluation::Result(Score::INFINITE,None);
+		}
+
 		if self.timelimit_reached(&env.limit) || env.stop.load(atomic::Ordering::Acquire) {
 			self.send_message(&mut env.info_sender, &env.on_error_handler, "think timeout!");
 			return Evaluation::Timeout(None, None);
