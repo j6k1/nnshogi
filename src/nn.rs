@@ -232,7 +232,7 @@ impl<NN> Intelligence<NN>
 		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
 		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
 
-		let answer = nnaanswera[0] + nnbanswerb[0] - 0.5;
+		let answer = nnaanswera[0] * 0.5 + nnbanswerb[0] * 0.5 - 0.5;
 
 		Ok((answer * (1 << 29) as f32) as i32)
 	}
@@ -250,7 +250,7 @@ impl<NN> Intelligence<NN>
 
 		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o))?;
 
-		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone()) - 0.5;
+		let answer = sa.map(|ans| ans[0].clone() * 0.5) + sb.map(|ans| ans[0].clone() * 0.5) - 0.5;
 
 		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
 	}
@@ -261,7 +261,7 @@ impl<NN> Intelligence<NN>
 				let nnaanswera = sa.map(|ans| ans[0].clone());
 				let nnbanswerb = sb.map(|ans| ans[0].clone());
 
-				let answer = nnaanswera + nnbanswerb - 0.5;
+				let answer = nnaanswera * 0.5 + nnbanswerb * 0.5 - 0.5;
 
 				(answer * (1 << 29) as f32) as i32
 			}
@@ -539,7 +539,7 @@ impl<NN> Trainer<NN>
 		let ra = self.nna.forward_all(input.clone() / SCALE)?;
 		let rb = self.nnb.forward_all(input / SCALE)?;
 
-		Ok(ra[0] + rb[0])
+		Ok(ra[0] * 0.5 + rb[0] * 0.5)
 	}
 
 	pub fn learning_by_packed_sfens<'a>(&mut self,
@@ -669,7 +669,7 @@ impl<NN> Trainer<NN>
 		let ra = self.nna.forward_all(input.clone() / SCALE)?;
 		let rb = self.nnb.forward_all(input / SCALE)?;
 
-		Ok((game_result,ra[0] + rb[0]))
+		Ok((game_result,ra[0] * 0.5 + rb[0] * 0.5))
 	}
 
 	pub fn learning_by_hcpe<'a>(&mut self,
@@ -831,7 +831,7 @@ impl<NN> Trainer<NN>
 			_ => GameEndState::Draw
 		};
 
-		Ok((s,ra[0] + rb[0]))
+		Ok((s,ra[0] * 0.5 + rb[0] * 0.5))
 	}
 
 	fn save(&mut self) -> Result<(),CommonError> {
