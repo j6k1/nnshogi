@@ -296,7 +296,9 @@ impl<NN> Intelligence<NN>
 		Ok(())
 	}
 }
-pub struct Trainer<NN> where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear>{
+pub struct Trainer<NN>
+	where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear> {
+
 	nna:NN,
 	nnb:NN,
 	optimizer:MomentumSGD<f32>,
