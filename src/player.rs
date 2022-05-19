@@ -1371,8 +1371,7 @@ impl<NN> Search<NN>
 }
 pub struct NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-	{
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
 	search:Arc<Search<NN>>,
 	kyokumen:Option<Kyokumen>,
 	mhash:u64,
@@ -1388,7 +1387,7 @@ pub struct NNShogiPlayer<NN>
 }
 impl<NN> fmt::Debug for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
 	{
 		fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "NNShogiPlayer")
@@ -1396,7 +1395,7 @@ impl<NN> fmt::Debug for NNShogiPlayer<NN>
 }
 impl<NN> NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
 	{
 
 	pub fn new<C: Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>(evalutor_creator:C)
@@ -1420,7 +1419,7 @@ impl<NN> NNShogiPlayer<NN>
 }
 impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
 	{
 
 	const ID: &'static str = "nnshogi";
