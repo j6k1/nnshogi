@@ -125,7 +125,7 @@ impl IntelligenceCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new();
+		let device = DeviceCpu::new()?;
 
 		let net:InputLayer<f32,DiffInput<DiffArr<f32,2517>,f32,2517,256>,_> = InputLayer::new();
 
@@ -133,17 +133,17 @@ impl IntelligenceCreator {
 
 		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			DiffLinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -157,7 +157,7 @@ impl IntelligenceCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new();
+		let device = DeviceCpu::new()?;
 
 		let net:InputLayer<f32,DiffInput<DiffArr<f32,2517>,f32,2517,256>,_> = InputLayer::new();
 
@@ -165,17 +165,17 @@ impl IntelligenceCreator {
 
 		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			DiffLinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			DiffLinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -324,7 +324,7 @@ impl TrainerCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new();
+		let device = DeviceCpu::new()?;
 
 		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
@@ -332,17 +332,17 @@ impl TrainerCreator {
 
 		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -356,7 +356,7 @@ impl TrainerCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new();
+		let device = DeviceCpu::new()?;
 
 		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
@@ -364,17 +364,17 @@ impl TrainerCreator {
 
 		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {

@@ -15,7 +15,7 @@ use usiagent::error::TypeConvertError;
 use usiagent::error::SfenStringConvertError;
 use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
-use nncombinator::error::{ConfigReadError, EvaluateError, IndexOutBoundError, PersistenceError, TrainingError};
+use nncombinator::error::{ConfigReadError, DeviceError, EvaluateError, IndexOutBoundError, PersistenceError, TrainingError};
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -120,7 +120,8 @@ pub enum ApplicationError {
 	SerdeError(toml::ser::Error),
 	ConfigReadError(ConfigReadError),
 	TrainingError(TrainingError),
-	EvaluateError(EvaluateError)
+	EvaluateError(EvaluateError),
+	DeviceError(DeviceError)
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -140,6 +141,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::ConfigReadError(ref e) => write!(f,"{}",e),
 			ApplicationError::TrainingError(ref e) => write!(f,"{}",e),
 			ApplicationError::EvaluateError(ref e) => write!(f,"{}",e),
+			ApplicationError::DeviceError(ref e) => write!(f,"{}",e),
 		}
 	}
 }
@@ -160,7 +162,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::SerdeError(_) => "An error occurred during serialization or deserialization.",
 			ApplicationError::ConfigReadError(_) => "An error occurred while loading the neural network model.",
 			ApplicationError::TrainingError(_) => "An error occurred while training the model.",
-			ApplicationError::EvaluateError(_) => "An error occurred when running the neural network."
+			ApplicationError::EvaluateError(_) => "An error occurred when running the neural network.",
+			ApplicationError::DeviceError(_) => "An error occurred during device initialization.",
 		}
 	}
 
@@ -180,7 +183,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::SerdeError(ref e) => Some(e),
 			ApplicationError::ConfigReadError(ref e) => Some(e),
 			ApplicationError::TrainingError(ref e) => Some(e),
-			ApplicationError::EvaluateError(ref e) => Some(e)
+			ApplicationError::EvaluateError(ref e) => Some(e),
+			ApplicationError::DeviceError(ref e) => Some(e)
 		}
 	}
 }
@@ -237,6 +241,11 @@ impl From<TrainingError> for ApplicationError {
 impl From<EvaluateError> for ApplicationError {
 	fn from(err: EvaluateError) -> ApplicationError {
 		ApplicationError::EvaluateError(err)
+	}
+}
+impl From<DeviceError> for ApplicationError {
+	fn from(err: DeviceError) -> ApplicationError {
+		ApplicationError::DeviceError(err)
 	}
 }
 
