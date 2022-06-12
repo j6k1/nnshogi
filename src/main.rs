@@ -129,6 +129,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "kifudir", "Directory of game data to be used of learning.", "path string.");
 	opts.optopt("", "lowerrate", "Lower limit of the player rate value of learning target games.", "number of rate.");
 	opts.optflag("", "yaneuraou", "YaneuraOu format teacher phase.");
+	opts.optflag("", "hcpe", "hcpe format teacher phase.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
