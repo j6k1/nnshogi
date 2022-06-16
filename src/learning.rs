@@ -504,6 +504,7 @@ impl<NN> Learnener<NN>
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
+							40,
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
@@ -521,6 +522,7 @@ impl<NN> Learnener<NN>
 	) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"hcpe",
+								38,
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
@@ -533,6 +535,7 @@ impl<NN> Learnener<NN>
 
 	pub fn learning_batch<F>(&mut self,kifudir:String,
 							   ext:&str,
+							   item_size:usize,
 							   evalutor: Trainer<NN>,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
@@ -580,7 +583,7 @@ impl<NN> Learnener<NN>
 		let mut count = 0;
 
 		let mut teachers = Vec::with_capacity(learn_sfen_read_size);
-		let mut record = Vec::with_capacity(40);
+		let mut record = Vec::with_capacity(item_size);
 
 		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
 
@@ -629,7 +632,7 @@ impl<NN> Learnener<NN>
 
 				record.push(b);
 
-				if record.len() == 40 {
+				if record.len() == item_size {
 					if let Some(ref checkpoint) = checkpoint {
 						if skip_items && current_item < checkpoint.item {
 							current_item += 1;
@@ -643,7 +646,7 @@ impl<NN> Learnener<NN>
 						}
 					}
 					teachers.push(record);
-					record = Vec::with_capacity(40);
+					record = Vec::with_capacity(item_size);
 				} else {
 					continue;
 				}
@@ -778,9 +781,9 @@ impl<NN> Learnener<NN>
 
 					record.push(b);
 
-					if record.len() == 40 {
+					if record.len() == item_size {
 						testdata.push(record);
-						record = Vec::with_capacity(40);
+						record = Vec::with_capacity(item_size);
 					} else {
 						continue;
 					}
@@ -833,9 +836,9 @@ impl<NN> Learnener<NN>
 		match evalutor.learning_by_packed_sfens(
 			batch,
 			&*user_event_queue) {
-			Err(_) => {
-				return Err(ApplicationError::LearningError(String::from(
-					"An error occurred while learning the neural network."
+			Err(e) => {
+				return Err(ApplicationError::LearningError(format!(
+					"An error occurred while learning the neural network. {}",e
 				)));
 			},
 			Ok((msa,moa,msb,mob)) => {
@@ -852,9 +855,9 @@ impl<NN> Learnener<NN>
 		match evalutor.learning_by_hcpe(
 			batch,
 			 &*user_event_queue) {
-			Err(_) => {
-				return Err(ApplicationError::LearningError(String::from(
-					"An error occurred while learning the neural network."
+			Err(e) => {
+				return Err(ApplicationError::LearningError(format!(
+					"An error occurred while learning the neural network. {}",e
 				)));
 			},
 			Ok((msa,moa,msb,mob)) => {
