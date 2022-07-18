@@ -93,7 +93,6 @@ impl From<ConfigReadError> for CommonError {
 		CommonError::Fail(format!("{}",err))
 	}
 }
-
 impl From<PersistenceError> for CommonError {
 	fn from(err: PersistenceError) -> Self {
 		CommonError::Fail(format!("{}",err))
@@ -121,7 +120,8 @@ pub enum ApplicationError {
 	ConfigReadError(ConfigReadError),
 	TrainingError(TrainingError),
 	EvaluateError(EvaluateError),
-	DeviceError(DeviceError)
+	DeviceError(DeviceError),
+	PersistenceError(PersistenceError),
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -142,6 +142,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::TrainingError(ref e) => write!(f,"{}",e),
 			ApplicationError::EvaluateError(ref e) => write!(f,"{}",e),
 			ApplicationError::DeviceError(ref e) => write!(f,"{}",e),
+			ApplicationError::PersistenceError(ref e) => write!(f,"{}",e),
 		}
 	}
 }
@@ -164,6 +165,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::TrainingError(_) => "An error occurred while training the model.",
 			ApplicationError::EvaluateError(_) => "An error occurred when running the neural network.",
 			ApplicationError::DeviceError(_) => "An error occurred during device initialization.",
+			ApplicationError::PersistenceError(_) => "An error occurred when saving model information.",
 		}
 	}
 
@@ -184,7 +186,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::ConfigReadError(ref e) => Some(e),
 			ApplicationError::TrainingError(ref e) => Some(e),
 			ApplicationError::EvaluateError(ref e) => Some(e),
-			ApplicationError::DeviceError(ref e) => Some(e)
+			ApplicationError::DeviceError(ref e) => Some(e),
+			ApplicationError::PersistenceError(ref e) => Some(e)
 		}
 	}
 }
@@ -246,6 +249,11 @@ impl From<EvaluateError> for ApplicationError {
 impl From<DeviceError> for ApplicationError {
 	fn from(err: DeviceError) -> ApplicationError {
 		ApplicationError::DeviceError(err)
+	}
+}
+impl From<PersistenceError> for ApplicationError {
+	fn from(err: PersistenceError) -> ApplicationError {
+		ApplicationError::PersistenceError(err)
 	}
 }
 

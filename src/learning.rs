@@ -501,6 +501,7 @@ impl<NN> Learnener<NN>
 									   evalutor: Trainer<NN>,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
+									   save_batch_count:usize,
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
@@ -508,6 +509,7 @@ impl<NN> Learnener<NN>
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
+							save_batch_count,
 							Self::learning_from_yaneuraou_bin_batch,
 							|evalutor,packed| {
 								evalutor.test_by_packed_sfens(packed)
@@ -519,6 +521,7 @@ impl<NN> Learnener<NN>
 									   evalutor: Trainer<NN>,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
+							  		   save_batch_count:usize,
 	) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"hcpe",
@@ -526,6 +529,7 @@ impl<NN> Learnener<NN>
 							evalutor,
 							learn_sfen_read_size,
 							learn_batch_size,
+							save_batch_count,
 							Self::learning_from_hcpe_batch,
 							|evalutor,packed| {
 								evalutor.test_by_packed_hcpe(packed)
@@ -539,6 +543,7 @@ impl<NN> Learnener<NN>
 							   evalutor: Trainer<NN>,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
+							   save_batch_count:usize,
 							   learning_process:fn(
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
@@ -584,6 +589,8 @@ impl<NN> Learnener<NN>
 
 		let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 		let mut record = Vec::with_capacity(item_size);
+
+		let mut pending_count = 0;
 
 		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
 
@@ -667,6 +674,13 @@ impl<NN> Learnener<NN>
 							learning_process(&mut evalutor,
 													batch,
 													&user_event_queue)?;
+							pending_count += 1;
+
+							if pending_count >= save_batch_count {
+								evalutor.save()?;
+								pending_count = 0;
+							}
+
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
 							current_item += learn_batch_size;
@@ -697,6 +711,12 @@ impl<NN> Learnener<NN>
 						learning_process(&mut evalutor,
 												batch,
 												&user_event_queue)?;
+						pending_count += 1;
+
+						if pending_count >= save_batch_count {
+							evalutor.save()?;
+							pending_count = 0;
+						}
 						count += remaing;
 					}
 
@@ -729,6 +749,12 @@ impl<NN> Learnener<NN>
 					learning_process(&mut evalutor,
 											batch,
 											&user_event_queue)?;
+					pending_count += 1;
+
+					if pending_count >= save_batch_count {
+						evalutor.save()?;
+						pending_count = 0;
+					}
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
 					current_item += learn_batch_size;
@@ -760,8 +786,18 @@ impl<NN> Learnener<NN>
 				learning_process(&mut evalutor,
 							   		batch,
 							   		&user_event_queue)?;
+				pending_count += 1;
+
+				if pending_count >= save_batch_count {
+					evalutor.save()?;
+					pending_count = 0;
+				}
 				count += remaing;
 			}
+		}
+
+		if pending_count > 0 {
+			evalutor.save()?;
 		}
 
 		if notify_run_test_arc.load(Ordering::Acquire) {

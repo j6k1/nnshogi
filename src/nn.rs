@@ -649,8 +649,6 @@ impl<NN> Trainer<NN>
 		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
 		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
 
-		self.save()?;
-
 		Ok((msa,moa,msb,mob))
 	}
 
@@ -759,11 +757,11 @@ impl<NN> Trainer<NN>
 						(GameResult::Draw,_) => GameEndState::Draw,
 						(GameResult::SenteWin,Teban::Sente) |
 						(GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Lose
+							GameEndState::Win
 						},
 						(GameResult::SenteWin,Teban::Gote) |
 						(GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Win
+							GameEndState::Lose
 						}
 					};
 
@@ -795,8 +793,6 @@ impl<NN> Trainer<NN>
 				});
 		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer, &lossf)?;
 		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer, &lossf)?;
-
-		self.save()?;
 
 		Ok((msa,moa,msb,mob))
 	}
@@ -836,7 +832,7 @@ impl<NN> Trainer<NN>
 		Ok((s,ra[0] + rb[0]))
 	}
 
-	fn save(&mut self) -> Result<(),CommonError> {
+	pub fn save(&mut self) -> Result<(),ApplicationError> {
 		let mut pa = BinFilePersistence::new(
 			&format!("{}/{}.tmp",self.nnsavedir,self.nna_filename))?;
 		let mut pb = BinFilePersistence::new(

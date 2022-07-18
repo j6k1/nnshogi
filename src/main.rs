@@ -54,6 +54,7 @@ pub struct Config {
 	max_threads:Option<u32>,
 	learn_sfen_read_size:Option<usize>,
 	learn_batch_size:Option<usize>,
+	save_batch_count:Option<usize>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,
@@ -147,14 +148,16 @@ fn run() -> Result<(),ApplicationError> {
 																				String::from("nn.a.bin"),
 																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
+																		config.save_batch_count.unwrap_or(1))
 		} else if matches.opt_present("hcpe") {
 				Learnener::new().learning_from_hcpe(kifudir,
 													TrainerCreator::create(String::from("data"),
 																		   String::from("nn.a.bin"),
 																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
+																			config.save_batch_count.unwrap_or(1))
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
 			Learnener::new().learning_from_csa(kifudir,
