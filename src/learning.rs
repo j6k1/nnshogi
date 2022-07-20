@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, Read, BufWriter};
 use std::fs::{File, OpenOptions};
 use std::marker::PhantomData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use nncombinator::arr::Arr;
 use nncombinator::layer::{BatchForwardBase, BatchTrain, ForwardAll};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence};
@@ -676,24 +676,14 @@ impl<NN> Learnener<NN>
 													&user_event_queue)?;
 							pending_count += 1;
 
-							if pending_count >= save_batch_count {
-								evalutor.save()?;
-								pending_count = 0;
-							}
-
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
 							current_item += learn_batch_size;
 
-							let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
-							let tmp_path = Path::new(&tmp_path);
-
-							let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
-
-							checkpoint_writer.save(&CheckPoint {
-								filename:current_filename.as_ref().unwrap().clone(),
-								item:current_item
-							})?;
+							if pending_count >= save_batch_count {
+								self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+								pending_count = 0;
+							}
 						}
 
 						if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
@@ -714,9 +704,10 @@ impl<NN> Learnener<NN>
 						pending_count += 1;
 
 						if pending_count >= save_batch_count {
-							evalutor.save()?;
+							self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
 							pending_count = 0;
 						}
+
 						count += remaing;
 					}
 
@@ -751,23 +742,14 @@ impl<NN> Learnener<NN>
 											&user_event_queue)?;
 					pending_count += 1;
 
-					if pending_count >= save_batch_count {
-						evalutor.save()?;
-						pending_count = 0;
-					}
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
 					current_item += learn_batch_size;
 
-					let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
-					let tmp_path = Path::new(&tmp_path);
-
-					let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
-
-					checkpoint_writer.save(&CheckPoint {
-						filename:current_filename.as_ref().unwrap().clone(),
-						item:current_item
-					})?;
+					if pending_count >= save_batch_count {
+						self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+						pending_count = 0;
+					}
 				}
 
 
@@ -789,15 +771,15 @@ impl<NN> Learnener<NN>
 				pending_count += 1;
 
 				if pending_count >= save_batch_count {
-					evalutor.save()?;
+					self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
 					pending_count = 0;
 				}
 				count += remaing;
 			}
 		}
 
-		if pending_count > 0 {
-			evalutor.save()?;
+		if pending_count >= save_batch_count {
+			self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
 		}
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
@@ -901,5 +883,22 @@ impl<NN> Learnener<NN>
 				Ok(())
 			}
 		}
+	}
+
+	fn save(&self,evalutor: &mut Trainer<NN>,checkpoint_path:&PathBuf,current_filename:&Option<String>,current_item:usize)
+		-> Result<(),ApplicationError> {
+		evalutor.save()?;
+
+		let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
+		let tmp_path = Path::new(&tmp_path);
+
+		let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
+
+		checkpoint_writer.save(&CheckPoint {
+			filename:current_filename.as_ref().unwrap().clone(),
+			item:current_item
+		})?;
+
+		Ok(())
 	}
 }
