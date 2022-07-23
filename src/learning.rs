@@ -623,6 +623,8 @@ impl<NN> Learnener<NN>
 
 				if skip_files {
 					continue;
+				} else if *current_filename.as_ref().unwrap() != checkpoint.filename {
+					skip_items = false;
 				}
 			}
 
