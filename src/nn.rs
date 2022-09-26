@@ -5,7 +5,7 @@ use std::ops::DerefMut;
 use std::path::Path;
 use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
-use nncombinator::arr::{Arr, DiffArr};
+use nncombinator::arr::{Arr, DiffArr, VecArr};
 use nncombinator::device::DeviceCpu;
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
 use nncombinator::lossfunction::CrossEntropy;
@@ -297,7 +297,7 @@ impl<NN> Intelligence<NN>
 	}
 }
 pub struct Trainer<NN>
-	where NN: BatchTrain<f32> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear> {
+	where NN: BatchTrain<f32,DeviceCpu<f32>> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear> {
 
 	nna:NN,
 	nnb:NN,
@@ -314,8 +314,8 @@ pub struct TrainerCreator;
 impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
 		-> Result<Trainer<impl ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
-						BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-						BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear>>,ApplicationError> {
+						BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
+						BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear>>,ApplicationError> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -410,8 +410,8 @@ impl TrainerCreator {
 }
 impl<NN> Trainer<NN>
 	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
-			  BatchForwardBase<BatchInput=Vec<Arr<f32,2517>>,BatchOutput=Vec<Arr<f32,1>>> +
-			  BatchTrain<f32> + Persistence<f32,BinFilePersistence<f32>,Linear> {
+			  BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
+			  BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	pub fn calc_alpha_beta(bias_shake_shake:bool) -> (f32,f32) {
 		if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
@@ -478,8 +478,8 @@ impl<NN> Trainer<NN>
 			acc
 		});
 
-		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
-		let msb = self.nna.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
+		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
+		let msb = self.nna.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
 		let mut teban = last_teban.opposite();
 
@@ -522,8 +522,8 @@ impl<NN> Trainer<NN>
 			acc
 		});
 
-		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
-		let mob = self.nna.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
+		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
+		let mob = self.nna.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
 		self.save()?;
 
@@ -602,8 +602,8 @@ impl<NN> Trainer<NN>
 				acc
 			});
 
-		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
-		let msb = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
+		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
+		let msb = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
 		let batch = sfens_with_extended.iter()
 			.map(|(teban,banmen,mc,es)| {
@@ -646,8 +646,8 @@ impl<NN> Trainer<NN>
 				acc
 			});
 
-		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
-		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
+		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
+		let mob = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
 		Ok((msa,moa,msb,mob))
 	}
@@ -741,8 +741,8 @@ impl<NN> Trainer<NN>
 				acc
 			});
 
-		let msa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer,&lossf)?;
-		let msb = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer,&lossf)?;
+		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
+		let msb = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
 		let batch = sfens_with_extended.iter()
 				.map(|(teban,banmen,mc,es)| {
@@ -791,8 +791,8 @@ impl<NN> Trainer<NN>
 
 					acc
 				});
-		let moa = self.nna.batch_train((batch.0).0,(batch.0).1,&mut self.optimizer, &lossf)?;
-		let mob = self.nnb.batch_train((batch.1).0,(batch.1).1,&mut self.optimizer, &lossf)?;
+		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer, &lossf)?;
+		let mob = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer, &lossf)?;
 
 		Ok((msa,moa,msb,mob))
 	}
