@@ -28,7 +28,7 @@ use std::fs::{DirEntry, File, OpenOptions};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use nncombinator::arr::{Arr, VecArr};
-use nncombinator::device::DeviceCpu;
+use nncombinator::device::DeviceGpu;
 use nncombinator::layer::{BatchForwardBase, BatchTrain, ForwardAll};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence};
 use rand::prelude::SliceRandom;
@@ -103,12 +103,12 @@ impl<P: AsRef<Path>> CheckPointWriter<P> {
 pub struct Learnener<NN>
 	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
 			  BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
-			  BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear> {
+			  BatchTrain<f32,DeviceGpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	nn:PhantomData<NN>}
 impl<NN> Learnener<NN>
 	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
 			  BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
-			  BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear>{
+			  BatchTrain<f32,DeviceGpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear>{
 	pub fn new() -> Learnener<NN> {
 		Learnener {
 			nn:PhantomData::<NN>

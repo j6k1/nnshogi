@@ -15,7 +15,7 @@ use usiagent::error::TypeConvertError;
 use usiagent::error::SfenStringConvertError;
 use usiagent::error::KifuWriteError;
 use csaparser::error::CsaParserError;
-use nncombinator::error::{ConfigReadError, DeviceError, EvaluateError, IndexOutBoundError, PersistenceError, TrainingError};
+use nncombinator::error::{ConfigReadError, CudaError, DeviceError, EvaluateError, IndexOutBoundError, PersistenceError, TrainingError};
 
 #[derive(Debug)]
 pub enum CommonError {
@@ -122,6 +122,7 @@ pub enum ApplicationError {
 	EvaluateError(EvaluateError),
 	DeviceError(DeviceError),
 	PersistenceError(PersistenceError),
+	CudaError(CudaError),
 }
 impl fmt::Display for ApplicationError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -143,6 +144,7 @@ impl fmt::Display for ApplicationError {
 			ApplicationError::EvaluateError(ref e) => write!(f,"{}",e),
 			ApplicationError::DeviceError(ref e) => write!(f,"{}",e),
 			ApplicationError::PersistenceError(ref e) => write!(f,"{}",e),
+			ApplicationError::CudaError(ref e) => write!(f, "An error occurred in the process of cuda. ({})",e),
 		}
 	}
 }
@@ -166,6 +168,7 @@ impl error::Error for ApplicationError {
 			ApplicationError::EvaluateError(_) => "An error occurred when running the neural network.",
 			ApplicationError::DeviceError(_) => "An error occurred during device initialization.",
 			ApplicationError::PersistenceError(_) => "An error occurred when saving model information.",
+			ApplicationError::CudaError(_) => "An error occurred in the process of cuda.",
 		}
 	}
 
@@ -187,7 +190,8 @@ impl error::Error for ApplicationError {
 			ApplicationError::TrainingError(ref e) => Some(e),
 			ApplicationError::EvaluateError(ref e) => Some(e),
 			ApplicationError::DeviceError(ref e) => Some(e),
-			ApplicationError::PersistenceError(ref e) => Some(e)
+			ApplicationError::PersistenceError(ref e) => Some(e),
+			ApplicationError::CudaError(_) => None
 		}
 	}
 }
@@ -256,4 +260,8 @@ impl From<PersistenceError> for ApplicationError {
 		ApplicationError::PersistenceError(err)
 	}
 }
-
+impl From<CudaError> for ApplicationError {
+	fn from(err: CudaError) -> ApplicationError {
+		ApplicationError::CudaError(err)
+	}
+}

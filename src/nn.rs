@@ -1,12 +1,13 @@
 use std::cell::RefCell;
-use std::sync::{Mutex};
+use std::sync::{Arc, Mutex};
 use std::fs;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::rc::Rc;
 use nncombinator::activation::{ReLu, Sigmoid};
 use nncombinator::arr::{Arr, DiffArr, VecArr};
-use nncombinator::device::DeviceCpu;
+use nncombinator::cuda::mem::{Alloctype, MemoryPool};
+use nncombinator::device::{DeviceCpu, DeviceGpu};
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain};
 use nncombinator::lossfunction::CrossEntropy;
 use nncombinator::optimizer::{MomentumSGD};
@@ -297,7 +298,7 @@ impl<NN> Intelligence<NN>
 	}
 }
 pub struct Trainer<NN>
-	where NN: BatchTrain<f32,DeviceCpu<f32>> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear> {
+	where NN: BatchTrain<f32,DeviceGpu<f32>> + ForwardAll + Persistence<f32,BinFilePersistence<f32>,Linear> {
 
 	nna:NN,
 	nnb:NN,
@@ -315,7 +316,7 @@ impl TrainerCreator {
 	pub fn create(savedir:String, nna_filename:String, nnb_filename:String, enable_shake_shake:bool)
 		-> Result<Trainer<impl ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
 						BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
-						BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear>>,ApplicationError> {
+						BatchTrain<f32,DeviceGpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear>>,ApplicationError> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -324,7 +325,9 @@ impl TrainerCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new()?;
+		let memory_pool = Arc::new(Mutex::new(MemoryPool::new(Alloctype::Device)?));
+
+		let device = DeviceGpu::new(&memory_pool)?;
 
 		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
@@ -332,17 +335,17 @@ impl TrainerCreator {
 
 		let mut nna = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -356,7 +359,7 @@ impl TrainerCreator {
 		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
 		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
 
-		let device = DeviceCpu::new()?;
+		let device = DeviceGpu::new(&memory_pool)?;
 
 		let net:InputLayer<f32,Arr<f32,2517>,_> = InputLayer::new();
 
@@ -364,17 +367,17 @@ impl TrainerCreator {
 
 		let mut nnb = net.add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
 		}).add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
+			LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
 		}).add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
@@ -411,7 +414,7 @@ impl TrainerCreator {
 impl<NN> Trainer<NN>
 	where NN: ForwardAll<Input=Arr<f32,2517>,Output=Arr<f32,1>> +
 			  BatchForwardBase<BatchInput=VecArr<f32,Arr<f32,2517>>,BatchOutput=VecArr<f32,Arr<f32,1>>> +
-			  BatchTrain<f32,DeviceCpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear> {
+			  BatchTrain<f32,DeviceGpu<f32>> + Persistence<f32,BinFilePersistence<f32>,Linear> {
 	pub fn calc_alpha_beta(bias_shake_shake:bool) -> (f32,f32) {
 		if bias_shake_shake {
 			let mut rnd = rand::thread_rng();
