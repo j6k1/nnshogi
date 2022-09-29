@@ -1,14 +1,15 @@
 extern crate rand;
-extern crate rand_core;
+extern crate rand_distr;
 extern crate rand_xorshift;
 extern crate statrs;
 extern crate getopts;
 extern crate toml;
 #[macro_use]
 extern crate serde_derive;
+extern crate crossbeam_channel;
 
 extern crate usiagent;
-extern crate simplenn;
+extern crate nncombinator;
 extern crate csaparser;
 extern crate packedsfen;
 
@@ -25,7 +26,7 @@ use std::fs::File;
 use std::path::Path;
 use std::time::Duration;
 use rand::Rng;
-use rand_core::SeedableRng;
+use rand::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
@@ -42,7 +43,8 @@ use usiagent::player::*;
 
 use player::NNShogiPlayer;
 use error::ApplicationError;
-use learning::CsaLearnener;
+use learning::Learnener;
+use nn::{IntelligenceCreator, TrainerCreator};
 
 const LEAN_SFEN_READ_SIZE:usize = 1000 * 1000 * 10;
 const LEAN_BATCH_SIZE:usize = 256;
@@ -50,9 +52,9 @@ const LEAN_BATCH_SIZE:usize = 256;
 #[derive(Debug, Deserialize)]
 pub struct Config {
 	max_threads:Option<u32>,
-	learn_max_threads:Option<usize>,
 	learn_sfen_read_size:Option<usize>,
 	learn_batch_size:Option<usize>,
+	save_batch_count:Option<usize>,
 	base_depth:Option<u32>,
 	max_depth:Option<u32>,
 	max_ply:Option<u32>,
@@ -128,6 +130,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "kifudir", "Directory of game data to be used of learning.", "path string.");
 	opts.optopt("", "lowerrate", "Lower limit of the player rate value of learning target games.", "number of rate.");
 	opts.optflag("", "yaneuraou", "YaneuraOu format teacher phase.");
+	opts.optflag("", "hcpe", "hcpe format teacher phase.");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -140,17 +143,28 @@ fn run() -> Result<(),ApplicationError> {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
 		if matches.opt_present("yaneuraou") {
-			CsaLearnener::new().learning_from_yaneuraou_bin(kifudir,
-												  config.bias_shake_shake_with_kifu,
-												  config.learn_max_threads.unwrap_or(1),
-												  config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
-												  config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE))
+			Learnener::new().learning_from_yaneuraou_bin(kifudir,
+														 TrainerCreator::create(String::from("data"),
+																				String::from("nn.a.bin"),
+																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
+														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
+																		config.save_batch_count.unwrap_or(1))
+		} else if matches.opt_present("hcpe") {
+				Learnener::new().learning_from_hcpe(kifudir,
+													TrainerCreator::create(String::from("data"),
+																		   String::from("nn.a.bin"),
+																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
+															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
+																			config.save_batch_count.unwrap_or(1))
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
-			CsaLearnener::new().learning_from_csa(kifudir,
-												  lowerrate,
-												  config.bias_shake_shake_with_kifu,
-												  config.learn_max_threads.unwrap_or(1))
+			Learnener::new().learning_from_csa(kifudir,
+											   lowerrate,
+											   TrainerCreator::create(String::from("data"),
+																	  String::from("nn.a.bin"),
+																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?)
 		}
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
@@ -411,7 +425,7 @@ fn run() -> Result<(),ApplicationError> {
 				let len = sfen_list.len();
 
 				let f:Box<dyn FnMut() -> String + Send + 'static> = Box::new(move || {
-					sfen_list[rnd.gen_range(0, len)].clone()
+					sfen_list[rnd.gen_range(0..len)].clone()
 				});
 
 				Some(f)
@@ -423,6 +437,7 @@ fn run() -> Result<(),ApplicationError> {
 		);
 
 		let info_sender = ConsoleInfoSender::new(silent);
+		let pinfo_sender = ConsolePeriodicallyInfo::new(silent);
 
 		let mut engine = SelfMatchEngine::new();
 
@@ -590,15 +605,17 @@ fn run() -> Result<(),ApplicationError> {
 								initial_position_creator,
 								Some(Box::new(move |sfen,mvs| kifuwriter.write(sfen,mvs))),
 								input_read_handler,
-								NNShogiPlayer::new(String::from("nn.a.bin"),
-												   		  String::from("nn.b.bin"),
-												   	   true,
-												   	  config.learn_max_threads.unwrap_or(1)),
-								NNShogiPlayer::new(String::from("nn_opponent.a.bin"),
-												   		  String::from("nn_opponent.b.bin"),
-												   		true,
-												   					  config.learn_max_threads.unwrap_or(1)),
-								[
+								NNShogiPlayer::new(|| IntelligenceCreator::create(
+													   String::from("data"),
+													   String::from("nn.a.bin"),
+													   String::from("nn.b.bin"),
+													   )),
+								NNShogiPlayer::new(|| IntelligenceCreator::create(
+													   String::from("data"),
+													   String::from("nn_opponent.a.bin"),
+													   String::from("nn_opponent.b.bin"),
+													   )),
+										[
 									("Threads",SysEventOption::Num(config.max_threads.unwrap_or(1) as i64)),
 									("BaseDepth",SysEventOption::Num(base_depth as i64)),
 									("MaxDepth",SysEventOption::Num(max_depth as i64)),
@@ -623,6 +640,7 @@ fn run() -> Result<(),ApplicationError> {
 									(k.to_string(),v.clone())
 								}).collect::<Vec<(String,SysEventOption)>>(),
 								info_sender,
+								pinfo_sender,
 								time_limit,
 								uptime,
 								number_of_games,
@@ -647,11 +665,10 @@ fn run() -> Result<(),ApplicationError> {
 					secs / (60 * 60), secs  % (60 * 60) / 60, secs % 60, r.elapsed.subsec_nanos() / 1_000_000);
 		})
 	} else {
-		let config = ConfigLoader::new("settings.toml")?.load()?;
-		let agent = UsiAgent::new(NNShogiPlayer::new(String::from("nn.a.bin"),
-													 						   String::from("nn.b.bin"),
-													 						 false,
-																						  config.learn_max_threads.unwrap_or(1)));
+		let agent = UsiAgent::new(NNShogiPlayer::new(|| IntelligenceCreator::create(
+																		 String::from("data"),
+																		 String::from("nn.a.bin"),
+																		 String::from("nn.b.bin"))));
 
 		let r = agent.start_default(|on_error_handler,e| {
 			match on_error_handler {

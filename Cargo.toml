@@ -1,26 +1,18 @@
 [package]
 name = "nnshogi"
-version = "0.7.0"
+version = "0.9.0"
 authors = ["jinpu"]
-[dependencies.usiagent]
-git = "https://github.com/j6k1/USIAgent.git"
-#path = "../USIAgent"
-[dependencies.simplenn]
-git = "https://github.com/j6k1/simplenn.git"
-#path = "../simplenn"
-[dependencies.csaparser]
-git = "https://github.com/j6k1/CsaParser.git"
-#path = "../CsaParser"
-[dependencies.packedsfen]
-git = "https://github.com/j6k1/packedsfen.git"
-branch = "main"
-#path = "../packedsfen"
 [dependencies]
-rand = "0.7.0"
-rand_core = "0.5.0"
-rand_xorshift = "0.2.0"
-statrs = "0.13.0"
+rand = "0.8.5"
+rand_xorshift = "0.3.0"
+statrs = "0.15.0"
+rand_distr = "0.4.3"
 getopts = "0.2"
 toml = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
+crossbeam-channel = "0.5"
+usiagent = "0.6.1"
+csaparser = "0.3.0"
+packedsfen = "0.3.0"
+nncombinator = "0.5.0"
