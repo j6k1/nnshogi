@@ -24,7 +24,7 @@ use error::CommonError;
 use nn::{Trainer};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::io::{BufReader, Read, BufWriter};
-use std::fs::{File, OpenOptions};
+use std::fs::{DirEntry, File, OpenOptions};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use nncombinator::arr::{Arr, VecArr};
@@ -242,21 +242,38 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		'files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
-			let path = entry?.path();
+		let mut paths = fs::read_dir(Path::new(&kifudir)
+										.join("training"))?.into_iter()
+										.collect::<Vec<Result<DirEntry,_>>>();
 
-			current_filename = Some(path.as_path().file_name().map(|s| {
+		paths.sort_by(|a,b| {
+			match (a,b) {
+				(Ok(a),Ok(b)) => {
+					let a = a.file_name();
+					let b = b.file_name();
+					a.cmp(&b)
+				},
+				_ => {
+					std::cmp::Ordering::Equal
+				}
+			}
+		});
+
+		'files: for path in paths {
+			let path = path?.path();
+
+			current_filename = path.as_path().file_name().map(|s| {
 				s.to_string_lossy().to_string()
-			}).unwrap_or(String::from("")));
+			}).unwrap_or(String::from(""));
 
 			if let Some(ref checkpoint) = checkpoint {
-				if *current_filename.as_ref().unwrap() == checkpoint.filename {
+				if current_filename == checkpoint.filename {
 					skip_files = false;
 				}
 
 				if skip_files {
 					continue;
-				} else if *current_filename.as_ref().unwrap() != checkpoint.filename {
+				} else if current_filename != checkpoint.filename {
 					skip_items = false;
 				}
 			}
@@ -273,7 +290,7 @@ impl<NN> Learnener<NN>
 			for p in parsed.into_iter() {
 				if let Some(ref checkpoint) = checkpoint {
 					if skip_items && current_item == checkpoint.item {
-						println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap());
+						println!("Processing starts from {}th item of file {}",current_item,&current_filename);
 						skip_items = false;
 					}
 
@@ -373,7 +390,7 @@ impl<NN> Learnener<NN>
 			let mut checkpoint_writer = CheckPointWriter::new(tmp_path,checkpoint_path.as_path())?;
 
 			checkpoint_writer.save(&CheckPoint {
-				filename:current_filename.as_ref().unwrap().clone(),
+				filename:current_filename.clone(),
 				item:current_item
 			})?;
 		}
@@ -381,8 +398,27 @@ impl<NN> Learnener<NN>
 		if notify_run_test_arc.load(Ordering::Acquire) {
 			let mut historys:Vec<(Teban,GameEndState,(Banmen,MochigomaCollections,u64,u64))> = Vec::new();
 
-			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("tests"))? {
-				let path = entry?.path();
+
+			let mut paths = fs::read_dir(Path::new(&kifudir)
+				.join("tests"))?.into_iter()
+				.collect::<Vec<Result<DirEntry,_>>>();
+
+			paths.sort_by(|a,b| {
+				match (a,b) {
+					(Ok(a),Ok(b)) => {
+						let a = a.file_name();
+						let b = b.file_name();
+						a.cmp(&b)
+					},
+					_ => {
+						std::cmp::Ordering::Equal
+					}
+				}
+			});
+
+			'test_files: for path in paths {
+				let path = path?.path();
+
 				if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
 					continue;
 				}
@@ -604,7 +640,7 @@ impl<NN> Learnener<NN>
 		};
 
 		let mut current_item:usize = 0;
-		let mut current_filename = None;
+		let mut current_filename = String::from("");
 
 		let mut skip_files = checkpoint.is_some();
 		let mut skip_items = checkpoint.is_some();
@@ -612,21 +648,38 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		'files: for entry in fs::read_dir(Path::new(&kifudir).join("training"))? {
-			let path = entry?.path();
+		let mut paths = fs::read_dir(Path::new(&kifudir)
+			.join("training"))?.into_iter()
+			.collect::<Vec<Result<DirEntry,_>>>();
 
-			current_filename = Some(path.as_path().file_name().map(|s| {
+		paths.sort_by(|a,b| {
+			match (a,b) {
+				(Ok(a),Ok(b)) => {
+					let a = a.file_name();
+					let b = b.file_name();
+					a.cmp(&b)
+				},
+				_ => {
+					std::cmp::Ordering::Equal
+				}
+			}
+		});
+
+		'files: for path in paths {
+			let path = path?.path();
+
+			current_filename = path.as_path().file_name().map(|s| {
 				s.to_string_lossy().to_string()
-			}).unwrap_or(String::from("")));
+			}).unwrap_or(String::from(""));
 
 			if let Some(ref checkpoint) = checkpoint {
-				if *current_filename.as_ref().unwrap() == checkpoint.filename {
+				if current_filename == checkpoint.filename {
 					skip_files = false;
 				}
 
 				if skip_files {
 					continue;
-				} else if *current_filename.as_ref().unwrap() != checkpoint.filename {
+				} else if current_filename != checkpoint.filename {
 					skip_items = false;
 				}
 			}
@@ -652,7 +705,7 @@ impl<NN> Learnener<NN>
 							continue;
 						} else {
 							if skip_items && current_item == checkpoint.item {
-								println!("Processing starts from {}th item of file {}",current_item,current_filename.as_ref().unwrap());
+								println!("Processing starts from {}th item of file {}",current_item,&current_filename);
 								skip_items = false;
 							}
 						}
@@ -751,7 +804,7 @@ impl<NN> Learnener<NN>
 					count += learn_batch_size;
 					current_item += learn_batch_size;
 
-					if pending_count >= save_batch_count {
+					if current_filename != "" && pending_count >= save_batch_count {
 						self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
 						pending_count = 0;
 					}
@@ -790,8 +843,25 @@ impl<NN> Learnener<NN>
 		if notify_run_test_arc.load(Ordering::Acquire) {
 			let mut testdata = Vec::new();
 
-			'test_files: for entry in fs::read_dir(Path::new(&kifudir).join("tests"))? {
-				let path = entry?.path();
+			let mut paths = fs::read_dir(Path::new(&kifudir)
+				.join("tests"))?.into_iter()
+				.collect::<Vec<Result<DirEntry,_>>>();
+
+			paths.sort_by(|a,b| {
+				match (a,b) {
+					(Ok(a),Ok(b)) => {
+						let a = a.file_name();
+						let b = b.file_name();
+						a.cmp(&b)
+					},
+					_ => {
+						std::cmp::Ordering::Equal
+					}
+				}
+			});
+
+			'test_files: for path in paths {
+				let path = path?.path();
 
 				if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
 					continue;
@@ -890,7 +960,7 @@ impl<NN> Learnener<NN>
 		}
 	}
 
-	fn save(&self,evalutor: &mut Trainer<NN>,checkpoint_path:&PathBuf,current_filename:&Option<String>,current_item:usize)
+	fn save(&self,evalutor: &mut Trainer<NN>,checkpoint_path:&PathBuf,current_filename:&str,current_item:usize)
 		-> Result<(),ApplicationError> {
 		evalutor.save()?;
 
@@ -900,7 +970,7 @@ impl<NN> Learnener<NN>
 		let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
 
 		checkpoint_writer.save(&CheckPoint {
-			filename:current_filename.as_ref().unwrap().clone(),
+			filename:current_filename.to_string(),
 			item:current_item
 		})?;
 
