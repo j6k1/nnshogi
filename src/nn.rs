@@ -365,20 +365,20 @@ impl TrainerCreator {
 
 		let rnd = rnd_base.clone();
 
-		let mut nnb = net.add_layer(|l| {
+		let mut nnb = net.try_add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceGpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
-		}).add_layer(|l| {
+			Ok(LinearLayer::<_,_,_,DeviceGpu<f32>,_,2517,256>::new(l,&device, move || n1.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)?)
+		})?.add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
-		}).add_layer(|l| {
+		}).try_add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceGpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
-		}).add_layer(|l| {
+			Ok(LinearLayer::<_,_,_,DeviceGpu<f32>,_,256,32>::new(l,&device, move || n2.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)?)
+		})?.add_layer(|l| {
 			ActivationLayer::new(l,ReLu::new(&device),&device)
-		}).add_layer(|l| {
+		}).try_add_layer(|l| {
 			let rnd = rnd.clone();
-			LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.).unwrap()
-		}).add_layer(|l| {
+			Ok(LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)?)
+		})?.add_layer(|l| {
 			ActivationLayer::new(l,Sigmoid::new(&device),&device)
 		}).add_layer_train(|l| {
 			LinearOutputLayer::new(l,&device)
