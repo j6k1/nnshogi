@@ -421,7 +421,7 @@ impl<NN> Trainer<NN>
 			let mut rnd = XorShiftRng::from_seed(rnd.gen());
 
 			let a = rnd.gen();
-			let b = 1f32 / a ;
+			let b = 1f32 - a ;
 
 			(a,b)
 		} else {
