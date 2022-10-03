@@ -110,7 +110,7 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
-const SCALE:f32 = 41.;
+const SCALE:f32 = 1.;
 
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
