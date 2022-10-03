@@ -1,2 +1,2 @@
 # nnshogi
-USIAgentとsimplennを用いた将棋AIの実装
+USIAgentとnncombinatorを用いた将棋AIの実装
