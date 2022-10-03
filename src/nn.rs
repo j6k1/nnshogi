@@ -110,7 +110,7 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
-const SCALE:f32 = 2517. / 41.;
+const SCALE:f32 = 1.;
 
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
@@ -401,7 +401,7 @@ impl TrainerCreator {
 		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
-			optimizer:MomentumSGD::new(0.001),
+			optimizer:MomentumSGD::new(0.0001),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
