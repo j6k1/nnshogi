@@ -904,6 +904,12 @@ impl<NN> Learnener<NN>
 					}
 				};
 
+				match s {
+					GameEndState::Win => println!("結果　勝ち"),
+					GameEndState::Lose => println!("結果　負け"),
+					_ => println!("結果　引き分け")
+				};
+
 				if success {
 					successed += 1;
 					println!("勝率{}% 正解!",score * 100.);
