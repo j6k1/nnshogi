@@ -110,7 +110,7 @@ const OPPONENT_INDEX_MAP:[usize; 7] = [
 	OPPONENT_MOCHIGOMA_KAKU_INDEX,
 	OPPONENT_MOCHIGOMA_HISHA_INDEX
 ];
-const SCALE:f32 = 1.;
+const SCALE:f32 = 2517. / 41.;
 
 pub struct IntelligenceCreator;
 impl IntelligenceCreator {
@@ -217,11 +217,11 @@ impl<NN> Intelligence<NN>
 
 		let sa = self.nna.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
-		) / SCALE))?;
+		) * SCALE))?;
 
 		let sb = self.nnb.forward_diff(DiffInput::NotDiff(InputCreator::make_input(
 			is_self,t,b,mc
-		) / SCALE))?;
+		) * SCALE))?;
 
 		Ok((sa,sb))
 	}
@@ -230,8 +230,8 @@ impl<NN> Intelligence<NN>
 	{
 		let input = InputCreator::make_input(is_self,t,b,mc);
 
-		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
-		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() / SCALE))?;
+		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
+		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
 
 		let answer = nnaanswera[0] * nnbanswerb[0] - 0.5;
 
@@ -245,11 +245,11 @@ impl<NN> Intelligence<NN>
 		let input = InputCreator::make_diff_input(is_self, t, b, mc, m)?;
 		let o = self.nna.ask_diff_input(sa);
 
-		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o))?;
+		let sa = self.nna.forward_diff(DiffInput::Diff(input.clone() * SCALE,o))?;
 
 		let o = self.nnb.ask_diff_input(sb);
 
-		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() / SCALE,o))?;
+		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() * SCALE,o))?;
 
 		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone()) - 0.5;
 
@@ -470,13 +470,13 @@ impl<NN> Trainer<NN>
 			ans[0] = t * a;
 
 			(acc.0).0.push(ans);
-			(acc.0).1.push(input.clone() / SCALE);
+			(acc.0).1.push(input.clone() * SCALE);
 
 			let mut ans = Arr::<f32, 1>::new();
 			ans[0] = t * b;
 
 			(acc.1).0.push(ans);
-			(acc.1).1.push(input / SCALE);
+			(acc.1).1.push(input * SCALE);
 
 			acc
 		});
@@ -515,12 +515,12 @@ impl<NN> Trainer<NN>
 			ans[0] = t * a;
 
 			(acc.0).0.push(ans);
-			(acc.0).1.push(input.clone() / SCALE);
+			(acc.0).1.push(input.clone() * SCALE);
 			let mut ans = Arr::<f32,1>::new();
 			ans[0] = t * b;
 
 			(acc.1).0.push(ans);
-			(acc.1).1.push(input / SCALE);
+			(acc.1).1.push(input * SCALE);
 
 			acc
 		});
@@ -541,8 +541,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE)?;
-		let rb = self.nnb.forward_all(input / SCALE)?;
+		let ra = self.nna.forward_all(input.clone() * SCALE)?;
+		let rb = self.nnb.forward_all(input * SCALE)?;
 
 		Ok(ra[0] + rb[0])
 	}
@@ -594,13 +594,13 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone() / SCALE);
+				(acc.0).1.push(input.clone() * SCALE);
 
 				let mut ans = Arr::<f32, 1>::new();
 				ans[0] = t * b;
 
 				(acc.1).0.push(ans);
-				(acc.1).1.push(input / SCALE);
+				(acc.1).1.push(input * SCALE);
 
 				acc
 			});
@@ -638,13 +638,13 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone() / SCALE);
+				(acc.0).1.push(input.clone() * SCALE);
 
 				let mut ans = Arr::<f32, 1>::new();
 				ans[0] = t * b;
 
 				(acc.1).0.push(ans);
-				(acc.1).1.push(input / SCALE);
+				(acc.1).1.push(input * SCALE);
 
 				acc
 			});
@@ -669,8 +669,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE)?;
-		let rb = self.nnb.forward_all(input / SCALE)?;
+		let ra = self.nna.forward_all(input.clone() * SCALE)?;
+		let rb = self.nnb.forward_all(input * SCALE)?;
 
 		Ok((game_result,ra[0] + rb[0]))
 	}
@@ -733,13 +733,13 @@ impl<NN> Trainer<NN>
 				ans[0] = t * a;
 
 				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone() / SCALE);
+				(acc.0).1.push(input.clone() * SCALE);
 
 				let mut ans = Arr::<f32,1>::new();
 				ans[0] = t * b;
 
 				(acc.1).0.push(ans);
-				(acc.1).1.push(input / SCALE);
+				(acc.1).1.push(input * SCALE);
 
 				acc
 			});
@@ -784,13 +784,13 @@ impl<NN> Trainer<NN>
 					ans[0] = t * a;
 
 					(acc.0).0.push(ans);
-					(acc.0).1.push(input.clone() / SCALE);
+					(acc.0).1.push(input.clone() * SCALE);
 
 					let mut ans = Arr::<f32,1>::new();
 					ans[0] = t * b;
 
 					(acc.1).0.push(ans);
-					(acc.1).1.push(input / SCALE);
+					(acc.1).1.push(input * SCALE);
 
 					acc
 				});
@@ -813,8 +813,8 @@ impl<NN> Trainer<NN>
 
 		let input = InputCreator::make_input(true, teban, &banmen, &mc);
 
-		let ra = self.nna.forward_all(input.clone() / SCALE)?;
-		let rb = self.nnb.forward_all(input / SCALE)?;
+		let ra = self.nna.forward_all(input.clone() * SCALE)?;
+		let rb = self.nnb.forward_all(input * SCALE)?;
 
 		let s = match game_result {
 			GameResult::SenteWin if teban == Teban::Sente => {
