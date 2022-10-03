@@ -123,8 +123,8 @@ impl IntelligenceCreator {
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
 		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/32f32.sqrt()).unwrap();
 
 		let device = DeviceCpu::new()?;
 
@@ -155,8 +155,8 @@ impl IntelligenceCreator {
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
 		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/32f32.sqrt()).unwrap();
 
 		let device = DeviceCpu::new()?;
 
@@ -322,8 +322,8 @@ impl TrainerCreator {
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
 		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/32f32.sqrt()).unwrap();
 
 		let memory_pool = Arc::new(Mutex::new(MemoryPool::new(Alloctype::Device)?));
 
@@ -356,8 +356,8 @@ impl TrainerCreator {
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
 
 		let n1 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n2 = Normal::<f32>::new(0.0, (2f32/2517f32).sqrt()).unwrap();
-		let n3 = Normal::<f32>::new(0.0, 1f32/256f32.sqrt()).unwrap();
+		let n2 = Normal::<f32>::new(0.0, (2f32/256f32).sqrt()).unwrap();
+		let n3 = Normal::<f32>::new(0.0, 1f32/32f32.sqrt()).unwrap();
 
 		let device = DeviceGpu::new(&memory_pool)?;
 
