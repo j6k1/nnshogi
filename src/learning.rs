@@ -511,18 +511,18 @@ impl<NN> Learnener<NN>
 
 				let success = match s {
 					GameEndState::Win => {
-						score >= 0.5
+						score >= 0.0
 					},
 					_ => {
-						score < 0.5
+						score < 0.0
 					}
 				};
 
 				if success {
 					successed += 1;
-					println!("勝率{}% 正解!",score * 100.);
+					println!("評価値{} 正解!",score * (1 << 21) as f32);
 				} else {
-					println!("勝率{}% 不正解...",score * 100.);
+					println!("評価値{} 不正解...",score * (1 << 21) as f32);
 				}
 
 				count += 1;
@@ -897,10 +897,10 @@ impl<NN> Learnener<NN>
 
 				let success = match s {
 					GameEndState::Win => {
-						score >= 0.5
+						score >= 0.0
 					},
 					_ => {
-						score < 0.5
+						score < 0.0
 					}
 				};
 
@@ -912,9 +912,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("勝率{}% 正解!",score * 100.);
+					println!("評価値{} 正解!",score * (1 << 21) as f32);
 				} else {
-					println!("勝率{}% 不正解...",score * 100.);
+					println!("評価値{} 不正解...",score * (1 << 21) as f32);
 				}
 
 				count += 1;

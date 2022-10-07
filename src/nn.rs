@@ -4,7 +4,7 @@ use std::fs;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::rc::Rc;
-use nncombinator::activation::{ReLu, Sigmoid};
+use nncombinator::activation::{ReLu, Tanh};
 use nncombinator::arr::{Arr, DiffArr, VecArr};
 use nncombinator::cuda::mem::{Alloctype, MemoryPool};
 use nncombinator::device::{DeviceCpu, DeviceGpu};
@@ -146,7 +146,7 @@ impl IntelligenceCreator {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
-			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+			ActivationLayer::new(l,Tanh::new(&device),&device)
 		}).add_layer_train(|l| {
 			LinearOutputLayer::new(l,&device)
 		});
@@ -178,7 +178,7 @@ impl IntelligenceCreator {
 			let rnd = rnd.clone();
 			LinearLayer::<_,_,_,DeviceCpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)
 		}).add_layer(|l| {
-			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+			ActivationLayer::new(l,Tanh::new(&device),&device)
 		}).add_layer_train(|l| {
 			LinearOutputLayer::new(l,&device)
 		});
@@ -233,9 +233,9 @@ impl<NN> Intelligence<NN>
 		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
 		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
 
-		let answer = nnaanswera[0] + nnbanswerb[0] - 0.5;
+		let answer = nnaanswera[0] + nnbanswerb[0];
 
-		Ok((answer * (1 << 29) as f32) as i32)
+		Ok((answer * (1 << 21) as f32) as i32)
 	}
 
 	pub fn evalute_by_diff(&self, snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)
@@ -251,7 +251,7 @@ impl<NN> Intelligence<NN>
 
 		let sb = self.nna.forward_diff(DiffInput::Diff(input.clone() * SCALE,o))?;
 
-		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone()) - 0.5;
+		let answer = sa.map(|ans| ans[0].clone()) + sb.map(|ans| ans[0].clone());
 
 		Ok(((answer * (1 << 29) as f32) as i32,(sa,sb)))
 	}
@@ -262,7 +262,7 @@ impl<NN> Intelligence<NN>
 				let nnaanswera = sa.map(|ans| ans[0].clone());
 				let nnbanswerb = sb.map(|ans| ans[0].clone());
 
-				let answer = nnaanswera + nnbanswerb - 0.5;
+				let answer = nnaanswera + nnbanswerb;
 
 				(answer * (1 << 29) as f32) as i32
 			}
@@ -347,7 +347,7 @@ impl TrainerCreator {
 			let rnd = rnd.clone();
 			Ok(LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)?)
 		})?.add_layer(|l| {
-			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+			ActivationLayer::new(l,Tanh::new(&device),&device)
 		}).add_layer_train(|l| {
 			LinearOutputLayer::new(l,&device)
 		});
@@ -379,7 +379,7 @@ impl TrainerCreator {
 			let rnd = rnd.clone();
 			Ok(LinearLayer::<_,_,_,DeviceGpu<f32>,_,32,1>::new(l,&device, move || n3.sample(&mut rnd.borrow_mut().deref_mut()), || 0.)?)
 		})?.add_layer(|l| {
-			ActivationLayer::new(l,Sigmoid::new(&device),&device)
+			ActivationLayer::new(l,Tanh::new(&device),&device)
 		}).add_layer_train(|l| {
 			LinearOutputLayer::new(l,&device)
 		});
@@ -451,15 +451,15 @@ impl<NN> Trainer<NN>
 					1f32
 				}
 				GameEndState::Win => {
-					0f32
+					-1f32
 				},
 				GameEndState::Lose if teban == last_teban => {
-					0f32
+					-1f32
 				},
 				GameEndState::Lose => {
 					1f32
 				},
-				_ => 0.5f32
+				_ => 0f32
 			};
 
 			teban = teban.opposite();
@@ -496,15 +496,15 @@ impl<NN> Trainer<NN>
 					1f32
 				}
 				GameEndState::Win => {
-					0f32
+					-1f32
 				},
 				GameEndState::Lose if teban == last_teban => {
-					0f32
+					-1f32
 				},
 				GameEndState::Lose => {
 					1f32
 				},
-				_ => 0.5f32
+				_ => 0f32
 			};
 
 			teban = teban.opposite();
@@ -583,9 +583,9 @@ impl<NN> Trainer<NN>
 						1f32
 					}
 					GameEndState::Lose => {
-						0f32
+						-1f32
 					},
-					_ => 0.5f32
+					_ => 0f32
 				};
 
 				(t,input,a,b)
@@ -627,9 +627,9 @@ impl<NN> Trainer<NN>
 						1f32
 					}
 					GameEndState::Lose => {
-						0f32
+						-1f32
 					},
-					_ => 0.5f32
+					_ => 0f32
 				};
 
 				(t,input,a,b)
@@ -722,9 +722,9 @@ impl<NN> Trainer<NN>
 						1f32
 					}
 					GameEndState::Lose => {
-						0f32
+						-1f32
 					},
-					_ => 0.5f32
+					_ => 0f32
 				};
 
 				(t,input,a,b)
@@ -773,9 +773,9 @@ impl<NN> Trainer<NN>
 							1f32
 						}
 						GameEndState::Lose => {
-							0f32
+							-1f32
 						},
-						_ => 0.5f32
+						_ => 0f32
 					};
 
 					(t,input,a,b)
