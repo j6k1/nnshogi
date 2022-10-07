@@ -233,7 +233,7 @@ impl<NN> Intelligence<NN>
 		let nnaanswera = self.nna.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
 		let nnbanswerb = self.nnb.forward_all(DiffInput::NotDiff(input.clone() * SCALE))?;
 
-		let answer = nnaanswera[0] * nnbanswerb[0] - 0.5;
+		let answer = nnaanswera[0] + nnbanswerb[0] - 0.5;
 
 		Ok((answer * (1 << 29) as f32) as i32)
 	}
