@@ -401,7 +401,7 @@ impl TrainerCreator {
 		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
-			optimizer:MomentumSGD::new(0.0001),
+			optimizer:MomentumSGD::new(0.001),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
