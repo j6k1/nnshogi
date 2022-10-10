@@ -639,7 +639,6 @@ impl<NN> Learnener<NN>
 			None
 		};
 
-		let mut current_item:usize = 0;
 		let mut current_filename = String::from("");
 
 		let mut skip_files = checkpoint.is_some();
@@ -690,7 +689,7 @@ impl<NN> Learnener<NN>
 
 			print!("{}\n", path.display());
 
-			current_item = 0;
+			let mut current_item = 0;
 
 			for b in BufReader::new(File::open(path)?).bytes() {
 				let b = b?;
@@ -698,9 +697,10 @@ impl<NN> Learnener<NN>
 				record.push(b);
 
 				if record.len() == item_size {
+					current_item += 1;
+
 					if let Some(ref checkpoint) = checkpoint {
 						if skip_items && current_item < checkpoint.item {
-							current_item += 1;
 							record.clear();
 							continue;
 						} else {
@@ -736,7 +736,6 @@ impl<NN> Learnener<NN>
 
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
-							current_item += learn_batch_size;
 
 							if pending_count >= save_batch_count {
 								self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
@@ -802,7 +801,6 @@ impl<NN> Learnener<NN>
 
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
-					current_item += learn_batch_size;
 
 					if current_filename != "" && pending_count >= save_batch_count {
 						self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
