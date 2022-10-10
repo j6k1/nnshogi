@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::thread;
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -639,9 +640,6 @@ impl<NN> Learnener<NN>
 			None
 		};
 
-		let mut current_item:usize = 0;
-		let mut current_filename = String::from("");
-
 		let mut skip_files = checkpoint.is_some();
 		let mut skip_items = checkpoint.is_some();
 
@@ -665,12 +663,24 @@ impl<NN> Learnener<NN>
 			}
 		});
 
+		let mut waiting_queue:VecDeque<(String,usize)> = VecDeque::new();
+		let mut waiting_count:i32 = 0;
+		let mut save_filename = String::from("");
+		let mut current_items = 0;
+		let mut save_items = 0;
+
 		'files: for path in paths {
 			let path = path?.path();
 
-			current_filename = path.as_path().file_name().map(|s| {
+			let current_filename =  path.as_path().file_name().map(|s| {
 				s.to_string_lossy().to_string()
 			}).unwrap_or(String::from(""));
+
+			if waiting_queue.is_empty() {
+				save_filename = current_filename.clone();
+			} else {
+				waiting_queue.push_front((current_filename.clone(),0));
+			}
 
 			if let Some(ref checkpoint) = checkpoint {
 				if current_filename == checkpoint.filename {
@@ -690,7 +700,7 @@ impl<NN> Learnener<NN>
 
 			print!("{}\n", path.display());
 
-			current_item = 0;
+			let mut current_item = 0;
 
 			for b in BufReader::new(File::open(path)?).bytes() {
 				let b = b?;
@@ -698,6 +708,15 @@ impl<NN> Learnener<NN>
 				record.push(b);
 
 				if record.len() == item_size {
+					current_item += 1;
+
+					if let Some((_,ref mut waiting_count)) = waiting_queue.back_mut() {
+						*waiting_count += 1;
+					}  else {
+						waiting_count += 1;
+						current_items += 1;
+					}
+
 					if let Some(ref checkpoint) = checkpoint {
 						if skip_items && current_item < checkpoint.item {
 							current_item += 1;
@@ -736,10 +755,22 @@ impl<NN> Learnener<NN>
 
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
-							current_item += learn_batch_size;
+							save_items += learn_batch_size;
+
+							waiting_count -= learn_batch_size as i32;
+
+							while waiting_count <= 0 {
+								save_items -= current_items;
+
+								if let Some((filename,count)) = waiting_queue.pop_front() {
+									waiting_count += count as i32;
+									save_filename = filename;
+									current_items = count;
+								}
+							}
 
 							if pending_count >= save_batch_count {
-								self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+								self.save(&mut evalutor,&checkpoint_path,&save_filename,save_items)?;
 								pending_count = 0;
 							}
 						}
@@ -760,9 +791,21 @@ impl<NN> Learnener<NN>
 												batch,
 												&user_event_queue)?;
 						pending_count += 1;
+						save_items += remaing;
+						waiting_count -= remaing as i32;
+
+						while waiting_count <= 0 {
+							save_items -= current_items;
+
+							if let Some((filename,count)) = waiting_queue.pop_front() {
+								waiting_count += count as i32;
+								save_filename = filename;
+								current_items = count;
+							}
+						}
 
 						if pending_count >= save_batch_count {
-							self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+							self.save(&mut evalutor,&checkpoint_path,&save_filename,save_items)?;
 							pending_count = 0;
 						}
 
@@ -802,14 +845,24 @@ impl<NN> Learnener<NN>
 
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
-					current_item += learn_batch_size;
+					save_items += learn_batch_size;
+					waiting_count -= learn_batch_size as i32;
 
-					if current_filename != "" && pending_count >= save_batch_count {
-						self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+					while waiting_count <= 0 {
+						save_items -= current_items;
+
+						if let Some((filename,count)) = waiting_queue.pop_front() {
+							waiting_count += count as i32;
+							save_filename = filename;
+							current_items = count;
+						}
+					}
+
+					if pending_count >= save_batch_count {
+						self.save(&mut evalutor,&checkpoint_path,&save_filename,save_items)?;
 						pending_count = 0;
 					}
 				}
-
 
 				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
 					let _ = on_error_handler.lock().map(|h| h.call(e));
@@ -827,9 +880,21 @@ impl<NN> Learnener<NN>
 							   		batch,
 							   		&user_event_queue)?;
 				pending_count += 1;
+				save_items += remaing;
+				waiting_count -= remaing as i32;
+
+				while waiting_count <= 0 {
+					save_items -= current_items;
+
+					if let Some((filename,count)) = waiting_queue.pop_front() {
+						waiting_count += count as i32;
+						save_filename = filename;
+						current_items = count;
+					}
+				}
 
 				if pending_count >= save_batch_count {
-					self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+					self.save(&mut evalutor,&checkpoint_path,&save_filename,save_items)?;
 					pending_count = 0;
 				}
 				count += remaing;
@@ -837,7 +902,7 @@ impl<NN> Learnener<NN>
 		}
 
 		if pending_count >= save_batch_count {
-			self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
+			self.save(&mut evalutor,&checkpoint_path,&save_filename,save_items)?;
 		}
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
