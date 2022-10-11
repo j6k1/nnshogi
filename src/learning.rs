@@ -190,7 +190,7 @@ impl<NN> Learnener<NN>
 		});
 	}
 
-	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, evalutor: Trainer<NN>) -> Result<(),ApplicationError> {
+	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, maxepoch: usize, evalutor: Trainer<NN>) -> Result<(),ApplicationError> {
 		let logger = FileLogger::new(String::from("logs/log.txt"))?;
 
 		let logger = Arc::new(Mutex::new(logger));
@@ -241,144 +241,146 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		let mut paths = fs::read_dir(Path::new(&kifudir)
-										.join("training"))?.into_iter()
-										.collect::<Vec<Result<DirEntry,_>>>();
+		for _ in 0..maxepoch {
+			let mut paths = fs::read_dir(Path::new(&kifudir)
+				.join("training"))?.into_iter()
+				.collect::<Vec<Result<DirEntry,_>>>();
 
-		paths.sort_by(Self::cmp);
+			paths.sort_by(Self::cmp);
 
-		'files: for path in paths {
-			let path = path?.path();
+			'files: for path in paths {
+				let path = path?.path();
 
-			current_filename = path.as_path().file_name().map(|s| {
-				s.to_string_lossy().to_string()
-			}).unwrap_or(String::from(""));
+				current_filename = path.as_path().file_name().map(|s| {
+					s.to_string_lossy().to_string()
+				}).unwrap_or(String::from(""));
 
-			if let Some(ref checkpoint) = checkpoint {
-				if current_filename == checkpoint.filename {
-					skip_files = false;
-				}
-
-				if skip_files {
-					continue;
-				} else if current_filename != checkpoint.filename {
-					skip_items = false;
-				}
-			}
-
-			if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
-				continue;
-			}
-
-			print!("{}\n", path.display());
-			let parsed:Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
-
-			current_item = 0;
-
-			for p in parsed.into_iter() {
 				if let Some(ref checkpoint) = checkpoint {
-					if skip_items && current_item == checkpoint.item {
-						println!("Processing starts from {}th item of file {}",current_item,&current_filename);
+					if current_filename == checkpoint.filename {
+						skip_files = false;
+					}
+
+					if skip_files {
+						continue;
+					} else if current_filename != checkpoint.filename {
 						skip_items = false;
 					}
-
-					if skip_items {
-						continue;
-					}
-				}
-				match p.end_state {
-					Some(EndState::Toryo) | Some(EndState::Tsumi) => (),
-					_ => {
-						continue;
-					}
 				}
 
-				if !p.comments.iter().any(|c| {
-					if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
-						return false;
-					}
-
-					let c = c.split(':').collect::<Vec<&str>>();
-
-					if c.len() != 3 {
-						false
-					} else {
-						let rate:f64 = match c[2].parse() {
-							Err(_) => {
-								return false;
-							},
-							Ok(rate) => rate,
-						};
-
-						rate >= lowerrate
-					}
-				}) {
+				if !path.as_path().extension().map(|e| e == "csa").unwrap_or(false) {
 					continue;
 				}
-				let m = p.moves.iter().fold(Vec::new(),|mut mvs,m| match *m {
-					CsaMove::Move(m,_) => {
-						mvs.push(m);
-						mvs
-					},
-					_ => {
-						mvs
+
+				print!("{}\n", path.display());
+				let parsed: Vec<CsaData> = CsaParser::new(CsaFileStream::new(path)?).parse()?;
+
+				current_item = 0;
+
+				for p in parsed.into_iter() {
+					if let Some(ref checkpoint) = checkpoint {
+						if skip_items && current_item == checkpoint.item {
+							println!("Processing starts from {}th item of file {}", current_item, &current_filename);
+							skip_items = false;
+						}
+
+						if skip_items {
+							continue;
+						}
 					}
-				});
-				let teban = p.teban_at_start;
-				let banmen = p.initial_position;
-				let state = State::new(banmen);
-				let mc = p.initial_mochigoma;
-
-				let history:Vec<(Banmen,MochigomaCollections,u64,u64)> = Vec::new();
-
-				let (teban,_,_,history) = Rule::apply_moves_with_callback(state,
-																teban,
-																mc,&m.into_iter().map(|m| {
-																	m.to_applied_move()
-																}).collect::<Vec<AppliedMove>>(),
-																history,
-																|_,banmen,mc,_,_,history| {
-					let mut history = history;
-					history.push((banmen.clone(),mc.clone(),0,0));
-					history
-				});
-
-				let teban = teban.opposite();
-
-				match evalutor.learning_by_training_csa(
-					teban,
-					history,
-					&GameEndState::Win,&*user_event_queue) {
-					Err(_) => {
-						return Err(ApplicationError::LearningError(String::from(
-							"An error occurred while learning the neural network."
-						)));
-					},
-					Ok((msa,moa,msb,mob)) => {
-						println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
+					match p.end_state {
+						Some(EndState::Toryo) | Some(EndState::Tsumi) => (),
+						_ => {
+							continue;
+						}
 					}
-				};
 
-				count += 1;
+					if !p.comments.iter().any(|c| {
+						if !c.starts_with("white_rate:") && !c.starts_with("black_rate:") {
+							return false;
+						}
 
-				system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
+						let c = c.split(':').collect::<Vec<&str>>();
 
-				if notify_quit.load(Ordering::Acquire) {
-					break 'files;
+						if c.len() != 3 {
+							false
+						} else {
+							let rate: f64 = match c[2].parse() {
+								Err(_) => {
+									return false;
+								},
+								Ok(rate) => rate,
+							};
+
+							rate >= lowerrate
+						}
+					}) {
+						continue;
+					}
+					let m = p.moves.iter().fold(Vec::new(), |mut mvs, m| match *m {
+						CsaMove::Move(m, _) => {
+							mvs.push(m);
+							mvs
+						},
+						_ => {
+							mvs
+						}
+					});
+					let teban = p.teban_at_start;
+					let banmen = p.initial_position;
+					let state = State::new(banmen);
+					let mc = p.initial_mochigoma;
+
+					let history: Vec<(Banmen, MochigomaCollections, u64, u64)> = Vec::new();
+
+					let (teban, _, _, history) = Rule::apply_moves_with_callback(state,
+																				 teban,
+																				 mc, &m.into_iter().map(|m| {
+							m.to_applied_move()
+						}).collect::<Vec<AppliedMove>>(),
+																				 history,
+																				 |_, banmen, mc, _, _, history| {
+																					 let mut history = history;
+																					 history.push((banmen.clone(), mc.clone(), 0, 0));
+																					 history
+																				 });
+
+					let teban = teban.opposite();
+
+					match evalutor.learning_by_training_csa(
+						teban,
+						history,
+						&GameEndState::Win, &*user_event_queue) {
+						Err(_) => {
+							return Err(ApplicationError::LearningError(String::from(
+								"An error occurred while learning the neural network."
+							)));
+						},
+						Ok((msa, moa, msb, mob)) => {
+							println!("error_total: {}, {}, {}, {}", msa, moa, msb, mob);
+						}
+					};
+
+					count += 1;
+
+					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
+
+					if notify_quit.load(Ordering::Acquire) {
+						break 'files;
+					}
 				}
+
+				print!("done... \n");
+
+				let tmp_path = format!("{}.tmp", checkpoint_path.as_path().to_string_lossy());
+				let tmp_path = Path::new(&tmp_path);
+
+				let mut checkpoint_writer = CheckPointWriter::new(tmp_path, checkpoint_path.as_path())?;
+
+				checkpoint_writer.save(&CheckPoint {
+					filename: current_filename.clone(),
+					item: current_item
+				})?;
 			}
-
-			print!("done... \n");
-
-			let tmp_path = format!("{}.tmp",checkpoint_path.as_path().to_string_lossy());
-			let tmp_path = Path::new(&tmp_path);
-
-			let mut checkpoint_writer = CheckPointWriter::new(tmp_path,checkpoint_path.as_path())?;
-
-			checkpoint_writer.save(&CheckPoint {
-				filename:current_filename.clone(),
-				item:current_item
-			})?;
 		}
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
@@ -516,6 +518,7 @@ impl<NN> Learnener<NN>
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 									   save_batch_count:usize,
+									   maxepoch:usize
 									   ) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
@@ -524,6 +527,7 @@ impl<NN> Learnener<NN>
 							learn_sfen_read_size,
 							learn_batch_size,
 							save_batch_count,
+							maxepoch,
 							Self::learning_from_yaneuraou_bin_batch,
 							|evalutor,packed| {
 								evalutor.test_by_packed_sfens(packed)
@@ -536,6 +540,7 @@ impl<NN> Learnener<NN>
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 							  		   save_batch_count:usize,
+							  		   maxepoch:usize
 	) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"hcpe",
@@ -544,6 +549,7 @@ impl<NN> Learnener<NN>
 							learn_sfen_read_size,
 							learn_batch_size,
 							save_batch_count,
+							maxepoch,
 							Self::learning_from_hcpe_batch,
 							|evalutor,packed| {
 								evalutor.test_by_packed_hcpe(packed)
@@ -558,6 +564,7 @@ impl<NN> Learnener<NN>
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   save_batch_count:usize,
+								maxepoch:usize,
 							   learning_process:fn(
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
@@ -600,7 +607,6 @@ impl<NN> Learnener<NN>
 
 		let mut count = 0;
 
-		let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 		let mut record = Vec::with_capacity(item_size);
 
 		let mut pending_count = 0;
@@ -621,86 +627,112 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		let mut paths = fs::read_dir(Path::new(&kifudir)
-			.join("training"))?.into_iter()
-			.collect::<Vec<Result<DirEntry,_>>>();
-
-		paths.sort_by(Self::cmp);
-
 		let mut current_item = 0;
 
-		'files: for path in paths {
-			let path = path?.path();
+		for _ in 0..maxepoch {
+			let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 
-			current_filename = path.as_path().file_name().map(|s| {
-				s.to_string_lossy().to_string()
-			}).unwrap_or(String::from(""));
+			let mut paths = fs::read_dir(Path::new(&kifudir)
+				.join("training"))?.into_iter()
+				.collect::<Vec<Result<DirEntry,_>>>();
 
-			if let Some(ref checkpoint) = checkpoint {
-				if current_filename == checkpoint.filename {
-					skip_files = false;
+			paths.sort_by(Self::cmp);
+
+			'files: for path in paths {
+				let path = path?.path();
+
+				current_filename = path.as_path().file_name().map(|s| {
+					s.to_string_lossy().to_string()
+				}).unwrap_or(String::from(""));
+
+				if let Some(ref checkpoint) = checkpoint {
+					if current_filename == checkpoint.filename {
+						skip_files = false;
+					}
+
+					if skip_files {
+						continue;
+					} else if current_filename != checkpoint.filename {
+						skip_items = false;
+					}
 				}
 
-				if skip_files {
+				if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
 					continue;
-				} else if current_filename != checkpoint.filename {
-					skip_items = false;
 				}
-			}
 
-			if !path.as_path().extension().map(|e| e == ext).unwrap_or(false) {
-				continue;
-			}
+				print!("{}\n", path.display());
 
-			print!("{}\n", path.display());
+				current_item = 0;
 
-			current_item = 0;
+				for b in BufReader::new(File::open(path)?).bytes() {
+					let b = b?;
 
-			for b in BufReader::new(File::open(path)?).bytes() {
-				let b = b?;
+					record.push(b);
 
-				record.push(b);
+					if record.len() == item_size {
+						current_item += 1;
 
-				if record.len() == item_size {
-					current_item += 1;
-
-					if let Some(ref checkpoint) = checkpoint {
-						if skip_items && current_item < checkpoint.item {
-							record.clear();
-							continue;
-						} else {
-							if skip_items && current_item == checkpoint.item {
-								println!("Processing starts from {}th item of file {}",current_item,&current_filename);
-								skip_items = false;
+						if let Some(ref checkpoint) = checkpoint {
+							if skip_items && current_item < checkpoint.item {
+								record.clear();
+								continue;
+							} else {
+								if skip_items && current_item == checkpoint.item {
+									println!("Processing starts from {}th item of file {}", current_item, &current_filename);
+									skip_items = false;
+								}
 							}
 						}
+						teachers.push(record);
+						record = Vec::with_capacity(item_size);
+					} else {
+						continue;
 					}
-					teachers.push(record);
-					record = Vec::with_capacity(item_size);
-				} else {
-					continue;
-				}
 
-				if teachers.len() == learn_sfen_read_size {
-					let mut rng = rand::thread_rng();
-					teachers.shuffle(&mut rng);
+					if teachers.len() == learn_sfen_read_size {
+						let mut rng = rand::thread_rng();
+						teachers.shuffle(&mut rng);
 
-					let mut batch = Vec::with_capacity(learn_batch_size);
+						let mut batch = Vec::with_capacity(learn_batch_size);
 
-					let it = teachers.into_iter();
-					teachers = Vec::with_capacity(learn_sfen_read_size);
+						let it = teachers.into_iter();
+						teachers = Vec::with_capacity(learn_sfen_read_size);
 
-					for sfen in it {
-						batch.push(sfen);
+						for sfen in it {
+							batch.push(sfen);
 
-						if batch.len() == learn_batch_size {
+							if batch.len() == learn_batch_size {
+								learning_process(&mut evalutor,
+												 batch,
+												 &user_event_queue)?;
+								pending_count += 1;
+
+								batch = Vec::with_capacity(learn_batch_size);
+								count += learn_batch_size;
+
+								self.save(&mut evalutor,
+										  &checkpoint_path,
+										  &current_filename,
+										  current_item,
+										  pending_count >= save_batch_count,
+										  &mut pending_count)?;
+							}
+
+							system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
+
+							if notify_quit.load(Ordering::Acquire) {
+								break 'files;
+							}
+						}
+
+						let remaing = batch.len();
+
+						if remaing > 0 {
 							learning_process(&mut evalutor,
-													batch,
-													&user_event_queue)?;
+											 batch,
+											 &user_event_queue)?;
 							pending_count += 1;
-
-							batch = Vec::with_capacity(learn_batch_size);
-							count += learn_batch_size;
 
 							self.save(&mut evalutor,
 									  &checkpoint_path,
@@ -708,6 +740,7 @@ impl<NN> Learnener<NN>
 									  current_item,
 									  pending_count >= save_batch_count,
 									  &mut pending_count)?;
+							count += remaing;
 						}
 
 						system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
@@ -716,95 +749,72 @@ impl<NN> Learnener<NN>
 							break 'files;
 						}
 					}
+				}
+			}
 
-					let remaing = batch.len();
+			if record.len() > 0 {
+				return Err(ApplicationError::LearningError(String::from(
+					"The data size of the teacher phase is invalid."
+				)));
+			}
 
-					if remaing > 0 {
+			if !notify_quit.load(Ordering::Acquire) && teachers.len() > 0 {
+				teachers.shuffle(&mut rng);
+
+				let mut batch = Vec::with_capacity(learn_batch_size);
+
+				for sfen in teachers.into_iter() {
+					batch.push(sfen);
+
+					if batch.len() == learn_batch_size {
 						learning_process(&mut evalutor,
-												batch,
-												&user_event_queue)?;
+										 batch,
+										 &user_event_queue)?;
 						pending_count += 1;
+
+						batch = Vec::with_capacity(learn_batch_size);
+						count += learn_batch_size;
 
 						self.save(&mut evalutor,
 								  &checkpoint_path,
 								  &current_filename,
 								  current_item,
-								  pending_count >= save_batch_count,
+								  current_filename != "" && pending_count >= save_batch_count,
 								  &mut pending_count)?;
-						count += remaing;
 					}
 
 					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 					if notify_quit.load(Ordering::Acquire) {
-						break 'files;
+						break;
 					}
 				}
-			}
-		}
 
-		if record.len() > 0 {
-			return Err(ApplicationError::LearningError(String::from(
-				"The data size of the teacher phase is invalid."
-			)));
-		}
+				let remaing = batch.len();
 
-		if !notify_quit.load(Ordering::Acquire) && teachers.len() > 0 {
-			teachers.shuffle(&mut rng);
-
-			let mut batch = Vec::with_capacity(learn_batch_size);
-
-			for sfen in teachers.into_iter() {
-				batch.push(sfen);
-
-				if batch.len() == learn_batch_size {
+				if !notify_quit.load(Ordering::Acquire) && remaing > 0 {
 					learning_process(&mut evalutor,
-											batch,
-											&user_event_queue)?;
+									 batch,
+									 &user_event_queue)?;
 					pending_count += 1;
-
-					batch = Vec::with_capacity(learn_batch_size);
-					count += learn_batch_size;
 
 					self.save(&mut evalutor,
 							  &checkpoint_path,
 							  &current_filename,
 							  current_item,
-							  current_filename != "" && pending_count >= save_batch_count,
+							  pending_count >= save_batch_count,
 							  &mut pending_count)?;
-				}
-
-				system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
-
-				if notify_quit.load(Ordering::Acquire) {
-					break;
+					count += remaing;
 				}
 			}
 
-			let remaing = batch.len();
-
-			if !notify_quit.load(Ordering::Acquire) && remaing > 0 {
-				learning_process(&mut evalutor,
-							   		batch,
-							   		&user_event_queue)?;
-				pending_count += 1;
-
-				self.save(&mut evalutor,
-						  &checkpoint_path,
-						  &current_filename,
-						  current_item,
-						  pending_count >= save_batch_count,
-						  &mut pending_count)?;
-				count += remaing;
-			}
+			self.save(&mut evalutor,
+					  &checkpoint_path,
+					  &current_filename,
+					  current_item,
+					  pending_count > 0,
+					  &mut pending_count)?;
 		}
-
-		self.save(&mut evalutor,
-				  &checkpoint_path,
-				  &current_filename,
-				  current_item,
-				  pending_count > 0,
-				  &mut pending_count)?;
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
 			let mut testdata = Vec::new();

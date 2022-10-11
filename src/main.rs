@@ -133,6 +133,7 @@ fn run() -> Result<(),ApplicationError> {
 	opts.optopt("", "lowerrate", "Lower limit of the player rate value of learning target games.", "number of rate.");
 	opts.optflag("", "yaneuraou", "YaneuraOu format teacher phase.");
 	opts.optflag("", "hcpe", "hcpe format teacher phase.");
+	opts.optopt("e","maxepoch", "Number of epochs in batch learning.","number of epoch");
 
 	let matches = match opts.parse(&args[1..]) {
 		Ok(m) => m,
@@ -147,6 +148,8 @@ fn run() -> Result<(),ApplicationError> {
 
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
+		let maxepoch = matches.opt_str("maxepoch").unwrap_or(String::from("1")).parse::<usize>()?;
+
 		let r = if matches.opt_present("yaneuraou") {
 			Learnener::new().learning_from_yaneuraou_bin(kifudir,
 														 TrainerCreator::create(String::from("data"),
@@ -154,7 +157,8 @@ fn run() -> Result<(),ApplicationError> {
 																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
-																		config.save_batch_count.unwrap_or(1))
+																		config.save_batch_count.unwrap_or(1),
+														 				maxepoch)
 		} else if matches.opt_present("hcpe") {
 				Learnener::new().learning_from_hcpe(kifudir,
 													TrainerCreator::create(String::from("data"),
@@ -162,11 +166,13 @@ fn run() -> Result<(),ApplicationError> {
 																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
 															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
-																			config.save_batch_count.unwrap_or(1))
+																			config.save_batch_count.unwrap_or(1),
+																			maxepoch)
 		} else {
 			let lowerrate: f64 = matches.opt_str("lowerrate").unwrap_or(String::from("3000.0")).parse()?;
 			Learnener::new().learning_from_csa(kifudir,
 											   lowerrate,
+											   maxepoch,
 											   TrainerCreator::create(String::from("data"),
 																	  String::from("nn.a.bin"),
 																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?)
