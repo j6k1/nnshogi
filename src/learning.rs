@@ -241,14 +241,14 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		for _ in 0..maxepoch {
+		'epochs: for _ in 0..maxepoch {
 			let mut paths = fs::read_dir(Path::new(&kifudir)
 				.join("training"))?.into_iter()
 				.collect::<Vec<Result<DirEntry,_>>>();
 
 			paths.sort_by(Self::cmp);
 
-			'files: for path in paths {
+			for path in paths {
 				let path = path?.path();
 
 				current_filename = path.as_path().file_name().map(|s| {
@@ -365,7 +365,7 @@ impl<NN> Learnener<NN>
 					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 					if notify_quit.load(Ordering::Acquire) {
-						break 'files;
+						break 'epochs;
 					}
 				}
 
@@ -632,7 +632,7 @@ impl<NN> Learnener<NN>
 
 		let mut current_item = 0;
 
-		for _ in 0..maxepoch {
+		'epochs: for _ in 0..maxepoch {
 			let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 
 			let mut paths = fs::read_dir(Path::new(&kifudir)
@@ -641,7 +641,7 @@ impl<NN> Learnener<NN>
 
 			paths.sort_by(Self::cmp);
 
-			'files: for path in paths {
+			for path in paths {
 				let path = path?.path();
 
 				current_filename = path.as_path().file_name().map(|s| {
@@ -725,7 +725,7 @@ impl<NN> Learnener<NN>
 							system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 							if notify_quit.load(Ordering::Acquire) {
-								break 'files;
+								break 'epochs;
 							}
 						}
 
@@ -749,7 +749,7 @@ impl<NN> Learnener<NN>
 						system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 						if notify_quit.load(Ordering::Acquire) {
-							break 'files;
+							break 'epochs;
 						}
 					}
 				}
