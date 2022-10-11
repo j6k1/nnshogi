@@ -75,7 +75,7 @@ pub struct CheckPointWriter<P: AsRef<Path>> {
 	tmp:P,
 	path:P
 }
-impl<P: AsRef<Path>> CheckPointWriter<P> {
+impl<'a,P: AsRef<Path>> CheckPointWriter<P> {
 	pub fn new(tmp:P,file:P) -> Result<CheckPointWriter<P>,ApplicationError> {
 		Ok(CheckPointWriter {
 			writer: BufWriter::new(OpenOptions::new().write(true).create(true).open(&tmp)?),
@@ -219,7 +219,6 @@ impl<NN> Learnener<NN>
 
 		self.start_read_stdinput_thread(notify_run_test,system_event_queue,on_error_handler);
 
-		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
@@ -246,18 +245,7 @@ impl<NN> Learnener<NN>
 										.join("training"))?.into_iter()
 										.collect::<Vec<Result<DirEntry,_>>>();
 
-		paths.sort_by(|a,b| {
-			match (a,b) {
-				(Ok(a),Ok(b)) => {
-					let a = a.file_name();
-					let b = b.file_name();
-					a.cmp(&b)
-				},
-				_ => {
-					std::cmp::Ordering::Equal
-				}
-			}
-		});
+		paths.sort_by(Self::cmp);
 
 		'files: for path in paths {
 			let path = path?.path();
@@ -373,9 +361,7 @@ impl<NN> Learnener<NN>
 
 				count += 1;
 
-				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
-				}
+				system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 				if notify_quit.load(Ordering::Acquire) {
 					break 'files;
@@ -403,18 +389,7 @@ impl<NN> Learnener<NN>
 				.join("tests"))?.into_iter()
 				.collect::<Vec<Result<DirEntry,_>>>();
 
-			paths.sort_by(|a,b| {
-				match (a,b) {
-					(Ok(a),Ok(b)) => {
-						let a = a.file_name();
-						let b = b.file_name();
-						a.cmp(&b)
-					},
-					_ => {
-						std::cmp::Ordering::Equal
-					}
-				}
-			});
+			paths.sort_by(Self::cmp);
 
 			'test_files: for path in paths {
 				let path = path?.path();
@@ -576,7 +551,7 @@ impl<NN> Learnener<NN>
 
 	}
 
-	pub fn learning_batch<F>(&mut self,kifudir:String,
+	pub fn learning_batch<'a,F>(&mut self,kifudir:String,
 							   ext:&str,
 							   item_size:usize,
 							   evalutor: Trainer<NN>,
@@ -620,7 +595,6 @@ impl<NN> Learnener<NN>
 
 		self.start_read_stdinput_thread(notify_run_test,system_event_queue,on_error_handler);
 
-		let on_error_handler = on_error_handler_arc.clone();
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
@@ -651,18 +625,7 @@ impl<NN> Learnener<NN>
 			.join("training"))?.into_iter()
 			.collect::<Vec<Result<DirEntry,_>>>();
 
-		paths.sort_by(|a,b| {
-			match (a,b) {
-				(Ok(a),Ok(b)) => {
-					let a = a.file_name();
-					let b = b.file_name();
-					a.cmp(&b)
-				},
-				_ => {
-					std::cmp::Ordering::Equal
-				}
-			}
-		});
+		paths.sort_by(Self::cmp);
 
 		let mut current_item = 0;
 
@@ -739,15 +702,15 @@ impl<NN> Learnener<NN>
 							batch = Vec::with_capacity(learn_batch_size);
 							count += learn_batch_size;
 
-							if pending_count >= save_batch_count {
-								self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
-								pending_count = 0;
-							}
+							self.save(&mut evalutor,
+									  &checkpoint_path,
+									  &current_filename,
+									  current_item,
+									  pending_count >= save_batch_count,
+									  &mut pending_count)?;
 						}
 
-						if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
-							let _ = on_error_handler.lock().map(|h| h.call(e));
-						}
+						system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 						if notify_quit.load(Ordering::Acquire) {
 							break 'files;
@@ -762,17 +725,16 @@ impl<NN> Learnener<NN>
 												&user_event_queue)?;
 						pending_count += 1;
 
-						if pending_count >= save_batch_count {
-							self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
-							pending_count = 0;
-						}
-
+						self.save(&mut evalutor,
+								  &checkpoint_path,
+								  &current_filename,
+								  current_item,
+								  pending_count >= save_batch_count,
+								  &mut pending_count)?;
 						count += remaing;
 					}
 
-					if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
-						let _ = on_error_handler.lock().map(|h| h.call(e));
-					}
+					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 					if notify_quit.load(Ordering::Acquire) {
 						break 'files;
@@ -804,16 +766,15 @@ impl<NN> Learnener<NN>
 					batch = Vec::with_capacity(learn_batch_size);
 					count += learn_batch_size;
 
-					if current_filename != "" && pending_count >= save_batch_count {
-						self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
-						pending_count = 0;
-					}
+					self.save(&mut evalutor,
+							  &checkpoint_path,
+							  &current_filename,
+							  current_item,
+							  current_filename != "" && pending_count >= save_batch_count,
+							  &mut pending_count)?;
 				}
 
-
-				if let Err(ref e) = system_event_dispatcher.dispatch_events(&(), &*system_event_queue) {
-					let _ = on_error_handler.lock().map(|h| h.call(e));
-				}
+				system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
 				if notify_quit.load(Ordering::Acquire) {
 					break;
@@ -828,17 +789,22 @@ impl<NN> Learnener<NN>
 							   		&user_event_queue)?;
 				pending_count += 1;
 
-				if pending_count >= save_batch_count {
-					self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
-					pending_count = 0;
-				}
+				self.save(&mut evalutor,
+						  &checkpoint_path,
+						  &current_filename,
+						  current_item,
+						  pending_count >= save_batch_count,
+						  &mut pending_count)?;
 				count += remaing;
 			}
 		}
 
-		if pending_count > 0 {
-			self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
-		}
+		self.save(&mut evalutor,
+				  &checkpoint_path,
+				  &current_filename,
+				  current_item,
+				  pending_count > 0,
+				  &mut pending_count)?;
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
 			let mut testdata = Vec::new();
@@ -847,18 +813,7 @@ impl<NN> Learnener<NN>
 				.join("tests"))?.into_iter()
 				.collect::<Vec<Result<DirEntry,_>>>();
 
-			paths.sort_by(|a,b| {
-				match (a,b) {
-					(Ok(a),Ok(b)) => {
-						let a = a.file_name();
-						let b = b.file_name();
-						a.cmp(&b)
-					},
-					_ => {
-						std::cmp::Ordering::Equal
-					}
-				}
-			});
+			paths.sort_by(Self::cmp);
 
 			'test_files: for path in paths {
 				let path = path?.path();
@@ -966,20 +921,41 @@ impl<NN> Learnener<NN>
 		}
 	}
 
-	fn save(&self,evalutor: &mut Trainer<NN>,checkpoint_path:&PathBuf,current_filename:&str,current_item:usize)
+	fn save(&self,evalutor: &mut Trainer<NN>,
+							 checkpoint_path:&PathBuf,
+							 current_filename:&str,
+							 current_item:usize,
+							 cond:bool,
+							 pending_count:&mut usize)
 		-> Result<(),ApplicationError> {
-		evalutor.save()?;
+		if cond {
+			evalutor.save()?;
 
-		let tmp_path = format!("{}.tmp",&checkpoint_path.as_path().to_string_lossy());
-		let tmp_path = Path::new(&tmp_path);
+			let tmp_path = format!("{}.tmp", &checkpoint_path.as_path().to_string_lossy());
+			let tmp_path = Path::new(&tmp_path);
 
-		let mut checkpoint_writer = CheckPointWriter::new(tmp_path,&checkpoint_path.as_path())?;
+			let mut checkpoint_writer = CheckPointWriter::new(tmp_path, &checkpoint_path.as_path())?;
 
-		checkpoint_writer.save(&CheckPoint {
-			filename:current_filename.to_string(),
-			item:current_item
-		})?;
+			checkpoint_writer.save(&CheckPoint {
+				filename: current_filename.to_string(),
+				item: current_item
+			})?;
+			*pending_count = 0;
+		}
 
 		Ok(())
+	}
+
+	fn cmp(a:&Result<DirEntry,std::io::Error>,b:&Result<DirEntry,std::io::Error>) -> core::cmp::Ordering {
+		match (a,b) {
+			(Ok(a),Ok(b)) => {
+				let a = a.file_name();
+				let b = b.file_name();
+				a.cmp(&b)
+			},
+			_ => {
+				std::cmp::Ordering::Equal
+			}
+		}
 	}
 }

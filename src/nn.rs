@@ -533,7 +533,7 @@ impl<NN> Trainer<NN>
 		Ok((msa,moa,msb,mob))
 	}
 
-	pub fn test_by_csa<'a>(&mut self,
+	pub fn test_by_csa(&mut self,
 						   teban:Teban,
 						   kyokumen:&(Banmen,MochigomaCollections,u64,u64))
 						   -> Result<f32,ApplicationError> {
@@ -655,7 +655,7 @@ impl<NN> Trainer<NN>
 		Ok((msa,moa,msb,mob))
 	}
 
-	pub fn test_by_packed_sfens<'a>(&mut self,
+	pub fn test_by_packed_sfens(&mut self,
 										packed_sfen:Vec<u8>)
 										-> Result<(GameEndState,f32),ApplicationError> {
 		let ((teban,banmen,mc),yaneuraou::haffman_code::ExtendFields {
@@ -800,7 +800,7 @@ impl<NN> Trainer<NN>
 		Ok((msa,moa,msb,mob))
 	}
 
-	pub fn test_by_packed_hcpe<'a>(&mut self,
+	pub fn test_by_packed_hcpe(&mut self,
 									hcpe:Vec<u8>)
 									-> Result<(GameEndState,f32),ApplicationError> {
 		let ((teban,banmen,mc),hcpe::haffman_code::ExtendFields {

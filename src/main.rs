@@ -24,6 +24,7 @@ use std::io::{ Write, BufReader, Read, BufRead };
 use std::fs::OpenOptions;
 use std::fs::File;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use rand::Rng;
 use rand::SeedableRng;
@@ -31,7 +32,7 @@ use rand_xorshift::XorShiftRng;
 
 use getopts::Options;
 
-use usiagent::UsiAgent;
+use usiagent::{OnErrorHandler, UsiAgent};
 use usiagent::selfmatch::*;
 use usiagent::output::*;
 use usiagent::event::*;
@@ -39,6 +40,7 @@ use usiagent::shogi::*;
 use usiagent::rule::*;
 use usiagent::protocol::*;
 use usiagent::error::*;
+use usiagent::logger::FileLogger;
 use usiagent::player::*;
 
 use player::NNShogiPlayer;
@@ -140,9 +142,12 @@ fn run() -> Result<(),ApplicationError> {
 	};
 
 	if let Some(kifudir) = matches.opt_str("kifudir") {
+		let logger = Arc::new(Mutex::new(FileLogger::new(String::from("logs/log.txt"))?));
+		let on_error_handler = Arc::new(Mutex::new(OnErrorHandler::new(logger)));
+
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 
-		if matches.opt_present("yaneuraou") {
+		let r = if matches.opt_present("yaneuraou") {
 			Learnener::new().learning_from_yaneuraou_bin(kifudir,
 														 TrainerCreator::create(String::from("data"),
 																				String::from("nn.a.bin"),
@@ -165,7 +170,13 @@ fn run() -> Result<(),ApplicationError> {
 											   TrainerCreator::create(String::from("data"),
 																	  String::from("nn.a.bin"),
 																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?)
+		};
+
+		if let Err(ref e) = r {
+			let _ = on_error_handler.lock().map(|h| h.call(e));
 		}
+
+		r
 	} else if matches.opt_present("l") {
 		let config = ConfigLoader::new("settings.toml")?.load()?;
 

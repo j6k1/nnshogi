@@ -1380,7 +1380,8 @@ pub struct NNShogiPlayer<NN>
 	kyokumen_map:KyokumenMap<u64,u32>,
 	remaining_turns:u32,
 	evalutor:Option<Arc<Intelligence<NN>>>,
-	evalutor_creator: Box<dyn Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>,
+	evalutor_creator: Box<dyn
+	Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>,
 	pub history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 	count_of_move_started:u32,
 	moved:bool,

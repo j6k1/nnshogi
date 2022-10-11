@@ -4,9 +4,9 @@ use std::io;
 use std::convert::From;
 use std::num::ParseIntError;
 use std::num::ParseFloatError;
-use usiagent::event::SystemEventKind;
+use usiagent::event::{EventQueue, SystemEvent, SystemEventKind};
 use usiagent::event::UserEventKind;
-use usiagent::error::USIAgentRunningError;
+use usiagent::error::{EventDispatchError, USIAgentRunningError};
 use usiagent::error::USIAgentStartupError;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
@@ -98,7 +98,7 @@ impl From<PersistenceError> for CommonError {
 		CommonError::Fail(format!("{}",err))
 	}
 }
-impl From<ApplicationError> for CommonError {
+impl<'a> From<ApplicationError> for CommonError {
 	fn from(err: ApplicationError) -> Self {
 		CommonError::Fail(format!("{}",err))
 	}
@@ -107,6 +107,7 @@ impl From<ApplicationError> for CommonError {
 pub enum ApplicationError {
 	StartupError(String),
 	SfenStringConvertError(SfenStringConvertError),
+	EventDispatchError(String),
 	IOError(io::Error),
 	ParseIntError(ParseIntError),
 	ParseFloatError(ParseFloatError),
@@ -129,6 +130,7 @@ impl fmt::Display for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(ref s) => write!(f, "{}",s),
 			ApplicationError::SfenStringConvertError(ref e) => write!(f, "{}",e),
+			ApplicationError::EventDispatchError(ref s) => write!(f,"{}",s),
 			ApplicationError::IOError(ref e) => write!(f, "{}",e),
 			ApplicationError::ParseIntError(ref e) => write!(f, "{}",e),
 			ApplicationError::ParseFloatError(ref e) => write!(f, "{}",e),
@@ -153,6 +155,7 @@ impl error::Error for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(_) => "Startup Error.",
 			ApplicationError::SfenStringConvertError(_) => "An error occurred during conversion to sfen string.",
+			ApplicationError::EventDispatchError(_) => "An error occurred while processing the event.",
 			ApplicationError::IOError(_) => "IO Error.",
 			ApplicationError::ParseIntError(_) => "An error occurred parsing the integer string.",
 			ApplicationError::ParseFloatError(_) => "An error occurred parsing the float string.",
@@ -176,6 +179,7 @@ impl error::Error for ApplicationError {
 		match *self {
 			ApplicationError::StartupError(_) => None,
 			ApplicationError::SfenStringConvertError(ref e) => Some(e),
+			ApplicationError::EventDispatchError(_) => None,
 			ApplicationError::IOError(ref e) => Some(e),
 			ApplicationError::ParseIntError(ref e) => Some(e),
 			ApplicationError::ParseFloatError(ref e) => Some(e),
@@ -223,6 +227,13 @@ impl From<SfenStringConvertError> for ApplicationError {
 impl From<KifuWriteError> for ApplicationError {
 	fn from(err: KifuWriteError) -> ApplicationError {
 		ApplicationError::KifuWriteError(err)
+	}
+}
+impl<'a> From<EventDispatchError<'a,EventQueue<SystemEvent,SystemEventKind>,SystemEvent,CommonError>>
+	for ApplicationError {
+	fn from(err: EventDispatchError<'a, EventQueue<SystemEvent, SystemEventKind>, SystemEvent, CommonError>)
+		-> ApplicationError {
+		ApplicationError::EventDispatchError(format!("{}",err))
 	}
 }
 impl From<CsaParserError> for ApplicationError {
