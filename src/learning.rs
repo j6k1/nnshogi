@@ -664,6 +664,8 @@ impl<NN> Learnener<NN>
 			}
 		});
 
+		let mut current_item = 0;
+
 		'files: for path in paths {
 			let path = path?.path();
 
@@ -689,7 +691,7 @@ impl<NN> Learnener<NN>
 
 			print!("{}\n", path.display());
 
-			let mut current_item = 0;
+			current_item = 0;
 
 			for b in BufReader::new(File::open(path)?).bytes() {
 				let b = b?;
