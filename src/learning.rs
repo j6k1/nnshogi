@@ -381,6 +381,9 @@ impl<NN> Learnener<NN>
 					item: current_item
 				})?;
 			}
+
+			skip_files = false;
+			skip_items = false;
 		}
 
 		if notify_run_test_arc.load(Ordering::Acquire) {
@@ -750,6 +753,9 @@ impl<NN> Learnener<NN>
 						}
 					}
 				}
+
+				skip_files = false;
+				skip_items = false;
 			}
 
 			if record.len() > 0 {
