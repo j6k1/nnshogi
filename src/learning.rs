@@ -836,7 +836,7 @@ impl<NN> Learnener<NN>
 			}
 		}
 
-		if pending_count >= save_batch_count {
+		if pending_count > 0 {
 			self.save(&mut evalutor,&checkpoint_path,&current_filename,current_item)?;
 		}
 
