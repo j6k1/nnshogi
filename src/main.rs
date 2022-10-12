@@ -155,6 +155,7 @@ fn run() -> Result<(),ApplicationError> {
 														 TrainerCreator::create(String::from("data"),
 																				String::from("nn.a.bin"),
 																				String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
+														 				on_error_handler.clone(),
 														 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 														 config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
 																		config.save_batch_count.unwrap_or(1),
@@ -164,7 +165,8 @@ fn run() -> Result<(),ApplicationError> {
 													TrainerCreator::create(String::from("data"),
 																		   String::from("nn.a.bin"),
 																		   String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
-															config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
+																	 				  on_error_handler.clone(),
+																	 config.learn_sfen_read_size.unwrap_or(LEAN_SFEN_READ_SIZE),
 													config.learn_batch_size.unwrap_or(LEAN_BATCH_SIZE),
 																			config.save_batch_count.unwrap_or(1),
 																			maxepoch)
@@ -173,9 +175,11 @@ fn run() -> Result<(),ApplicationError> {
 			Learnener::new().learning_from_csa(kifudir,
 											   lowerrate,
 											   maxepoch,
+
 											   TrainerCreator::create(String::from("data"),
 																	  String::from("nn.a.bin"),
-																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?)
+																	  String::from("nn.b.bin"),config.bias_shake_shake_with_kifu)?,
+																			  on_error_handler.clone())
 		};
 
 		if let Err(ref e) = r {

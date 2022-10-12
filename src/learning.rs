@@ -190,12 +190,12 @@ impl<NN> Learnener<NN>
 		});
 	}
 
-	pub fn learning_from_csa(&mut self, kifudir:String, lowerrate:f64, maxepoch: usize, evalutor: Trainer<NN>) -> Result<(),ApplicationError> {
-		let logger = FileLogger::new(String::from("logs/log.txt"))?;
-
-		let logger = Arc::new(Mutex::new(logger));
-		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
-
+	pub fn learning_from_csa(&mut self,
+							 kifudir:String,
+							 lowerrate:f64,
+							 maxepoch: usize,
+							 evalutor: Trainer<NN>,
+							 on_error_handler_arc:Arc<Mutex<OnErrorHandler<FileLogger>>>) -> Result<(),ApplicationError> {
 		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 
@@ -518,15 +518,16 @@ impl<NN> Learnener<NN>
 
 	pub fn learning_from_yaneuraou_bin(&mut self, kifudir:String,
 									   evalutor: Trainer<NN>,
+									   on_error_handler_arc:Arc<Mutex<OnErrorHandler<FileLogger>>>,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 									   save_batch_count:usize,
-									   maxepoch:usize
-									   ) -> Result<(),ApplicationError> {
+									   maxepoch:usize) -> Result<(),ApplicationError> {
 		self.learning_batch(kifudir,
 							"bin",
 							40,
 							evalutor,
+							on_error_handler_arc,
 							learn_sfen_read_size,
 							learn_batch_size,
 							save_batch_count,
@@ -540,6 +541,7 @@ impl<NN> Learnener<NN>
 
 	pub fn learning_from_hcpe(&mut self, kifudir:String,
 									   evalutor: Trainer<NN>,
+							  		   on_error_handler_arc:Arc<Mutex<OnErrorHandler<FileLogger>>>,
 									   learn_sfen_read_size:usize,
 									   learn_batch_size:usize,
 							  		   save_batch_count:usize,
@@ -549,6 +551,7 @@ impl<NN> Learnener<NN>
 							"hcpe",
 								38,
 							evalutor,
+							on_error_handler_arc,
 							learn_sfen_read_size,
 							learn_batch_size,
 							save_batch_count,
@@ -564,6 +567,7 @@ impl<NN> Learnener<NN>
 							   ext:&str,
 							   item_size:usize,
 							   evalutor: Trainer<NN>,
+							   on_error_handler_arc:Arc<Mutex<OnErrorHandler<FileLogger>>>,
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   save_batch_count:usize,
@@ -576,11 +580,6 @@ impl<NN> Learnener<NN>
 							   mut test_process:F
 	) -> Result<(),ApplicationError>
 		where F: FnMut(&mut Trainer<NN>,Vec<u8>) -> Result<(GameEndState,f32),ApplicationError> {
-
-		let logger = FileLogger::new(String::from("logs/log.txt"))?;
-
-		let logger = Arc::new(Mutex::new(logger));
-		let on_error_handler_arc = Arc::new(Mutex::new(OnErrorHandler::new(logger.clone())));
 
 		let system_event_queue_arc:Arc<Mutex<EventQueue<SystemEvent,SystemEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
 		let user_event_queue:Arc<Mutex<EventQueue<UserEvent,UserEventKind>>> = Arc::new(Mutex::new(EventQueue::new()));
