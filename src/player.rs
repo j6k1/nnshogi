@@ -35,13 +35,13 @@ use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff, PreT
 use usiagent::output::USIOutputWriter;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Evaluation {
+enum Evaluation {
 	Result(Score,Option<AppliedMove>),
 	Timeout(Option<Score>,Option<AppliedMove>),
 	Error,
 }
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub enum Score {
+enum Score {
 	NEGINFINITE,
 	Value(i32),
 	INFINITE,
@@ -107,79 +107,6 @@ type Strategy<L,S,NN,ST> = fn (&Arc<Search<NN>>,
 						u64,u64,
 						u32,u32,u32,u64,
 						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
-pub struct GameState<'a,NN,L> where
-	NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-	L: Logger {
-	event_dispatcher:&'a mut UserEventDispatcher<'a,Search<NN>,CommonError,L>,
-	solver_event_dispatcher:&'a mut UserEventDispatcher<'a,Solver<CommonError,NN>,CommonError,L>,
-	self_nn_snapshot:&'a Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-	opponent_nn_snapshot:&'a Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-	teban:Teban,
-	state:&'a Arc<State>,
-	alpha:Score,beta:Score,
-	m:Option<AppliedMove>,
-	mc:&'a Arc<MochigomaCollections>,
-	pv:&'a Vec<AppliedMove>,
-	prev_state:&'a Option<Arc<State>>,
-	prev_mc:&'a Option<Arc<MochigomaCollections>>,
-	obtained:Option<ObtainKind>,
-	current_kyokumen_map:&'a KyokumenMap<u64,u32>,
-	self_already_oute_map:&'a mut Option<KyokumenMap<u64,bool>>,
-	opponent_already_oute_map:&'a mut Option<KyokumenMap<u64,bool>>,
-	oute_kyokumen_map:&'a KyokumenMap<u64,()>,
-	mhash:u64,shash:u64,
-	depth:u32,current_depth:u32,base_depth:u32,
-	node_count:u64,
-}
-impl<'a,NN,L> GameState<'a,NN,L> where
-	NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
-	L: Logger {
-	pub fn new(event_dispatcher:&'a mut UserEventDispatcher<'a,Search<NN>,CommonError,L>,
-			   solver_event_dispatcher:&'a mut UserEventDispatcher<'a,Solver<CommonError,NN>,CommonError,L>,
-			   self_nn_snapshot:&'a Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-			   opponent_nn_snapshot:&'a Arc<(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack)>,
-			   teban:Teban,
-			   state:&'a Arc<State>,
-			   alpha:Score,beta:Score,
-			   m:Option<AppliedMove>,
-			   mc:&'a Arc<MochigomaCollections>,
-			   pv:&'a Vec<AppliedMove>,
-			   prev_state:&'a Option<Arc<State>>,
-			   prev_mc:&'a Option<Arc<MochigomaCollections>>,
-			   obtained:Option<ObtainKind>,
-			   current_kyokumen_map:&'a KyokumenMap<u64,u32>,
-			   self_already_oute_map:&'a mut Option<KyokumenMap<u64,bool>>,
-			   opponent_already_oute_map:&'a mut Option<KyokumenMap<u64,bool>>,
-			   oute_kyokumen_map:&'a KyokumenMap<u64,()>,
-			   mhash:u64,shash:u64,
-			   depth:u32,current_depth:u32,base_depth:u32,
-			   node_count:u64) -> GameState<'a,NN,L> {
-		GameState {
-			event_dispatcher:event_dispatcher,
-			solver_event_dispatcher:solver_event_dispatcher,
-			self_nn_snapshot:self_nn_snapshot,
-			opponent_nn_snapshot:opponent_nn_snapshot,
-			teban:teban,
-			state:state,
-			alpha:alpha,beta:beta,
-			m:m,
-			mc:mc,
-			pv:pv,
-			prev_state:prev_state,
-			prev_mc:prev_mc,
-			obtained:obtained,
-			current_kyokumen_map:current_kyokumen_map,
-			self_already_oute_map:self_already_oute_map,
-			opponent_already_oute_map:opponent_already_oute_map,
-			oute_kyokumen_map:oute_kyokumen_map,
-			mhash:mhash,shash:shash,
-			depth:depth,current_depth:current_depth,base_depth:base_depth,
-			node_count:node_count
-		}
-	}
-}
 pub struct Environment<L,S,NN> where L: Logger, S: InfoSender,
 										NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 											PreTrain<f32> +	ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
