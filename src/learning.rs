@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::thread;
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -222,7 +223,7 @@ impl<NN> Learnener<NN>
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
-		let mut count = 0;
+		let mut processed_count = 0;
 
 		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
 
@@ -241,7 +242,9 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		'epochs: for _ in 0..maxepoch {
+		let extend = RefCell::new(0);
+
+		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
 			let mut paths = fs::read_dir(Path::new(&kifudir)
 				.join("training"))?.into_iter()
 				.collect::<Vec<Result<DirEntry,_>>>();
@@ -344,6 +347,8 @@ impl<NN> Learnener<NN>
 																					 history
 																				 });
 
+					let history_count = history.len();
+
 					let teban = teban.opposite();
 
 					match evalutor.learning_by_training_csa(
@@ -360,7 +365,7 @@ impl<NN> Learnener<NN>
 						}
 					};
 
-					count += 1;
+					processed_count += history_count;
 
 					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
@@ -380,6 +385,10 @@ impl<NN> Learnener<NN>
 					filename: current_filename.clone(),
 					item: current_item
 				})?;
+			}
+
+			if processed_count == 0 && skip_files && skip_items {
+				*extend.borrow_mut() += 1;
 			}
 
 			skip_files = false;
@@ -511,7 +520,7 @@ impl<NN> Learnener<NN>
 			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
 		}
 
-		print!("{}件の棋譜を学習しました。\n",count);
+		print!("{}件の棋譜を学習しました。\n", processed_count);
 
 		Ok(())
 	}
@@ -571,7 +580,7 @@ impl<NN> Learnener<NN>
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   save_batch_count:usize,
-								maxepoch:usize,
+							   maxepoch:usize,
 							   learning_process:fn(
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
@@ -607,7 +616,7 @@ impl<NN> Learnener<NN>
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
-		let mut count = 0;
+		let mut processed_count = 0;
 
 		let mut record = Vec::with_capacity(item_size);
 
@@ -631,7 +640,9 @@ impl<NN> Learnener<NN>
 
 		let mut current_item = 0;
 
-		'epochs: for _ in 0..maxepoch {
+		let extend = RefCell::new(0);
+
+		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
 			let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 
 			let mut paths = fs::read_dir(Path::new(&kifudir)
@@ -711,7 +722,7 @@ impl<NN> Learnener<NN>
 								pending_count += 1;
 
 								batch = Vec::with_capacity(learn_batch_size);
-								count += learn_batch_size;
+								processed_count += learn_batch_size;
 
 								self.save(&mut evalutor,
 										  &checkpoint_path,
@@ -742,7 +753,7 @@ impl<NN> Learnener<NN>
 									  current_item,
 									  pending_count >= save_batch_count,
 									  &mut pending_count)?;
-							count += remaing;
+							processed_count += remaing;
 						}
 
 						system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
@@ -751,6 +762,10 @@ impl<NN> Learnener<NN>
 							break 'epochs;
 						}
 					}
+				}
+
+				if processed_count == 0 && skip_files && skip_items {
+					*extend.borrow_mut() += 1;
 				}
 
 				skip_files = false;
@@ -778,7 +793,7 @@ impl<NN> Learnener<NN>
 						pending_count += 1;
 
 						batch = Vec::with_capacity(learn_batch_size);
-						count += learn_batch_size;
+						processed_count += learn_batch_size;
 
 						self.save(&mut evalutor,
 								  &checkpoint_path,
@@ -809,7 +824,7 @@ impl<NN> Learnener<NN>
 							  current_item,
 							  pending_count >= save_batch_count,
 							  &mut pending_count)?;
-					count += remaing;
+					processed_count += remaing;
 				}
 			}
 
@@ -893,7 +908,7 @@ impl<NN> Learnener<NN>
 			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
 		}
 
-		print!("{}局面を学習しました。\n",count);
+		print!("{}局面を学習しました。\n", processed_count);
 
 		Ok(())
 	}
