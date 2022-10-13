@@ -15,5 +15,4 @@ crossbeam-channel = "0.5"
 usiagent = "0.6.1"
 csaparser = "0.3.0"
 packedsfen = "0.3.0"
-[dependencies.nncombinator]
-path = "../nncombinator"
+nncombinator = "0.6.0"
