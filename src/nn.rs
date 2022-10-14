@@ -235,7 +235,7 @@ impl<NN> Intelligence<NN>
 
 		let answer = nnaanswera[0] + nnbanswerb[0];
 
-		Ok((answer * (1 << 21) as f32) as i32)
+		Ok((answer * (1 << 29) as f32) as i32)
 	}
 
 	pub fn evalute_by_diff(&self, snapshot:&(<NN as PreTrain<f32>>::OutStack,<NN as PreTrain<f32>>::OutStack), is_self:bool, t:Teban, b:&Banmen, mc:&MochigomaCollections, m:&Move)

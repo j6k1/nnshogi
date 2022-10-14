@@ -509,9 +509,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("評価値{} 正解!",score * (1 << 21) as f32);
+					println!("評価値{} 正解!",(score * (1 << 29) as f32) as i32);
 				} else {
-					println!("評価値{} 不正解...",score * (1 << 21) as f32);
+					println!("評価値{} 不正解...",(score * (1 << 29) as f32) as i32);
 				}
 
 				count += 1;
@@ -897,9 +897,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("評価値{} 正解!",score * (1 << 21) as f32);
+					println!("評価値{} 正解!",(score * (1 << 29) as f32) as i32);
 				} else {
-					println!("評価値{} 不正解...",score * (1 << 21) as f32);
+					println!("評価値{} 不正解...",(score * (1 << 29) as f32) as i32);
 				}
 
 				count += 1;
