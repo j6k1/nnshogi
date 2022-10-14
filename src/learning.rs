@@ -349,12 +349,12 @@ impl<NN> Learnener<NN>
 
 					let history_count = history.len();
 
-					let teban = teban.opposite();
+					let teban = teban;
 
 					match evalutor.learning_by_training_csa(
 						teban,
 						history,
-						&GameEndState::Win, &*user_event_queue) {
+						&GameEndState::Lose, &*user_event_queue) {
 						Err(_) => {
 							return Err(ApplicationError::LearningError(String::from(
 								"An error occurred while learning the neural network."

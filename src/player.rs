@@ -409,8 +409,8 @@ impl<NN> Search<NN>
 
 		let (s,self_snapshot,opponent_snapshot) = {
 			let m = m.to_move();
-			let (s, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, false, teban, state.get_banmen(), mc, &m)?;
-			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, true, teban.opposite(), state.get_banmen(), mc, &m)?;
+			let (s, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
+			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
 			(s,self_snapshot,opponent_snapshot)
 		};
 
@@ -579,7 +579,7 @@ impl<NN> Search<NN>
 			}
 
 			let r = self.evalute_score_by_diff(&env.evalutor,
-											   false,
+											   true,
 											   &self_nn_snapshot,
 											   teban,
 											   &prev_state.as_ref(), &prev_mc.as_ref(),
@@ -616,7 +616,7 @@ impl<NN> Search<NN>
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				let r = self.evalute_score_by_diff(&env.evalutor,false,
+				let r = self.evalute_score_by_diff(&env.evalutor,true,
 										   &self_nn_snapshot,
 										   teban,
 										   &prev_state.as_ref(), &prev_mc.as_ref(),
@@ -1698,8 +1698,8 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 
 		match self.evalutor {
 			Some(ref evalutor) => {
-				let self_nn_snapshot = self.search.make_snapshot(false,evalutor,teban,state,mc)?;
-				let opponent_nn_snapshot = self.search.make_snapshot(true,evalutor,teban.opposite(),state,mc)?;
+				let self_nn_snapshot = self.search.make_snapshot(true,evalutor,teban,state,mc)?;
+				let opponent_nn_snapshot = self.search.make_snapshot(false,evalutor,teban.opposite(),state,mc)?;
 
 				let prev_state:Option<Arc<State>> = None;
 				let prev_mc:Option<Arc<MochigomaCollections>> = None;
