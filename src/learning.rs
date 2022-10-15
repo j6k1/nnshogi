@@ -244,6 +244,8 @@ impl<NN> Learnener<NN>
 
 		let extend = RefCell::new(0);
 
+		let mut item_count = 0;
+
 		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
 			let mut paths = fs::read_dir(Path::new(&kifudir)
 				.join("training"))?.into_iter()
@@ -280,10 +282,13 @@ impl<NN> Learnener<NN>
 				current_item = 0;
 
 				for p in parsed.into_iter() {
+					item_count += 1;
+
 					if let Some(ref checkpoint) = checkpoint {
 						if skip_items && current_item == checkpoint.item {
 							println!("Processing starts from {}th item of file {}", current_item, &current_filename);
 							skip_items = false;
+							continue;
 						}
 
 						if skip_items {
@@ -387,7 +392,7 @@ impl<NN> Learnener<NN>
 				})?;
 			}
 
-			if processed_count == 0 && skip_files && skip_items {
+			if processed_count == 0 && item_count > 0 {
 				*extend.borrow_mut() += 1;
 			}
 
@@ -640,6 +645,8 @@ impl<NN> Learnener<NN>
 
 		let mut current_item = 0;
 
+		let mut item_count = 0;
+
 		let extend = RefCell::new(0);
 
 		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
@@ -684,6 +691,7 @@ impl<NN> Learnener<NN>
 					record.push(b);
 
 					if record.len() == item_size {
+						item_count += 1;
 						current_item += 1;
 
 						if let Some(ref checkpoint) = checkpoint {
@@ -694,6 +702,8 @@ impl<NN> Learnener<NN>
 								if skip_items && current_item == checkpoint.item {
 									println!("Processing starts from {}th item of file {}", current_item, &current_filename);
 									skip_items = false;
+									record.clear();
+									continue;
 								}
 							}
 						}
@@ -764,7 +774,7 @@ impl<NN> Learnener<NN>
 					}
 				}
 
-				if processed_count == 0 && skip_files && skip_items {
+				if processed_count == 0 && item_count > 0 {
 					*extend.borrow_mut() += 1;
 				}
 
