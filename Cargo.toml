@@ -12,8 +12,11 @@ toml = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
 crossbeam-channel = "0.5"
-usiagent = "0.6.1"
-csaparser = "0.3.0"
-packedsfen = "0.3.0"
+[dependencies.csaparser]
+path = "../CsaParser"
+[dependencies.packedsfen]
+path = "../packedsfen"
+[dependencies.usiagent]
+path = "../USIAgent"
 [dependencies.nncombinator]
 path = "../nncombinator"

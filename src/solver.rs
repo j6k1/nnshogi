@@ -142,7 +142,7 @@ pub trait Comparator<T>: Clone {
 	fn cmp(&mut self,l:&T,r:&T) -> Ordering;
 }
 mod checkmate {
-	use usiagent::TryFrom;
+	use std::convert::TryFrom;
 	use super::*;
 
 	#[derive(Clone)]

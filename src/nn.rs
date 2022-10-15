@@ -4,6 +4,8 @@ use std::fs;
 use std::ops::DerefMut;
 use std::path::Path;
 use std::rc::Rc;
+use std::convert::TryFrom;
+
 use nncombinator::activation::{ReLu, Tanh};
 use nncombinator::arr::{Arr, DiffArr, VecArr};
 use nncombinator::cuda::mem::{Alloctype, MemoryPool};
@@ -24,7 +26,6 @@ use usiagent::event::UserEvent;
 use usiagent::event::UserEventKind;
 use usiagent::error::EventDispatchError;
 use usiagent::event::GameEndState;
-use usiagent::TryFrom;
 
 use error::*;
 use packedsfen::yaneuraou;

@@ -13,6 +13,7 @@ use std::ops::Sub;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::atomic::AtomicU64;
+use std::convert::TryFrom;
 
 use usiagent::player::*;
 use usiagent::event::*;
@@ -25,7 +26,6 @@ use usiagent::logger::*;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use usiagent::error::EventHandlerError;
-use usiagent::TryFrom;
 
 use nn::{Intelligence};
 use solver::*;
