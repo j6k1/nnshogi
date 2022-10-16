@@ -11,7 +11,7 @@ use nncombinator::arr::{Arr, DiffArr, VecArr};
 use nncombinator::cuda::mem::{Alloctype, MemoryPool};
 use nncombinator::device::{DeviceCpu, DeviceGpu};
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain, TryAddLayer};
-use nncombinator::lossfunction::CrossEntropy;
+use nncombinator::lossfunction::Mse;
 use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence, SaveToFile};
 use nncombinator::Stack;
@@ -437,7 +437,7 @@ impl<NN> Trainer<NN>
 										_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 										-> Result<(f32,f32,f32,f32),CommonError> {
 
-		let lossf = CrossEntropy::new();
+		let lossf = Mse::new();
 
 		let mut teban = last_teban;
 		let bias_shake_shake = self.bias_shake_shake;
@@ -553,7 +553,7 @@ impl<NN> Trainer<NN>
 										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 		-> Result<(f32,f32,f32,f32),CommonError> {
 
-		let lossf = CrossEntropy::new();
+		let lossf = Mse::new();
 		let bias_shake_shake = self.bias_shake_shake;
 
 		let mut sfens_with_extended = Vec::with_capacity(packed_sfens.len());
@@ -681,7 +681,7 @@ impl<NN> Trainer<NN>
 								  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
 								  -> Result<(f32,f32,f32,f32),CommonError> {
 
-		let lossf = CrossEntropy::new();
+		let lossf = Mse::new();
 		let bias_shake_shake = self.bias_shake_shake;
 
 		let mut sfens_with_extended = Vec::with_capacity(hcpes.len());
