@@ -533,13 +533,13 @@ impl<NN> Search<NN>
 			}
 		}
 
-		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
+		if (depth <= 1 || current_depth >= self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let network_delay = self.network_delay;
 			let limit = env.limit.clone();
 			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
 
 			let mut check_timelimit = move || {
-				limit.map_or(false,|l| {
+				limit.map_or(false, |l| {
 					let now = Instant::now();
 					l < now ||
 						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
@@ -552,11 +552,11 @@ impl<NN> Search<NN>
 			let mut info_sender = env.info_sender.clone();
 			let on_error_handler = env.on_error_handler.clone();
 
-			let mut on_searchstart = |depth,_| {
+			let mut on_searchstart = |depth, _| {
 				this.send_seldepth(&mut info_sender, &on_error_handler, base_depth, current_depth + depth);
 			};
 
-			match env.solver.checkmate(false,teban, state, mc,
+			match env.solver.checkmate(false, teban, state, mc,
 									   self.max_ply,
 									   None,
 									   &mut oute_kyokumen_map.clone(),
@@ -566,18 +566,21 @@ impl<NN> Search<NN>
 									   mhash, shash,
 									   &mut check_timelimit,
 									   &env.stop,
+									   &env.nodes,
 									   &mut on_searchstart,
 									   &env.event_queue,
 									   solver_event_dispatcher) {
-				MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
-					return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_applied_move()));
+				MaybeMate::MateMoves(_, ref mvs) if mvs.len() > 0 => {
+					return Evaluation::Result(Score::INFINITE, Some(mvs[0].to_applied_move()));
 				},
-				MaybeMate::MateMoves(_,_) => {
-					return Evaluation::Result(Score::INFINITE,None);
+				MaybeMate::MateMoves(_, _) => {
+					return Evaluation::Result(Score::INFINITE, None);
 				},
 				_ => ()
 			}
+		}
 
+		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let r = self.evalute_score_by_diff(&env.evalutor,
 											   true,
 											   &self_nn_snapshot,
@@ -1846,6 +1849,8 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 		let stop = Arc::new(AtomicBool::new(false));
 		let quited = Arc::new(AtomicBool::new(false));
 
+		let nodes = Arc::new(AtomicU64::new(0));
+
 		let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
 		let mut solver = Solver::new();
@@ -1870,6 +1875,7 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 									mhash, shash,
 									&mut check_timelimit,
 									&stop,
+									&nodes,
 									&mut on_searchstart,
 									&event_queue,
 									&mut event_dispatcher) {

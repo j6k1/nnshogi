@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use nncombinator::arr::{Arr, DiffArr};
 use nncombinator::layer::{AskDiffInput, DiffInput, ForwardAll, ForwardDiff, PreTrain};
 
@@ -56,6 +56,7 @@ impl<E,NN> Solver<E,NN>
 							mhash:u64,shash:u64,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+							all_nodes:&Arc<AtomicU64>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -110,6 +111,7 @@ impl<E,NN> Solver<E,NN>
 										hasher,
 										check_timelimit,
 										stop,
+										all_nodes,
 										on_searchstart,
 										event_queue,
 										event_dispatcher) {
@@ -127,6 +129,7 @@ impl<E,NN> Solver<E,NN>
 										hasher,
 										check_timelimit,
 										stop,
+										all_nodes,
 										on_searchstart,
 										event_queue,
 										event_dispatcher) {
@@ -261,6 +264,7 @@ mod checkmate {
 							hasher:&Search<NN>,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+							all_nodes:&Arc<AtomicU64>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -278,6 +282,7 @@ mod checkmate {
 						hasher,
 						check_timelimit,
 						stop,
+						all_nodes,
 						on_searchstart,
 						event_queue,
 						event_dispatcher)
@@ -293,6 +298,7 @@ mod checkmate {
 							hasher:&Search<NN>,
 							check_timelimit:&mut F,
 							stop:&Arc<AtomicBool>,
+					   		all_nodes:&Arc<AtomicU64>,
 							on_searchstart:&mut S,
 							event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 							event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -314,6 +320,7 @@ mod checkmate {
 						hasher,
 						check_timelimit,
 						stop,
+						all_nodes,
 						on_searchstart,
 						event_queue,
 						event_dispatcher) {
@@ -372,6 +379,7 @@ mod checkmate {
 										already_oute_kyokumen_map,
 										hasher, current_depth as u32,
 										check_timelimit, stop,
+										all_nodes,
 										on_searchstart,
 										event_queue, event_dispatcher)
 				} else {
@@ -381,6 +389,7 @@ mod checkmate {
 										already_oute_kyokumen_map,
 										hasher, current_depth as u32,
 										check_timelimit, stop,
+										all_nodes,
 										on_searchstart,
 										event_queue, event_dispatcher)
 				};
@@ -519,6 +528,7 @@ mod checkmate {
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
+								all_nodes:&Arc<AtomicU64>,
 								on_searchstart:&mut S,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -527,6 +537,8 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
+			all_nodes.fetch_add(1,atomic::Ordering::Release);
+
 			self.nodes += 1;
 
 			let teban = self.current_frame.teban;
@@ -768,6 +780,7 @@ mod checkmate {
 								current_depth:u32,
 								check_timelimit:&mut F,
 								stop:&Arc<AtomicBool>,
+								all_nodes:&Arc<AtomicU64>,
 								on_searchstart:&mut S,
 								event_queue:&Arc<Mutex<EventQueue<UserEvent,UserEventKind>>>,
 								event_dispatcher:&mut USIEventDispatcher<UserEventKind,
@@ -776,6 +789,8 @@ mod checkmate {
 								L: Logger,
 								F: FnMut() -> bool,
 								S: FnMut(u32,u64) {
+			all_nodes.fetch_add(1,atomic::Ordering::Release);
+
 			self.nodes += 1;
 
 			let teban = self.current_frame.teban;
