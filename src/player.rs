@@ -717,13 +717,35 @@ impl<NN> Search<NN>
 					(x,y,KomaKind::from((teban,kind)))
 				}
 			};
+			if let LegalMove::To(ref mv) = m {
+				if let Some(&ObtainKind::Ou) = mv.obtained().as_ref() {
+					return (1000,m);
+				}
+			}
+
 			if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,kind) ||
-			   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
-				(10,m)
+				Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
+				(200,m)
 			} else {
 				match m {
-					LegalMove::To(ref mv) if mv.obtained().is_some() => {
-						(5,m)
+					LegalMove::To(ref mv) => {
+						match mv.obtained().as_ref() {
+							Some(&ObtainKind::Ou) => (1000,m),
+							Some(&ObtainKind::HishaN) => (100,m),
+							Some(&ObtainKind::Hisha) => (95,m),
+							Some(&ObtainKind::KakuN) => (80,m),
+							Some(&ObtainKind::Kaku) => (75,m),
+							Some(&ObtainKind::Kin) => (70,m),
+							Some(&ObtainKind::GinN) => (65,m),
+							Some(&ObtainKind::Gin) => (60,m),
+							Some(&ObtainKind::KeiN) => (55,m),
+							Some(&ObtainKind::Kei) => (50,m),
+							Some(&ObtainKind::KyouN) => (45,m),
+							Some(&ObtainKind::Kyou) => (40,m),
+							Some(&ObtainKind::FuN) => (35,m),
+							Some(&ObtainKind::Fu) => (30,m),
+							None => (1,m),
+						}
 					},
 					_ => (1,m),
 				}
@@ -774,7 +796,7 @@ impl<NN> Search<NN>
 			let mhash = self.calc_main_hash(mhash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 			let shash = self.calc_sub_hash(shash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 
-			if priority == 10 {
+			if priority == 200 {
 				match oute_kyokumen_map.get(teban,&mhash,&shash) {
 					Some(_) => {
 						return None;
@@ -788,13 +810,14 @@ impl<NN> Search<NN>
 			(mhash,shash)
 		};
 
-		if priority < 10 {
+		if priority != 200 {
 			oute_kyokumen_map.clear(teban);
 		}
 
-		let depth = match priority {
-			5 | 10 => depth + 1,
-			_ => depth,
+		let depth = if priority > 1 {
+			depth + 1
+		} else {
+			depth
 		};
 
 		let is_sennichite = match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
