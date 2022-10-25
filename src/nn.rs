@@ -12,7 +12,7 @@ use nncombinator::cuda::mem::{Alloctype, MemoryPool};
 use nncombinator::device::{DeviceCpu, DeviceGpu};
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain, TryAddLayer};
 use nncombinator::lossfunction::Mse;
-use nncombinator::optimizer::{Adam};
+use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence, SaveToFile};
 use nncombinator::Stack;
 use rand::{prelude, Rng, SeedableRng};
@@ -303,7 +303,7 @@ pub struct Trainer<NN>
 
 	nna:NN,
 	nnb:NN,
-	optimizer:Adam<f32>,
+	optimizer:MomentumSGD<f32>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -402,7 +402,7 @@ impl TrainerCreator {
 		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
-			optimizer:Adam::new(),
+			optimizer:MomentumSGD::new(0.0001),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
@@ -435,7 +435,7 @@ impl<NN> Trainer<NN>
 										history:Vec<(Banmen,MochigomaCollections,u64,u64)>,
 										s:&GameEndState,
 										_:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-										-> Result<(f32,f32,f32,f32),CommonError> {
+										-> Result<(f32,f32),CommonError> {
 
 		let lossf = Mse::new();
 
@@ -485,53 +485,9 @@ impl<NN> Trainer<NN>
 		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
 		let msb = self.nna.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
-		let mut teban = last_teban.opposite();
-
-		let batch = history.iter().rev().map(move |(banmen,mc,_,_)| {
-			let (a, b) = Self::calc_alpha_beta(bias_shake_shake);
-
-			let input = InputCreator::make_input(false, teban, banmen, mc);
-
-			let t = match s {
-				GameEndState::Win if teban == last_teban => {
-					1f32
-				}
-				GameEndState::Win => {
-					-1f32
-				},
-				GameEndState::Lose if teban == last_teban => {
-					-1f32
-				},
-				GameEndState::Lose => {
-					1f32
-				},
-				_ => 0f32
-			};
-
-			teban = teban.opposite();
-
-			(t,input,a,b)
-		}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())),| mut acc, (t,input,a,b) | {
-			let mut ans = Arr::<f32,1>::new();
-			ans[0] = t * a;
-
-			(acc.0).0.push(ans);
-			(acc.0).1.push(input.clone() * SCALE);
-			let mut ans = Arr::<f32,1>::new();
-			ans[0] = t * b;
-
-			(acc.1).0.push(ans);
-			(acc.1).1.push(input * SCALE);
-
-			acc
-		});
-
-		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
-		let mob = self.nna.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
-
 		self.save()?;
 
-		Ok((msa,moa,msb,mob))
+		Ok((msa,msb))
 	}
 
 	pub fn test_by_csa(&mut self,
@@ -551,7 +507,7 @@ impl<NN> Trainer<NN>
 	pub fn learning_by_packed_sfens<'a>(&mut self,
 										  packed_sfens:Vec<Vec<u8>>,
 										  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-		-> Result<(f32,f32,f32,f32),CommonError> {
+		-> Result<(f32,f32),CommonError> {
 
 		let lossf = Mse::new();
 		let bias_shake_shake = self.bias_shake_shake;
@@ -609,51 +565,7 @@ impl<NN> Trainer<NN>
 		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
 		let msb = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
-		let batch = sfens_with_extended.iter()
-			.map(|(teban,banmen,mc,es)| {
-				let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
-
-				// 非手番側であるため、手番と勝敗を反転
-				let teban = teban.opposite();
-				let es = match es {
-					GameEndState::Win => GameEndState::Lose,
-					GameEndState::Lose => GameEndState::Win,
-					GameEndState::Draw => GameEndState::Draw
-				};
-
-				let input = InputCreator::make_input(false, teban, banmen, mc);
-
-				let t = match es {
-					GameEndState::Win => {
-						1f32
-					}
-					GameEndState::Lose => {
-						-1f32
-					},
-					_ => 0f32
-				};
-
-				(t,input,a,b)
-			}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())), | mut acc, (t,input,a,b) | {
-				let mut ans = Arr::<f32, 1>::new();
-				ans[0] = t * a;
-
-				(acc.0).0.push(ans);
-				(acc.0).1.push(input.clone() * SCALE);
-
-				let mut ans = Arr::<f32, 1>::new();
-				ans[0] = t * b;
-
-				(acc.1).0.push(ans);
-				(acc.1).1.push(input * SCALE);
-
-				acc
-			});
-
-		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
-		let mob = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
-
-		Ok((msa,moa,msb,mob))
+		Ok((msa,msb))
 	}
 
 	pub fn test_by_packed_sfens(&mut self,
@@ -679,7 +591,7 @@ impl<NN> Trainer<NN>
 	pub fn learning_by_hcpe<'a>(&mut self,
 								  hcpes:Vec<Vec<u8>>,
 								  _:&'a Mutex<EventQueue<UserEvent,UserEventKind>>)
-								  -> Result<(f32,f32,f32,f32),CommonError> {
+								  -> Result<(f32,f32),CommonError> {
 
 		let lossf = Mse::new();
 		let bias_shake_shake = self.bias_shake_shake;
@@ -748,57 +660,7 @@ impl<NN> Trainer<NN>
 		let msa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer,&lossf)?;
 		let msb = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer,&lossf)?;
 
-		let batch = sfens_with_extended.iter()
-				.map(|(teban,banmen,mc,es)| {
-					let (a,b) = Self::calc_alpha_beta(bias_shake_shake);
-
-					// 非手番側であるため、手番と勝敗を反転
-					let teban = teban.opposite();
-
-					let input = InputCreator::make_input(false,teban, banmen, mc);
-
-					let es = match (es,teban) {
-						(GameResult::Draw,_) => GameEndState::Draw,
-						(GameResult::SenteWin,Teban::Sente) |
-						(GameResult::GoteWin,Teban::Gote) => {
-							GameEndState::Win
-						},
-						(GameResult::SenteWin,Teban::Gote) |
-						(GameResult::GoteWin,Teban::Sente) => {
-							GameEndState::Lose
-						}
-					};
-
-					let t = match es {
-						GameEndState::Win => {
-							1f32
-						}
-						GameEndState::Lose => {
-							-1f32
-						},
-						_ => 0f32
-					};
-
-					(t,input,a,b)
-				}).fold(((Vec::new(),Vec::new()),(Vec::new(),Vec::new())),| mut acc, (t,input,a,b) | {
-					let mut ans = Arr::<f32,1>::new();
-					ans[0] = t * a;
-
-					(acc.0).0.push(ans);
-					(acc.0).1.push(input.clone() * SCALE);
-
-					let mut ans = Arr::<f32,1>::new();
-					ans[0] = t * b;
-
-					(acc.1).0.push(ans);
-					(acc.1).1.push(input * SCALE);
-
-					acc
-				});
-		let moa = self.nna.batch_train((batch.0).0.into(),(batch.0).1.into(),&mut self.optimizer, &lossf)?;
-		let mob = self.nnb.batch_train((batch.1).0.into(),(batch.1).1.into(),&mut self.optimizer, &lossf)?;
-
-		Ok((msa,moa,msb,mob))
+		Ok((msa,msb))
 	}
 
 	pub fn test_by_packed_hcpe(&mut self,

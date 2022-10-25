@@ -365,8 +365,8 @@ impl<NN> Learnener<NN>
 								"An error occurred while learning the neural network."
 							)));
 						},
-						Ok((msa, moa, msb, mob)) => {
-							println!("error_total: {}, {}, {}, {}", msa, moa, msb, mob);
+						Ok((msa,msb)) => {
+							println!("error_total: {}, {}", msa, msb);
 						}
 					};
 
@@ -935,8 +935,8 @@ impl<NN> Learnener<NN>
 					"An error occurred while learning the neural network. {}",e
 				)));
 			},
-			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
+			Ok((msa,msb)) => {
+				println!("error_total: {}, {}",msa,msb);
 				Ok(())
 			}
 		}
@@ -954,8 +954,8 @@ impl<NN> Learnener<NN>
 					"An error occurred while learning the neural network. {}",e
 				)));
 			},
-			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
+			Ok((msa,msb)) => {
+				println!("error_total: {}, {}",msa,msb);
 				Ok(())
 			}
 		}
