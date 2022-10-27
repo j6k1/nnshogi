@@ -12,7 +12,7 @@ use nncombinator::cuda::mem::{Alloctype, MemoryPool};
 use nncombinator::device::{DeviceCpu, DeviceGpu};
 use nncombinator::layer::{ActivationLayer, AddLayer, AddLayerTrain, AskDiffInput, BatchForwardBase, BatchTrain, DiffInput, DiffLinearLayer, ForwardAll, ForwardDiff, InputLayer, LinearLayer, LinearOutputLayer, PreTrain, TryAddLayer};
 use nncombinator::lossfunction::Mse;
-use nncombinator::optimizer::{Adam};
+use nncombinator::optimizer::{MomentumSGD};
 use nncombinator::persistence::{BinFilePersistence, Linear, Persistence, SaveToFile};
 use nncombinator::Stack;
 use rand::{prelude, Rng, SeedableRng};
@@ -303,7 +303,7 @@ pub struct Trainer<NN>
 
 	nna:NN,
 	nnb:NN,
-	optimizer:Adam<f32>,
+	optimizer:MomentumSGD<f32>,
 	nna_filename:String,
 	nnb_filename:String,
 	nnsavedir:String,
@@ -402,7 +402,7 @@ impl TrainerCreator {
 		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
-			optimizer:Adam::new(),
+			optimizer:MomentumSGD::new(0.00001),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
