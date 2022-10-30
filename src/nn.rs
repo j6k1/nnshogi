@@ -402,7 +402,7 @@ impl TrainerCreator {
 		Ok(Trainer {
 			nna:nna,
 			nnb:nnb,
-			optimizer:SGD::new(0.001),
+			optimizer:SGD::new(0.0001),
 			nna_filename:nna_filename,
 			nnb_filename:nnb_filename,
 			nnsavedir:savedir,
