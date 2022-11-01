@@ -693,38 +693,13 @@ impl<NN> Search<NN>
 		}
 
 		let mut mvs = mvs.into_iter().map(|m| {
-			let ps = Rule::apply_move_to_partial_state_none_check(&*state,teban,&*mc,m.to_applied_move());
-
-			let (x,y,kind) = match m {
-				LegalMove::To(ref mv) => {
-					let banmen = state.get_banmen();
-					let (sx,sy) = mv.src().square_to_point();
-					let (x,y) = mv.dst().square_to_point();
-					let kind = banmen.0[sy as usize][sx as usize];
-
-					let kind = if mv.is_nari() {
-						kind.to_nari()
-					} else {
-						kind
-					};
-
-					(x,y,kind)
-				},
-				LegalMove::Put(ref mv) => {
-					let (x,y) = mv.dst().square_to_point();
-					let kind = mv.kind();
-
-					(x,y,KomaKind::from((teban,kind)))
-				}
-			};
 			if let LegalMove::To(ref mv) = m {
 				if let Some(&ObtainKind::Ou) = mv.obtained().as_ref() {
 					return (1000,m);
 				}
 			}
 
-			if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,kind) ||
-				Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
+			if Rule::is_oute_move(&*state,teban,m) {
 				(200,m)
 			} else {
 				match m {
