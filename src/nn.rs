@@ -663,9 +663,9 @@ impl<NN> Trainer<NN>
 		Ok((msa,msb))
 	}
 
-	pub fn test_by_packed_hcpe(&mut self,
-									hcpe:Vec<u8>)
-									-> Result<(GameEndState,f32),ApplicationError> {
+	pub fn test_by_hcpe(&mut self,
+						hcpe:Vec<u8>)
+						-> Result<(GameEndState,f32),ApplicationError> {
 		let ((teban,banmen,mc),hcpe::haffman_code::ExtendFields {
 			eval: _,
 			best_move: _,

@@ -572,7 +572,7 @@ impl<NN> Learnener<NN>
 							maxepoch,
 							Self::learning_from_hcpe_batch,
 							|evalutor,packed| {
-								evalutor.test_by_packed_hcpe(packed)
+								evalutor.test_by_hcpe(packed)
 							})
 
 	}
