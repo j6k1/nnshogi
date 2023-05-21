@@ -1,6 +1,6 @@
 [package]
 name = "nnshogi"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["jinpu"]
 [dependencies]
 rand = "0.8.5"
