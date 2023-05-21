@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::thread;
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -143,7 +144,7 @@ impl<NN> Learnener<NN>
 
 			loop {
 				match input_reader.read() {
-					Ok(line) => {
+					Ok(Some(line)) => {
 						match line.trim_end() {
 							"quit" => {
 								match system_event_queue.lock() {
@@ -171,6 +172,19 @@ impl<NN> Learnener<NN>
 								}
 							}
 							_ => (),
+						}
+					},
+					Ok(None) => {
+						match system_event_queue.lock() {
+							Ok(mut system_event_queue) => {
+								notify_run_test.store(false,Ordering::Release);
+								system_event_queue.push(SystemEvent::Quit);
+								return;
+							},
+							Err(ref e) => {
+								let _ = on_error_handler.lock().map(|h| h.call(e));
+								return;
+							}
 						}
 					},
 					Err(ref e) => {
@@ -222,7 +236,7 @@ impl<NN> Learnener<NN>
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
-		let mut count = 0;
+		let mut processed_count = 0;
 
 		let checkpoint_path = Path::new(&kifudir).join("checkpoint.toml");
 
@@ -241,7 +255,11 @@ impl<NN> Learnener<NN>
 		let mut rng = rand::thread_rng();
 		let mut rng = XorShiftRng::from_seed(rng.gen());
 
-		'epochs: for _ in 0..maxepoch {
+		let extend = RefCell::new(0);
+
+		let mut item_count = 0;
+
+		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
 			let mut paths = fs::read_dir(Path::new(&kifudir)
 				.join("training"))?.into_iter()
 				.collect::<Vec<Result<DirEntry,_>>>();
@@ -277,10 +295,13 @@ impl<NN> Learnener<NN>
 				current_item = 0;
 
 				for p in parsed.into_iter() {
+					item_count += 1;
+
 					if let Some(ref checkpoint) = checkpoint {
 						if skip_items && current_item == checkpoint.item {
 							println!("Processing starts from {}th item of file {}", current_item, &current_filename);
 							skip_items = false;
+							continue;
 						}
 
 						if skip_items {
@@ -344,23 +365,25 @@ impl<NN> Learnener<NN>
 																					 history
 																				 });
 
-					let teban = teban.opposite();
+					let history_count = history.len();
+
+					let teban = teban;
 
 					match evalutor.learning_by_training_csa(
 						teban,
 						history,
-						&GameEndState::Win, &*user_event_queue) {
+						&GameEndState::Lose, &*user_event_queue) {
 						Err(_) => {
 							return Err(ApplicationError::LearningError(String::from(
 								"An error occurred while learning the neural network."
 							)));
 						},
-						Ok((msa, moa, msb, mob)) => {
-							println!("error_total: {}, {}, {}, {}", msa, moa, msb, mob);
+						Ok((msa,msb)) => {
+							println!("error_total: {}, {}", msa, msb);
 						}
 					};
 
-					count += 1;
+					processed_count += history_count;
 
 					system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
 
@@ -380,6 +403,10 @@ impl<NN> Learnener<NN>
 					filename: current_filename.clone(),
 					item: current_item
 				})?;
+			}
+
+			if processed_count == 0 && item_count > 0 {
+				*extend.borrow_mut() += 1;
 			}
 
 			skip_files = false;
@@ -500,9 +527,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("評価値{} 正解!",score * (1 << 21) as f32);
+					println!("評価値{} 正解!",score * (1 << 29) as f32);
 				} else {
-					println!("評価値{} 不正解...",score * (1 << 21) as f32);
+					println!("評価値{} 不正解...",score * (1 << 29) as f32);
 				}
 
 				count += 1;
@@ -511,7 +538,7 @@ impl<NN> Learnener<NN>
 			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
 		}
 
-		print!("{}件の棋譜を学習しました。\n",count);
+		print!("{}件の棋譜を学習しました。\n", processed_count);
 
 		Ok(())
 	}
@@ -558,7 +585,7 @@ impl<NN> Learnener<NN>
 							maxepoch,
 							Self::learning_from_hcpe_batch,
 							|evalutor,packed| {
-								evalutor.test_by_packed_hcpe(packed)
+								evalutor.test_by_hcpe(packed)
 							})
 
 	}
@@ -571,7 +598,7 @@ impl<NN> Learnener<NN>
 							   learn_sfen_read_size:usize,
 							   learn_batch_size:usize,
 							   save_batch_count:usize,
-								maxepoch:usize,
+							   maxepoch:usize,
 							   learning_process:fn(
 								   &mut Trainer<NN>,
 								   Vec<Vec<u8>>,
@@ -607,7 +634,7 @@ impl<NN> Learnener<NN>
 		let system_event_queue = system_event_queue_arc.clone();
 		let notify_quit = notify_quit_arc.clone();
 
-		let mut count = 0;
+		let mut processed_count = 0;
 
 		let mut record = Vec::with_capacity(item_size);
 
@@ -631,7 +658,11 @@ impl<NN> Learnener<NN>
 
 		let mut current_item = 0;
 
-		'epochs: for _ in 0..maxepoch {
+		let mut item_count = 0;
+
+		let extend = RefCell::new(0);
+
+		'epochs: for _ in (0..).take_while(|&c| c < maxepoch + *extend.borrow()) {
 			let mut teachers = Vec::with_capacity(learn_sfen_read_size);
 
 			let mut paths = fs::read_dir(Path::new(&kifudir)
@@ -673,6 +704,7 @@ impl<NN> Learnener<NN>
 					record.push(b);
 
 					if record.len() == item_size {
+						item_count += 1;
 						current_item += 1;
 
 						if let Some(ref checkpoint) = checkpoint {
@@ -683,6 +715,8 @@ impl<NN> Learnener<NN>
 								if skip_items && current_item == checkpoint.item {
 									println!("Processing starts from {}th item of file {}", current_item, &current_filename);
 									skip_items = false;
+									record.clear();
+									continue;
 								}
 							}
 						}
@@ -711,7 +745,7 @@ impl<NN> Learnener<NN>
 								pending_count += 1;
 
 								batch = Vec::with_capacity(learn_batch_size);
-								count += learn_batch_size;
+								processed_count += learn_batch_size;
 
 								self.save(&mut evalutor,
 										  &checkpoint_path,
@@ -742,7 +776,7 @@ impl<NN> Learnener<NN>
 									  current_item,
 									  pending_count >= save_batch_count,
 									  &mut pending_count)?;
-							count += remaing;
+							processed_count += remaing;
 						}
 
 						system_event_dispatcher.dispatch_events(&(), &*system_event_queue)?;
@@ -751,6 +785,10 @@ impl<NN> Learnener<NN>
 							break 'epochs;
 						}
 					}
+				}
+
+				if processed_count == 0 && item_count > 0 {
+					*extend.borrow_mut() += 1;
 				}
 
 				skip_files = false;
@@ -778,7 +816,7 @@ impl<NN> Learnener<NN>
 						pending_count += 1;
 
 						batch = Vec::with_capacity(learn_batch_size);
-						count += learn_batch_size;
+						processed_count += learn_batch_size;
 
 						self.save(&mut evalutor,
 								  &checkpoint_path,
@@ -809,7 +847,7 @@ impl<NN> Learnener<NN>
 							  current_item,
 							  pending_count >= save_batch_count,
 							  &mut pending_count)?;
-					count += remaing;
+					processed_count += remaing;
 				}
 			}
 
@@ -882,9 +920,9 @@ impl<NN> Learnener<NN>
 
 				if success {
 					successed += 1;
-					println!("評価値{} 正解!",score * (1 << 21) as f32);
+					println!("評価値{} 正解!",score * (1 << 29) as f32);
 				} else {
-					println!("評価値{} 不正解...",score * (1 << 21) as f32);
+					println!("評価値{} 不正解...",score * (1 << 29) as f32);
 				}
 
 				count += 1;
@@ -893,7 +931,7 @@ impl<NN> Learnener<NN>
 			println!("正解率 {}%",successed as f32 / count as f32 * 100.);
 		}
 
-		print!("{}局面を学習しました。\n",count);
+		print!("{}局面を学習しました。\n", processed_count);
 
 		Ok(())
 	}
@@ -910,8 +948,8 @@ impl<NN> Learnener<NN>
 					"An error occurred while learning the neural network. {}",e
 				)));
 			},
-			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
+			Ok((msa,msb)) => {
+				println!("error_total: {}, {}",msa,msb);
 				Ok(())
 			}
 		}
@@ -929,8 +967,8 @@ impl<NN> Learnener<NN>
 					"An error occurred while learning the neural network. {}",e
 				)));
 			},
-			Ok((msa,moa,msb,mob)) => {
-				println!("error_total: {}, {}, {}, {}",msa, moa, msb, mob);
+			Ok((msa,msb)) => {
+				println!("error_total: {}, {}",msa,msb);
 				Ok(())
 			}
 		}

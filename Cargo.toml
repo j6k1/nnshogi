@@ -1,6 +1,6 @@
 [package]
 name = "nnshogi"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["jinpu"]
 [dependencies]
 rand = "0.8.5"
@@ -12,7 +12,7 @@ toml = "0.4"
 serde = "1.0"
 serde_derive = "1.0"
 crossbeam-channel = "0.5"
-usiagent = "0.6.1"
+usiagent = "^0.6.8"
 csaparser = "0.3.0"
 packedsfen = "0.3.0"
 nncombinator = "0.6.0"

@@ -13,6 +13,7 @@ use std::ops::Sub;
 use std::sync::atomic;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::atomic::AtomicU64;
+use std::convert::TryFrom;
 
 use usiagent::player::*;
 use usiagent::event::*;
@@ -25,7 +26,6 @@ use usiagent::logger::*;
 use usiagent::error::PlayerError;
 use usiagent::error::UsiProtocolError;
 use usiagent::error::EventHandlerError;
-use usiagent::TryFrom;
 
 use nn::{Intelligence};
 use solver::*;
@@ -409,8 +409,8 @@ impl<NN> Search<NN>
 
 		let (s,self_snapshot,opponent_snapshot) = {
 			let m = m.to_move();
-			let (s, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, false, teban, state.get_banmen(), mc, &m)?;
-			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, true, teban.opposite(), state.get_banmen(), mc, &m)?;
+			let (s, self_snapshot) = evalutor.evalute_by_diff(&self_snapshot, true, teban, state.get_banmen(), mc, &m)?;
+			let (_, opponent_snapshot) = evalutor.evalute_by_diff(&opponent_snapshot, false, teban.opposite(), state.get_banmen(), mc, &m)?;
 			(s,self_snapshot,opponent_snapshot)
 		};
 
@@ -533,13 +533,13 @@ impl<NN> Search<NN>
 			}
 		}
 
-		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
+		if (depth <= 1 || current_depth >= self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let network_delay = self.network_delay;
 			let limit = env.limit.clone();
 			let checkmate_limit = self.max_ply_timelimit.map(|l| Instant::now() + l);
 
 			let mut check_timelimit = move || {
-				limit.map_or(false,|l| {
+				limit.map_or(false, |l| {
 					let now = Instant::now();
 					l < now ||
 						l - now <= Duration::from_millis(network_delay as u64 + TIMELIMIT_MARGIN) ||
@@ -552,11 +552,11 @@ impl<NN> Search<NN>
 			let mut info_sender = env.info_sender.clone();
 			let on_error_handler = env.on_error_handler.clone();
 
-			let mut on_searchstart = |depth,_| {
+			let mut on_searchstart = |depth, _| {
 				this.send_seldepth(&mut info_sender, &on_error_handler, base_depth, current_depth + depth);
 			};
 
-			match env.solver.checkmate(false,teban, state, mc,
+			match env.solver.checkmate(false, teban, state, mc,
 									   self.max_ply,
 									   None,
 									   &mut oute_kyokumen_map.clone(),
@@ -566,20 +566,23 @@ impl<NN> Search<NN>
 									   mhash, shash,
 									   &mut check_timelimit,
 									   &env.stop,
+									   &env.nodes,
 									   &mut on_searchstart,
 									   &env.event_queue,
 									   solver_event_dispatcher) {
-				MaybeMate::MateMoves(_,ref mvs) if mvs.len() > 0 => {
-					return Evaluation::Result(Score::INFINITE,Some(mvs[0].to_applied_move()));
+				MaybeMate::MateMoves(_, ref mvs) if mvs.len() > 0 => {
+					return Evaluation::Result(Score::INFINITE, Some(mvs[0].to_applied_move()));
 				},
-				MaybeMate::MateMoves(_,_) => {
-					return Evaluation::Result(Score::INFINITE,None);
+				MaybeMate::MateMoves(_, _) => {
+					return Evaluation::Result(Score::INFINITE, None);
 				},
 				_ => ()
 			}
+		}
 
+		if (depth == 0 || current_depth > self.max_depth) && !Rule::is_mate(teban.opposite(),&*state) {
 			let r = self.evalute_score_by_diff(&env.evalutor,
-											   false,
+											   true,
 											   &self_nn_snapshot,
 											   teban,
 											   &prev_state.as_ref(), &prev_mc.as_ref(),
@@ -616,7 +619,7 @@ impl<NN> Search<NN>
 			if mvs.len() == 0 {
 				return Evaluation::Result(Score::NEGINFINITE,None);
 			} else if depth == 0 || current_depth == self.max_depth {
-				let r = self.evalute_score_by_diff(&env.evalutor,false,
+				let r = self.evalute_score_by_diff(&env.evalutor,true,
 										   &self_nn_snapshot,
 										   teban,
 										   &prev_state.as_ref(), &prev_mc.as_ref(),
@@ -690,37 +693,34 @@ impl<NN> Search<NN>
 		}
 
 		let mut mvs = mvs.into_iter().map(|m| {
-			let ps = Rule::apply_move_to_partial_state_none_check(&*state,teban,&*mc,m.to_applied_move());
-
-			let (x,y,kind) = match m {
-				LegalMove::To(ref mv) => {
-					let banmen = state.get_banmen();
-					let (sx,sy) = mv.src().square_to_point();
-					let (x,y) = mv.dst().square_to_point();
-					let kind = banmen.0[sy as usize][sx as usize];
-
-					let kind = if mv.is_nari() {
-						kind.to_nari()
-					} else {
-						kind
-					};
-
-					(x,y,kind)
-				},
-				LegalMove::Put(ref mv) => {
-					let (x,y) = mv.dst().square_to_point();
-					let kind = mv.kind();
-
-					(x,y,KomaKind::from((teban,kind)))
+			if let LegalMove::To(ref mv) = m {
+				if let Some(&ObtainKind::Ou) = mv.obtained().as_ref() {
+					return (1000,m);
 				}
-			};
-			if Rule::is_mate_with_partial_state_and_point_and_kind(teban,&ps,x,y,kind) ||
-			   Rule::is_mate_with_partial_state_repeat_move_kinds(teban,&ps) {
-				(10,m)
+			}
+
+			if Rule::is_oute_move(&*state,teban,m) {
+				(200,m)
 			} else {
 				match m {
-					LegalMove::To(ref mv) if mv.obtained().is_some() => {
-						(5,m)
+					LegalMove::To(ref mv) => {
+						match mv.obtained().as_ref() {
+							Some(&ObtainKind::Ou) => (1000,m),
+							Some(&ObtainKind::HishaN) => (100,m),
+							Some(&ObtainKind::Hisha) => (95,m),
+							Some(&ObtainKind::KakuN) => (80,m),
+							Some(&ObtainKind::Kaku) => (75,m),
+							Some(&ObtainKind::Kin) => (70,m),
+							Some(&ObtainKind::GinN) => (65,m),
+							Some(&ObtainKind::Gin) => (60,m),
+							Some(&ObtainKind::KeiN) => (55,m),
+							Some(&ObtainKind::Kei) => (50,m),
+							Some(&ObtainKind::KyouN) => (45,m),
+							Some(&ObtainKind::Kyou) => (40,m),
+							Some(&ObtainKind::FuN) => (35,m),
+							Some(&ObtainKind::Fu) => (30,m),
+							None => (1,m),
+						}
 					},
 					_ => (1,m),
 				}
@@ -771,7 +771,7 @@ impl<NN> Search<NN>
 			let mhash = self.calc_main_hash(mhash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 			let shash = self.calc_sub_hash(shash,teban,state.get_banmen(),mc,m.to_applied_move(),&o);
 
-			if priority == 10 {
+			if priority == 200 {
 				match oute_kyokumen_map.get(teban,&mhash,&shash) {
 					Some(_) => {
 						return None;
@@ -785,13 +785,14 @@ impl<NN> Search<NN>
 			(mhash,shash)
 		};
 
-		if priority < 10 {
+		if priority != 200 {
 			oute_kyokumen_map.clear(teban);
 		}
 
-		let depth = match priority {
-			5 | 10 => depth + 1,
-			_ => depth,
+		let depth = if priority > 1 {
+			depth + 1
+		} else {
+			depth
 		};
 
 		let is_sennichite = match current_kyokumen_map.get(teban,&mhash,&shash).unwrap_or(&0) {
@@ -1698,8 +1699,8 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 
 		match self.evalutor {
 			Some(ref evalutor) => {
-				let self_nn_snapshot = self.search.make_snapshot(false,evalutor,teban,state,mc)?;
-				let opponent_nn_snapshot = self.search.make_snapshot(true,evalutor,teban.opposite(),state,mc)?;
+				let self_nn_snapshot = self.search.make_snapshot(true,evalutor,teban,state,mc)?;
+				let opponent_nn_snapshot = self.search.make_snapshot(false,evalutor,teban.opposite(),state,mc)?;
 
 				let prev_state:Option<Arc<State>> = None;
 				let prev_mc:Option<Arc<MochigomaCollections>> = None;
@@ -1846,6 +1847,8 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 		let stop = Arc::new(AtomicBool::new(false));
 		let quited = Arc::new(AtomicBool::new(false));
 
+		let nodes = Arc::new(AtomicU64::new(0));
+
 		let mut event_dispatcher = self.search.create_event_dispatcher(&on_error_handler, &stop, &quited);
 
 		let mut solver = Solver::new();
@@ -1870,6 +1873,7 @@ impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 									mhash, shash,
 									&mut check_timelimit,
 									&stop,
+									&nodes,
 									&mut on_searchstart,
 									&event_queue,
 									&mut event_dispatcher) {
