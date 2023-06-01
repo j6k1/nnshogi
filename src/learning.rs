@@ -174,19 +174,7 @@ impl<NN> Learnener<NN>
 							_ => (),
 						}
 					},
-					Ok(None) => {
-						match system_event_queue.lock() {
-							Ok(mut system_event_queue) => {
-								notify_run_test.store(false,Ordering::Release);
-								system_event_queue.push(SystemEvent::Quit);
-								return;
-							},
-							Err(ref e) => {
-								let _ = on_error_handler.lock().map(|h| h.call(e));
-								return;
-							}
-						}
-					},
+					Ok(None) => {},
 					Err(ref e) => {
 						let _ = on_error_handler.lock().map(|h| h.call(e));
 						match system_event_queue.lock() {
