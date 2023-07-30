@@ -37,7 +37,8 @@ use packedsfen::hcpe::haffman_code::GameResult;
 
 pub struct Intelligence<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Sized,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync {
 	nna:NN,
 	nnb:NN,
 	quited:bool,
@@ -117,8 +118,8 @@ pub struct IntelligenceCreator;
 impl IntelligenceCreator {
 	pub fn create(savedir:String,nna_filename:String,nnb_filename:String)
 		-> Result<Intelligence<impl ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-							 PreTrain<f32> + ForwardDiff<f32> +
-							 AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static>,ApplicationError> {
+							 PreTrain<f32,OutStack = impl Send + Sync + 'static> + ForwardDiff<f32> +
+							 AskDiffInput<f32,DiffInput=Arr<f32,256>>>,ApplicationError> {
 
 		let mut rnd = prelude::thread_rng();
 		let rnd_base = Rc::new(RefCell::new(XorShiftRng::from_seed(rnd.gen())));
@@ -204,7 +205,8 @@ impl IntelligenceCreator {
 impl<NN> Intelligence<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
 			  PreTrain<f32> + ForwardDiff<f32> +
-			  AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+			  AskDiffInput<f32,DiffInput=Arr<f32,256>>,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	pub fn new(nna:NN,nnb:NN) -> Intelligence<NN> {
 		Intelligence {
 			nna:nna,

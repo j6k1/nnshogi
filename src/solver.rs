@@ -29,14 +29,16 @@ pub enum MaybeMate {
 pub struct Solver<E,NN>
 	where E: PlayerError,
 		  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	error_type:PhantomData<E>,
 	nn_type:PhantomData<NN>,
 }
 impl<E,NN> Solver<E,NN>
 	where E: PlayerError,
 		  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	pub fn new() -> Solver<E,NN> {
 		Solver {
 			error_type:PhantomData::<E>,
@@ -190,7 +192,8 @@ mod checkmate {
 			  O: Comparator<(LegalMove,usize)>,
 			  R: Comparator<(LegalMove,usize)>,
 			  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+			  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+			  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 		fn new(current_frame:CheckmateStackFrame,
 				oute_comparator:O,
 				response_oute_comparator:R,

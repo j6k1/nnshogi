@@ -107,9 +107,12 @@ type Strategy<L,S,NN,ST> = fn (&Arc<Search<NN>>,
 						u64,u64,
 						u32,u32,u32,u64,
 						&Vec<(u32,LegalMove)>,bool) -> Evaluation;
-pub struct Environment<L,S,NN> where L: Logger, S: InfoSender,
-										NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-											PreTrain<f32> +	ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+pub struct Environment<L,S,NN>
+	where L: Logger,
+		  S: InfoSender,
+		  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	solver:Solver<CommonError,NN>,
 	event_queue:Arc<Mutex<UserEventQueue>>,
 	evalutor:Arc<Intelligence<NN>>,
@@ -127,7 +130,8 @@ impl<L,S,NN> Clone for Environment<L,S,NN>
 	where L: Logger,
 		  S: InfoSender,
 	      NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+		  	  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	fn clone(&self) -> Self {
 		Environment {
 			solver:Solver::new(),
@@ -145,9 +149,12 @@ impl<L,S,NN> Clone for Environment<L,S,NN>
 		}
 	}
 }
-impl<L,S,NN> Environment<L,S,NN> where L: Logger, S: InfoSender,
-									   NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-									   	   PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+impl<L,S,NN> Environment<L,S,NN>
+	where L: Logger,
+		  S: InfoSender,
+		  NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	pub fn new(event_queue:Arc<Mutex<UserEventQueue>>,
 			   evalutor:Arc<Intelligence<NN>>,
 			   info_sender:S,
@@ -176,7 +183,8 @@ impl<L,S,NN> Environment<L,S,NN> where L: Logger, S: InfoSender,
 }
 pub struct Search<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	kyokumenhash:KyokumenHash<u64>,
 	base_depth:u32,
 	max_depth:u32,
@@ -193,7 +201,8 @@ pub struct Search<NN>
 }
 impl<NN> Search<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	pub fn new() -> Search<NN> {
 		let max_ply_timelimit = if MAX_PLY_TIMELIMIT >  0 {
 			Some(Duration::from_millis(MAX_PLY_TIMELIMIT))
@@ -1372,7 +1381,8 @@ impl<NN> Search<NN>
 }
 pub struct NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static {
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	search:Arc<Search<NN>>,
 	kyokumen:Option<Kyokumen>,
 	mhash:u64,
@@ -1389,7 +1399,8 @@ pub struct NNShogiPlayer<NN>
 }
 impl<NN> fmt::Debug for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static
 	{
 		fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		write!(f, "NNShogiPlayer")
@@ -1397,10 +1408,9 @@ impl<NN> fmt::Debug for NNShogiPlayer<NN>
 }
 impl<NN> NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
-	{
-
-	pub fn new<C: Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + 'static>(evalutor_creator:C)
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
+	pub fn new<C: Fn() -> Result<Intelligence<NN>,ApplicationError> + Send + Sync + 'static>(evalutor_creator:C)
 		-> NNShogiPlayer<NN> {
 
 		NNShogiPlayer {
@@ -1421,9 +1431,8 @@ impl<NN> NNShogiPlayer<NN>
 }
 impl<NN> USIPlayer<CommonError> for NNShogiPlayer<NN>
 	where NN: ForwardAll<Input=DiffInput<DiffArr<f32,2517>,f32,2517,256>,Output=Arr<f32,1>> +
-			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static
-	{
-
+			  PreTrain<f32> + ForwardDiff<f32> + AskDiffInput<f32,DiffInput=Arr<f32,256>> + Send + Sync + 'static,
+		  <NN as PreTrain<f32>>::OutStack: Send + Sync + 'static {
 	const ID: &'static str = "nnshogi";
 	const AUTHOR: &'static str = "jinpu";
 	fn get_option_kinds(&mut self) -> Result<BTreeMap<String,SysEventOptionKind>,CommonError> {
